@@ -18,7 +18,7 @@ import torch.distributed as dist
 import torch.multiprocessing as mp
 from torch.utils.data import DataLoader, DistributedSampler
 from torch.nn.parallel import DistributedDataParallel as DDP
-
+from trainer import Trainer
 
 
 from argparse import ArgumentParser
@@ -33,61 +33,107 @@ parser.add_argument("--task", nargs='+', help='The override trainer configuratio
 parser.add_argument("--optimizer", nargs='+', help='The override trainer configurations in the format key=value', required=False)
 parser.add_argument("--lr_scheduler", nargs='+', help='The override trainer configurations in the format key=value', required=False)
 
-
+def convert_value(value):
+    # 尝试转换为布尔值
+    if value.lower() in ['true', 'false']:
+        return value.lower() == 'true'
+    # 尝试转换为整数
+    try:
+        return int(value)
+    except ValueError:
+        pass
+    # 尝试转换为浮点数
+    try:
+        return float(value)
+    except ValueError:
+        pass
+    # 检查是否为数组列表
+    if value.startswith('[') and value.endswith(']'):
+        # 去掉方括号并分割，转换为浮点数列表
+        return [float(x) for x in value[1:-1].split(',')]
+    # 返回原始字符串
+    return value
 
 def merge_config(cfg, args):
     # merge argparser args to yaml config
-    # for k, vs in args.items():
-    #     if vs is not None:
-    #         if k not in args: args[k] = vs
-    #         for v in vs:
-    #             vk, vv = vkvs if len(vkvs := v.split("=")) == 2 else vkvs[0], None
-    #             if vk not in args[k]: raise KeyError(f"Input key {vk} not found in {k} config !")
-    #             if vv is None:
-    #                 cfg[k][vk] = True
-    #             else:
-    #                 cfg[k][vk] == vv
+    for k, vs in args.items():
+        if k == 'config':
+            continue
+        if vs is not None:
+            if k not in cfg: cfg[k] = {}
+            for v in vs:
+                # print(v)
+                vkvs = v.split("=")
+                if len(vkvs) == 2:
+                    vk, vv = vkvs
+                else:
+                    vk, vv = vkvs[0], None
+                # print(vk,vv)
+                # 处理多层级键upstream.select等
+                keys = vk.split('.')
+                temp_cfg = cfg[k]
 
-    pass
+                for key in keys[:-1]:
+                    if key not in temp_cfg:
+                        raise KeyError(f"Input key '{key}' not found in {k} config!")
+                    temp_cfg = temp_cfg[key]
+                
+                # 获取最后一个键进行赋值
+                last_key = keys[-1]
+                
+                if vv is None:
+                    temp_cfg[last_key] = True
+                else:
+                    temp_cfg[last_key] = convert_value(vv)
+    return cfg
 
 
 def main() -> None:
     args = parser.parse_args()
+    print(vars(args))
     if not os.path.exists(args.config): raise FileExistsError(f"Input config file {args.config} not exists !")
     # windows默认编码是gbk，需指定yaml的编码方式utf-8
     with open(args.config, "r", encoding='utf-8') as f:
         cfg = yaml.safe_load(f)
     args = dict(vars(args))
-    merge_config(cfg, args)
+    print(cfg)
+    cfg = merge_config(cfg, args)
+    # 写回
+    with open(args['config'], 'w', encoding='utf-8') as f:
+        yaml.dump(cfg, f, default_flow_style=False, allow_unicode=True)
 
-    # 访问 YAML 配置
-    trainer_config = cfg.get('trainer', {})
-    dataset_config = cfg.get('dataset', {})
-    model_config = cfg.get('model', {})
-    task_config = cfg.get('task', {})
-    optimizer_config = cfg.get('optimizer', {})
-    lr_scheduler_config = cfg.get('lr_scheduler', {})
+    trainer = Trainer(cfg)
+
+    trainer.train()
+
+    # # 访问 YAML 配置
+    # trainer_config = cfg.get('trainer', {})
+    # dataset_config = cfg.get('dataset', {})
+    # model_config = cfg.get('model', {})
+    # task_config = cfg.get('task', {})
+    # optimizer_config = cfg.get('optimizer', {})
+    # lr_scheduler_config = cfg.get('lr_scheduler', {})
     
-    # 调用
-    fp16 = trainer_config.get('fp16', False)
-    world_size = trainer_config.get('world_size', 1)
-    ddp_backend = trainer_config.get('ddp_backend', 'default')
+    # # 调用
+    # fp16 = trainer_config.get('fp16', False)
+    # world_size = trainer_config.get('world_size', 1)
+    # ddp_backend = trainer_config.get('ddp_backend', 'default')
 
-    dataset_path = dataset_config.get('path', '')
-    num_workers = dataset_config.get('num_workers', 0)
-    train_set = dataset_config.get('train', '')
-    eval_sets = dataset_config.get('eval', [])
+    # dataset_path = dataset_config.get('path', '')
+    # num_workers = dataset_config.get('num_workers', 0)
+    # train_set = dataset_config.get('train', '')
+    # eval_sets = dataset_config.get('eval', [])
 
-    upstream_model = model_config.get('upstream', {}).get('select', '')
-    downstream_model = model_config.get('downstream', {}).get('select', '')
-    classes = model_config.get('downstream', {}).get('classes', 0)
+    # upstream_model = model_config.get('upstream', {}).get('select', '')
+    # downstream_model = model_config.get('downstream', {}).get('select', '')
+    # classes = model_config.get('downstream', {}).get('classes', 0)
 
-    task_type = task_config.get('select', '')
-    loss_function = task_config.get('loss', {}).get('select', '')
-    loss_weights = task_config.get('loss', {}).get('weight', [])
+    # task_type = task_config.get('select', '')
+    # loss_function = task_config.get('loss', {}).get('select', '')
+    # loss_weights = task_config.get('loss', {}).get('weight', [])
 
-    optimizer_type = optimizer_config.get('select', '')
-    lr_scheduler_type = lr_scheduler_config.get('select', '')
+    # optimizer_type = optimizer_config.get('select', '')
+    # lr_scheduler_type = lr_scheduler_config.get('select', '')
 
     
     # print(f"Trainer - FP16: {fp16}, World Size: {world_size}, DDP Backend: {ddp_backend}")

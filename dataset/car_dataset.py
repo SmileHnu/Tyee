@@ -1,11 +1,12 @@
 import torch
 import pandas as pd
 from sklearn.preprocessing import LabelEncoder
-from dataset.base_dataset import BaseDataset
+from . import BaseDataset
 class CarDataset(BaseDataset):
-    def __init__(self):
+    def __init__(self, path, transforms):
+        self.path = path
         self.features, self.target = self.get_data() 
-
+        
     def __len__(self):
         return len(self.features)
 
@@ -15,7 +16,7 @@ class CarDataset(BaseDataset):
         return input, target
     
     def get_data(self):
-        data_df = pd.read_csv('data\car_1000.txt',delimiter=',',names=['buying','maint','doors','persons','lug_boot','safety','target'])
+        data_df = pd.read_csv(self.path,delimiter=',',names=['buying','maint','doors','persons','lug_boot','safety','target'])
 
         # 标签编码
         label_encoder = LabelEncoder()

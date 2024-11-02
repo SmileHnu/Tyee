@@ -1,41 +1,41 @@
-
-
-trainer:
-  fp16: true
-  world_size: 4
-  ddp_backend: legacy_ddp
-
-
 dataset:
+  batch_size: 32
+  dataset: CarDataset
+  eval:
+  - car_1000.txt
+  - car_1000.txt
   num_workers: 2
-  path: /path/to/data
-  train: train
-  eval: 
-    - dev
-    - test
+  path: data\
+  train: car_1000.txt
   transforms:
-    select: []
-
-model:
-  upstream: 
-    select: fbank.FBank
-
-  downstream: 
-    select: demo.Demo
-    classes: 2
-
-
-task:
-  select: classification
-
-  loss:
-    select: CrossEntropyLoss  # 指定损失函数
-    weight: [1.0, 1.5]  # 配置损失函数的超参数，如类别权重等
-
-optimizer:
-  select: Adam
-
-
+    select:
+    - MFCC
 lr_scheduler:
-  select: CosineLR
-
+  gamma: 0.1
+  select: StepLR
+  step_size: 20
+model:
+  downstream:
+    classes: 4
+    select: MLP
+  upstream:
+    select: MLP
+optimizer:
+  lr: 0.01
+  select: SGD
+task:
+  loss:
+    select: CrossEntropyLoss
+    weight:
+    - 1.0
+    - 1.0
+    - 1.0
+    - 2.0
+  select: EmotionRecognitionTask
+trainer:
+  ddp_backend: legacy_ddp
+  fp16: false
+  save_epoch: 20
+  total_epochs: 100
+  valid_epoch: 20
+  world_size: 2

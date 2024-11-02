@@ -15,7 +15,7 @@ from torch.utils.data import Dataset
 class BaseDataset(Dataset):
     def __init__(self) -> None:
         super().__init__()
-    
+        self.path = None
     def __getitem__(self, idx):
         raise NotImplementedError
 

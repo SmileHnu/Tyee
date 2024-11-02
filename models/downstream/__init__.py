@@ -1,0 +1,1 @@
+from .emotion_recognition_model import MLP

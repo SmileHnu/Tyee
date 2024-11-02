@@ -1,5 +1,5 @@
 import torch
-from .base_dataset import BaseDataset
+from . import BaseDataset
 
 class RandomDataset(BaseDataset):
     def __init__(self, num_samples=1000, input_dim=10, num_classes=2):
