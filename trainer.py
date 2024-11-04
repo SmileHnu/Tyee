@@ -10,18 +10,12 @@
 @Desc    : 
 """
 import torch
-import importlib
+from utils import dynamic_import
 
 
 class Trainer(object):
     def __init__(self, cfg) -> None:
-        self.task = self.load_task(cfg)
-        # self.optimizer = self.get_optimizer(cfg)
-        self.lr_scheduler = self.load_lr_scheduler(cfg)
-        self.train_loader, self.dev_loader, self.test_loader = self.task.get_data()
-        self.load_trainer(cfg)
-    # 解析cfg获取train&distribution
-    def load_trainer(self,cfg):
+        # 解析cfg获取train&distribution
         trainer_config = cfg.get('trainer',{})
         self.ddp_backend = trainer_config.get('ddp_backend','')
         self.fp16 = trainer_config.get('fp16',False)
@@ -30,33 +24,33 @@ class Trainer(object):
         self.valid_epoch = trainer_config.get('valid_epoch',0)
         self.save_epoch= trainer_config.get('save_epoch',0)
 
+        # 解析cfg获取task
+        task_config = cfg.get('task',{})
+        self.task_select = task_config.get('select','')
 
-    # 解析cfg获取task
+        self.task = self.load_task(cfg)
+        # self.optimizer = self.get_optimizer(cfg)
+        
+        self.train_loader, self.dev_loader, self.test_loader = self.task.get_data()
+        
+    
+    def load_trainer(self,):
+        pass
+
+
+    
     def load_task(self,cfg):
 
-        task_config = cfg.get('task',{})
-        task_select = task_config.get('select','')
-
-        cls = self.dynamic_import(module_name='tasks',class_name=task_select)
+        cls = dynamic_import(module_name='tasks',class_name=self.task_select)
         task = cls(cfg)
 
         return task
-    # 解析cfg获取lr_scheduler
-    def load_lr_scheduler(self,cfg):
-        
-        lr_scheduler_config = cfg.get('lr_scheduler',{})
-        lr_scheduler_select = lr_scheduler_config.get('select','')
-        step_size = lr_scheduler_config.get('step_size', 20)  # 默认值
-        gamma = lr_scheduler_config.get('gamma', 0.1)  # 默认值
-
-        cls = self.dynamic_import(module_name='torch.optim.lr_scheduler', class_name=lr_scheduler_select)
-        lr_scheduler = cls(self.task.get_optimizer(), step_size=step_size, gamma=gamma)
-
-        return lr_scheduler
+    
+ 
     def train(self,):
         
         optimizer = self.task.get_optimizer()
-
+        lr_scheduler = self.task.get_lr_scheduler()
         self.task.train()
         for epoch in range(self.total_epochs):
             
@@ -69,7 +63,7 @@ class Trainer(object):
                 if batch_idx % 10 == 0:
                     print(f"Epoch {epoch}, Loss: {loss.item()}")
             
-            self.lr_scheduler.step()
+            lr_scheduler.step()
 
             # if epoch % self.valid_epoch == 0:
             #     self.task.eval()
@@ -103,15 +97,5 @@ class Trainer(object):
         # print(f"Checkpoint loaded from {filename}")
         pass
 
-    def dynamic_import(self, module_name, class_name):
-        try:
-            # 动态导入模块
-            module = importlib.import_module(module_name)
-            # 获取类，如果不存在则抛出 AttributeError
-            cls = getattr(module, class_name)
-            return cls
-        except ImportError as e:
-            raise ImportError(f"无法导入模块 '{module_name}': {e}")
-        except AttributeError:
-            raise AttributeError(f"模块 '{module_name}' 中没有找到类 '{class_name}'")
+    
         

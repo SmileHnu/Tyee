@@ -22,51 +22,50 @@ class PRLTask(object):
         pass
     
     # 解析cfg构造dataloader
-    @abc.abstractmethod
+    
     def load_data(self,cfg):
         pass
 
     # 解析cfg获取model
-    @abc.abstractmethod
+    
     def load_model(self,cfg):
         pass
 
     # 解析cfg获取loss
-    @abc.abstractmethod
+    
     def load_loss(self,cfg):
         pass
 
     # 解析cfg获取optimizer
-    @abc.abstractmethod
+    
     def load_optimizer(self,cfg):
         pass
 
     # 给trainer传递dataloader
-    @abc.abstractmethod
+    
     def get_data(self, ):
         pass
     
-    @abc.abstractmethod
+    
     def train_step(self, ):
         pass
 
-    @abc.abstractmethod
+    
     def valid_step(self, ):
         pass
     
     # 给trainer传递optimizer
-    @abc.abstractmethod
+    
     def get_optimizer(self, ):
         pass
     
-    @abc.abstractmethod
+    
     def train(self,) -> None:
         pass
     
-    @abc.abstractmethod
+    
     def eval(self,) -> None:
         pass
 
-    @abc.abstractmethod   
-    def dynamic_import(self, module_name, class_name):
-        pass
+       
+    

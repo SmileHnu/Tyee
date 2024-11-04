@@ -2,11 +2,11 @@ dataset:
   batch_size: 32
   dataset: CarDataset
   eval:
-  - car_1000.txt
-  - car_1000.txt
+  - car_dev.txt
+  - car_test.txt
   num_workers: 2
   path: data\
-  train: car_1000.txt
+  train: car_train.txt
   transforms:
     select:
     - MFCC
@@ -20,6 +20,7 @@ model:
     select: MLP
   upstream:
     select: MLP
+    trainable: true
 optimizer:
   lr: 0.01
   select: SGD
