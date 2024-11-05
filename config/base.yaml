@@ -34,9 +34,9 @@ task:
     - 2.0
   select: EmotionRecognitionTask
 trainer:
-  ddp_backend: legacy_ddp
+  ddp_backend: gloo
   fp16: false
   save_epoch: 20
   total_epochs: 100
   valid_epoch: 20
-  world_size: 2
+  world_size: 1
