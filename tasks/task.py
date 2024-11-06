@@ -9,187 +9,169 @@
 @Time    : 2024/09/25 16:41:26
 @Desc    : 
 """
-import torch
-from torch.utils.data import DataLoader, DistributedSampler
-from torch.nn.parallel import DistributedDataParallel as DDP
-from utils import dynamic_import
 import os
-from nn import UpstreamDownstreamModel
+import torch
+from torch.utils.data import Dataset
+from utils import lazy_import_module
+
+
+def get_attr_from_cfg(cfg: dict, path: str, default=None):
+    """
+    从配置中获取值，支持路径获取
+    :param dict cfg: 字典的配置
+    :param str path: 提取属性的路径
+    :param default: 默认的属性值
+    :raises ValueError: 如果cfg不是字典, 则抛出异常
+    :return : 返回提取的属性值
+    """
+    if not isinstance(cfg, dict):
+        raise ValueError(f"Expected 'cfg' to be a dictionary, but got {type(cfg)}")
+
+    keys = path.split('.')
+    value = cfg
+
+    for key in keys:
+        if not isinstance(value, dict):
+            print(f"Warning: '{key}' is not a valid key at path '{path}', returning default value.")
+            return default
+        
+        value = value.get(key, default)
+        if value == default:
+            print(f"Warning: Key '{key}' not found in path '{path}', using default value.")
+            return default
+
+    return value
+
 
 class PRLTask(object):
-    def __init__(self, cfg, rank, world_size) -> None:
-        # 解析cfg构造dataloader
-        dataset_config = cfg.get('dataset',{})
-        self.num_workers = dataset_config.get('num_workers',1)
-        self.path = dataset_config.get('path','')
-        self.train_path = dataset_config.get('train','')
-        self.eval_path = dataset_config.get('eval','')
-        transforms_config = dataset_config.get('transforms','')
-        self.transforms_select = transforms_config.get('select','')
-        self.dataset = dataset_config.get('dataset','')
-        self.batch_size = dataset_config.get('batch_size',1)
-
-        # 解析cfg构造model
-        model_config = cfg.get('model',{})
-        downstream_config = model_config.get('downstream',{})
-        self.downstream_classes = downstream_config.get('classes',1)
-        self.downstream_select = downstream_config.get('select','')
-        upstream_config = model_config.get('upstream',{})
-        self.upstream_select = upstream_config.get('select','')
-        self.upstream_trainable = upstream_config.get('trainable',False)
-
-        # 解析cfg构造loss
-        task_config = cfg.get('task',{})
-        loss_config = task_config.get('loss',{})
-        self.loss_select = loss_config.get('select','')
-        self.loss_weight = loss_config.get('weight',[])
-
-        # 解析cfg构造optimizer
-        optimizer_config = cfg.get('optimizer',{})
-        self.optimizer_select = optimizer_config.get('select','')
-        self.lr = optimizer_config.get('lr',0.01)
-
-        # 解析cfg构造lr_scheduler
-        lr_scheduler_config = cfg.get('lr_scheduler',{})
-        self.lr_scheduler_select = lr_scheduler_config.get('select','')
-        self.step_size = lr_scheduler_config.get('step_size', 20)  # 默认值
-        self.gamma = lr_scheduler_config.get('gamma', 0.1)  # 默认值
-
-        # 分布式环境参数
-        self.rank = rank
-        self.world_size = world_size
-        # 使用 DistributedSampler 以确保数据被均匀分布到各个进程
-        train_dataset = self.build_dataset(os.path.join(self.path, self.train_path),self.transforms_select)
-        dev_dataset = self.build_dataset(os.path.join(self.path,self.eval_path[0]),self.transforms_select)
-        test_dataset = self.build_dataset(os.path.join(self.path,self.eval_path[1]),self.transforms_select)
-
-        self.train_sampler = self.build_sampler(train_dataset)
-        self.dev_sampler = self.build_sampler(dev_dataset)
-        self.test_sampler = self.build_sampler(test_dataset)
-
-        self.train_loader = self.build_dataloader(train_dataset,self.train_sampler)
-        self.dev_loader = self.build_dataloader(dev_dataset,self.dev_sampler)
-        self.test_loader = self.build_dataloader(test_dataset,self.test_sampler)
-
-        self.model = self.build_model()
-        self.optimizer = self.build_optimizer()
-        self.lr_scheduler = self.build_lr_scheduler()
-        self.loss = self.build_loss()
-    
-
-    def build_dataset(self,path,transforms_select):
-        # 确定使用的dataset类
-        Dataset = dynamic_import('dataset',self.dataset)
-
-        # 确定使用的transforms类
-        transforms = []
-        for t in transforms_select:
-            t_transforms = dynamic_import('dataset.transforms',t)
-            transforms.append(t_transforms)
+    def __init__(self, cfg: dict) -> None:
+        # 解析配置
+        self.cfg = cfg
         
-        dataset = Dataset(path,transforms)
+        # 数据集路径和变换
+        self.dataset_root = get_attr_from_cfg('dataset.path', '')
+        self.train_fpath = get_attr_from_cfg('dataset.train', '')
+        self.eval_fpath = get_attr_from_cfg('dataset.eval', [])
+        self.transforms_select = get_attr_from_cfg('dataset.transforms.select', [])
+        self.dataset = get_attr_from_cfg('dataset.dataset', '')
 
+        # 模型配置
+        self.downstream_classes = get_attr_from_cfg('model.downstream.classes', 1)
+        self.downstream_select = get_attr_from_cfg('model.downstream.select', '')
+        self.upstream_select = get_attr_from_cfg('model.upstream.select', '')
+        self.upstream_trainable = get_attr_from_cfg('model.upstream.trainable', False)
+
+        # 损失函数配置
+        self.loss_select = get_attr_from_cfg('task.loss.select', '')
+        self.loss_weight = get_attr_from_cfg('task.loss.weight', [])
+
+        # 优化器配置
+        self.optimizer_select = get_attr_from_cfg('optimizer.select', '')
+        self.lr = get_attr_from_cfg('optimizer.lr', 0.01)
+
+        # 学习率调度器配置
+        self.lr_scheduler_select = get_attr_from_cfg('lr_scheduler.select', '')
+        self.step_size = get_attr_from_cfg('lr_scheduler.step_size', 20)
+        self.gamma = get_attr_from_cfg('lr_scheduler.gamma', 0.1)
+
+
+        # 数据集
+        self.train_dataset = self.__build_dataset(self.train_fpath)
+        self.dev_dataset = self.__build_dataset(self.eval_fpath[0])
+        self.test_dataset = self.__build_dataset(self.eval_fpath[0])
+        
+        # 模型、优化器与学习率调度器
+        self.model = self.__build_model()
+        self.optimizer = self.__build_optimizer()
+        self.lr_scheduler = self.__build_lr_scheduler()
+        self.loss = self.__build_loss()
+
+    
+    def __build_dataset(self, filename: str):
+        """ 构建数据集 """
+        Dataset = lazy_import_module('dataset', self.dataset)
+        transforms = [lazy_import_module('dataset.transforms', t) for t in self.transforms_select]
+        return Dataset(os.path.join(self.dataset_root, filename), transforms)
+
+    def __build_model(self):
+        raise NotImplementedError
+
+    def __build_loss(self):
+        """ 构建损失函数 """
+        loss_cls = lazy_import_module('torch.nn', self.loss_select)
+        loss_args = {'weight': torch.tensor(self.loss_weight, dtype=torch.float32)} if self.loss_weight else {}
+        return loss_cls(**loss_args)
+
+    def __build_optimizer(self):
+        """ 构建优化器 """
+        optimizer_cls = lazy_import_module('torch.optim', self.optimizer_select)
+        return optimizer_cls(self.model.parameters(), lr=self.lr)
+
+    def __build_lr_scheduler(self):
+        """ 构建学习率调度器 """
+        scheduler_cls = lazy_import_module('torch.optim.lr_scheduler', self.lr_scheduler_select)
+        return scheduler_cls(self.optimizer, step_size=self.step_size, gamma=self.gamma)
+
+    def __get_dataset(self, attr_name, fpath: str) -> Dataset:
+        """
+        通用的获取 dataset 方法，如果已经存在则直接返回，否则构建并返回
+        :param attr_name: 用于标识 dataset 的属性名称
+        :param fpath: 数据集文件子路径
+        :return: dataset
+        """
+        dataset = getattr(self, attr_name, None)
+        if dataset is None:
+            dataset = self.__build_dataset(fpath)
+            setattr(self, attr_name, dataset)
         return dataset
     
-    def build_sampler(self,dataset):
-        sampler = DistributedSampler(dataset, num_replicas=self.world_size, rank=self.rank)
-
-        return sampler
-    def build_dataloader(self,dataset,sampler):
-        loader = DataLoader(
-            dataset, 
-            batch_size=self.batch_size, 
-            collate_fn=dataset.collate_fn, 
-            num_workers=self.num_workers,
-            sampler=sampler
-        )
-        return loader
+    def get_train_dataset(self, ) -> Dataset:
+        return self.__get_dataset("train_dataset", self.train_fpath)
     
-    def build_model(self,):
-        
-        # 实例化upstream
-        upstream_cls = dynamic_import('models.upstream',self.upstream_select)
-        upstream = upstream_cls()
-
-        # 实例化downstream
-        downstream_cls = dynamic_import('models.downstream',self.downstream_select)
-        downstream = downstream_cls(output_dim = self.downstream_classes)
-        
-        model = UpstreamDownstreamModel(upstream=upstream,downstream=downstream,upstream_trainable=self.upstream_trainable)
-        model = model.to(self.rank)
-        ddp_model = DDP(model,device_ids=[self.rank])
-        return ddp_model
+    def get_dev_dataset(self, ) -> Dataset:
+        return self.__get_dataset("dev_dataset", self.eval_fpath[0])
     
-    # 解析cfg构造loss
-    def build_loss(self,):
-        
-        cls = dynamic_import('torch.nn',self.loss_select)
+    def get_test_dataset(self, ) -> Dataset:
+        return self.__get_dataset("test_dataset", self.eval_fpath[1])
 
-        if self.loss_weight:
-            return cls(weight=torch.tensor(self.loss_weight, dtype=torch.float32).to(self.rank))
-        else:
-            return cls()
-
-    def build_optimizer(self,):
-        
-        cls = dynamic_import('torch.optim',self.optimizer_select)
-
-        optimizer = cls(self.model.parameters(),lr=self.lr)
-
-        return optimizer
-    
-
-    def build_lr_scheduler(self,):
-        
-        cls = dynamic_import(module_name='torch.optim.lr_scheduler', class_name=self.lr_scheduler_select)
-        lr_scheduler = cls(self.optimizer, step_size=self.step_size, gamma=self.gamma)
-
-        return lr_scheduler
-
-
-    def load_data(self, ):
-      
-        return self.train_loader, self.dev_loader, self.test_loader
-        
-    def load_optimizer(self, ):
+    def get_optimizer(self):
+        if self.optimizer is None:
+            self.optimizer = self.__build_optimizer()
         return self.optimizer
-    
-    def load_lr_scheduler(self,):
+
+    def get_lr_scheduler(self):
+        if self.lr_scheduler is None:
+            self.lr_scheduler = self.__build_lr_scheduler()
         return self.lr_scheduler
-    
-    def load_sampler(self,):
-        return self.train_sampler, self.dev_sampler, self.test_sampler
-    def train(self,) -> None:
+  
+    def train(self):
         self.model.train()
-    
-    def eval(self,) -> None:
+
+    def eval(self):
         self.model.eval()
 
     def state_dict(self):
-
         return {
-            # 优化器，超参数，
-            'downstream_state_dict': self.model.state_dict(),
-            'optimizer_state_dict': self.optimizer.state_dict()
+            "args": self.cfg,
+            "model": self.model.state_dict(),
+            "optimzer": self.optimizer.state_dict(),
+            "lr_scheduler": self.lr_scheduler.state_dict()
         }
+
     def save_checkpoint(self, filename):
-
-        checkpoint = self.task.state_dict()
+        checkpoint = self.state_dict()
         torch.save(checkpoint, filename)
-
         print(f"Checkpoint saved to {filename}")
 
     def load_checkpoint(self, filename):
+        checkpoint = torch.load(filename)
+        self.model.load_state_dict(checkpoint["model"])
+        self.optimizer.load_state_dict(checkpoint["optimizer"])
+        self.lr_scheduler.load_state_dict(checkpoint["lr_scheduler"])
 
-        # checkpoint = torch.load(filename)
-        # self.task.model.load_state_dict(checkpoint['model_state_dict'])
+    def train_step(self, x, *args, **kwargs):
+        raise NotImplementedError
 
-        # print(f"Checkpoint loaded from {filename}")
-        pass
-    def train_step(self, ):
-        pass
-
-    
-    def valid_step(self, ):
-        pass   
-    
+    @torch.no_grad()
+    def valid_step(self, x, *args, **kwargs):
+        raise NotImplementedError

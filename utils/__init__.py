@@ -1,1 +1,1 @@
-from .dynamic_import import dynamic_import
+from .import_utils import lazy_import_module
