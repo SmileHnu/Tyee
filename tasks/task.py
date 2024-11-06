@@ -125,21 +125,32 @@ class PRLTask(object):
             setattr(self, attr_name, dataset)
         return dataset
     
-    def get_train_dataset(self, ) -> Dataset:
+    @property
+    def model(self):
+        if self.model is None:
+            self.model = self.__build_model()
+        return self.model
+
+    @property
+    def train_dataset(self) -> Dataset:
         return self.__get_dataset("train_dataset", self.train_fpath)
     
-    def get_dev_dataset(self, ) -> Dataset:
+    @property
+    def dev_dataset(self) -> Dataset:
         return self.__get_dataset("dev_dataset", self.eval_fpath[0])
     
-    def get_test_dataset(self, ) -> Dataset:
+    @property
+    def test_dataset(self) -> Dataset:
         return self.__get_dataset("test_dataset", self.eval_fpath[1])
 
-    def get_optimizer(self):
+    @property
+    def optimizer(self):
         if self.optimizer is None:
             self.optimizer = self.__build_optimizer()
         return self.optimizer
 
-    def get_lr_scheduler(self):
+    @property
+    def lr_scheduler(self):
         if self.lr_scheduler is None:
             self.lr_scheduler = self.__build_lr_scheduler()
         return self.lr_scheduler
@@ -164,14 +175,15 @@ class PRLTask(object):
         print(f"Checkpoint saved to {filename}")
 
     def load_checkpoint(self, filename):
-        checkpoint = torch.load(filename)
-        self.model.load_state_dict(checkpoint["model"])
-        self.optimizer.load_state_dict(checkpoint["optimizer"])
-        self.lr_scheduler.load_state_dict(checkpoint["lr_scheduler"])
+        ckpt_params = torch.load(filename)
+        self.args = ckpt_params["args"]
+        self.model.load_state_dict(ckpt_params["model"])
+        self.optimizer.load_state_dict(ckpt_params["optimizer"])
+        self.lr_scheduler.load_state_dict(ckpt_params["lr_scheduler"])
 
-    def train_step(self, x, *args, **kwargs):
+    def train_step(self, model, x, *args, **kwargs):
         raise NotImplementedError
 
     @torch.no_grad()
-    def valid_step(self, x, *args, **kwargs):
+    def valid_step(self, model, x, *args, **kwargs):
         raise NotImplementedError

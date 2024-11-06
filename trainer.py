@@ -34,9 +34,6 @@ class Trainer(object):
         self.cfg = cfg
         # self.optimizer = self.get_optimizer(cfg)
         
-        
-        
-    
     def load_task(self,cfg,rank,world_size):
 
         cls = dynamic_import(module_name='tasks',class_name=self.task_select)
