@@ -66,9 +66,9 @@ class Trainer(object):
         self.distributed_initializer(rank=rank, world_size=world_size)
 
         # 加载数据集
-        train_dataset = self.task.get_train_dataset()
-        dev_dataset = self.task.get_dev_dataset()
-        test_dataset = self.task.get_test_dataset()
+        train_dataset = self.task.train_dataset
+        dev_dataset = self.task.dev_dataset
+        test_dataset = self.task.test_dataset
 
         # 构造采样器
         train_sampler = build_dis_sampler(train_dataset, world_size, rank)
@@ -81,10 +81,10 @@ class Trainer(object):
         test_loader = build_data_loader(test_dataset, self.batch_size,sampler=None)
 
         # 加载优化器
-        optimizer = self.task.get_optimizer()
+        optimizer = self.task.optimizer
 
         # 加载学习率调度器
-        lr_scheduler = self.task.get_lr_scheduler()
+        lr_scheduler = self.task.lr_scheduler
 
         # 如果使用FP16，初始化 GradScaler
         scaler = GradScaler() if self.fp16 else None

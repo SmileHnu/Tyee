@@ -14,20 +14,19 @@ from . import PRLTask
 
 
 class DREAMETask(PRLTask):
-    def __init__(self, **kwargs):
-        super().__init__(**kwargs)
-
-    def train_step(self, x, target, *args, **kwargs):
-        x, target = x.to(self.rank), target.to(self.rank)
-        output, _ = self.model(x, x.size(1))
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        
+    def train_step(self, model, x, target, *args, **kwargs):
+        output, _ = model(x, *args, **kwargs)
         loss = self.loss(output,target)
         return {
             'loss':loss
         }
 
     @torch.no_grad()
-    def valid_step(self, x, target, *args, **kwargs):
-        output, _ = self.model(x)
+    def valid_step(self, model, x, target, *args, **kwargs):
+        output, _ = model(x)
         loss = self.loss(output, target)
 
         return {
