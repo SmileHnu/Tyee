@@ -12,35 +12,10 @@
 import os
 import torch
 from torch.utils.data import Dataset
-from utils import lazy_import_module
+from utils import lazy_import_module, get_attr_from_cfg
 
 
-def get_attr_from_cfg(cfg: dict, path: str, default=None):
-    """
-    从配置中获取值，支持路径获取
-    :param dict cfg: 字典的配置
-    :param str path: 提取属性的路径
-    :param default: 默认的属性值
-    :raises ValueError: 如果cfg不是字典, 则抛出异常
-    :return : 返回提取的属性值
-    """
-    if not isinstance(cfg, dict):
-        raise ValueError(f"Expected 'cfg' to be a dictionary, but got {type(cfg)}")
 
-    keys = path.split('.')
-    value = cfg
-
-    for key in keys:
-        if not isinstance(value, dict):
-            print(f"Warning: '{key}' is not a valid key at path '{path}', returning default value.")
-            return default
-        
-        value = value.get(key, default)
-        if value == default:
-            print(f"Warning: Key '{key}' not found in path '{path}', using default value.")
-            return default
-
-    return value
 
 
 class PRLTask(object):
@@ -49,36 +24,36 @@ class PRLTask(object):
         self.cfg = cfg
         
         # 数据集路径和变换
-        self.dataset_root = get_attr_from_cfg('dataset.path', '')
-        self.train_fpath = get_attr_from_cfg('dataset.train', '')
-        self.eval_fpath = get_attr_from_cfg('dataset.eval', [])
-        self.transforms_select = get_attr_from_cfg('dataset.transforms.select', [])
-        self.dataset = get_attr_from_cfg('dataset.dataset', '')
+        self.dataset_root = get_attr_from_cfg(cfg, 'dataset.path', '')
+        self.train_fpath = get_attr_from_cfg(cfg, 'dataset.train', '')
+        self.eval_fpath = get_attr_from_cfg(cfg, 'dataset.eval', [])
+        self.transforms_select = get_attr_from_cfg(cfg, 'dataset.transforms.select', [])
+        self.dataset = get_attr_from_cfg(cfg, 'dataset.dataset', '')
 
         # 模型配置
-        self.downstream_classes = get_attr_from_cfg('model.downstream.classes', 1)
-        self.downstream_select = get_attr_from_cfg('model.downstream.select', '')
-        self.upstream_select = get_attr_from_cfg('model.upstream.select', '')
-        self.upstream_trainable = get_attr_from_cfg('model.upstream.trainable', False)
+        self.downstream_classes = get_attr_from_cfg(cfg, 'model.downstream.classes', 1)
+        self.downstream_select = get_attr_from_cfg(cfg, 'model.downstream.select', '')
+        self.upstream_select = get_attr_from_cfg(cfg, 'model.upstream.select', '')
+        self.upstream_trainable = get_attr_from_cfg(cfg, 'model.upstream.trainable', False)
 
         # 损失函数配置
-        self.loss_select = get_attr_from_cfg('task.loss.select', '')
-        self.loss_weight = get_attr_from_cfg('task.loss.weight', [])
+        self.loss_select = get_attr_from_cfg(cfg, 'task.loss.select', '')
+        self.loss_weight = get_attr_from_cfg(cfg, 'task.loss.weight', [])
 
         # 优化器配置
-        self.optimizer_select = get_attr_from_cfg('optimizer.select', '')
-        self.lr = get_attr_from_cfg('optimizer.lr', 0.01)
+        self.optimizer_select = get_attr_from_cfg(cfg, 'optimizer.select', '')
+        self.lr = get_attr_from_cfg(cfg, 'optimizer.lr', 0.01)
 
         # 学习率调度器配置
-        self.lr_scheduler_select = get_attr_from_cfg('lr_scheduler.select', '')
-        self.step_size = get_attr_from_cfg('lr_scheduler.step_size', 20)
-        self.gamma = get_attr_from_cfg('lr_scheduler.gamma', 0.1)
+        self.lr_scheduler_select = get_attr_from_cfg(cfg, 'lr_scheduler.select', '')
+        self.step_size = get_attr_from_cfg(cfg, 'lr_scheduler.step_size', 20)
+        self.gamma = get_attr_from_cfg(cfg, 'lr_scheduler.gamma', 0.1)
 
 
         # 数据集
         self.train_dataset = self.__build_dataset(self.train_fpath)
         self.dev_dataset = self.__build_dataset(self.eval_fpath[0])
-        self.test_dataset = self.__build_dataset(self.eval_fpath[0])
+        self.test_dataset = self.__build_dataset(self.eval_fpath[1])
         
         # 模型、优化器与学习率调度器
         self.model = self.__build_model()

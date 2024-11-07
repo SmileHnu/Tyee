@@ -10,41 +10,43 @@
 @Desc    : 
 """
 import torch
-from utils import dynamic_import
+from utils import lazy_import_module, get_attr_from_cfg
+from utils import build_dis_sampler, build_data_loader
 import torch.distributed as dist
 from torch.cuda.amp import autocast, GradScaler
 import os
 
 class Trainer(object):
     def __init__(self, cfg) -> None:
-        # 解析cfg获取train&distribution
-        trainer_config = cfg.get('trainer',{})
-        # self.world_size = trainer_config.get('world_size',1)
-        self.ddp_backend = trainer_config.get('ddp_backend','')
-        self.fp16 = trainer_config.get('fp16',False)
-        
-        self.total_epochs = trainer_config.get('total_epochs',0)
-        self.valid_epoch = trainer_config.get('valid_epoch',0)
-        self.save_epoch= trainer_config.get('save_epoch',0)
-
-        # 解析cfg获取task
-        task_config = cfg.get('task',{})
-        self.task_select = task_config.get('select','')
 
         self.cfg = cfg
-        # self.optimizer = self.get_optimizer(cfg)
-        
-        
-        
-    
-    def load_task(self,cfg,rank,world_size):
 
-        cls = dynamic_import(module_name='tasks',class_name=self.task_select)
-        task = cls(cfg,rank,world_size)
+        # 分布式环境配置
+        self.ddp_backend = get_attr_from_cfg(cfg,'trainer.ddp_backend','')
+        
 
-        return task
+        # 自动混合精度配置
+        self.fp16 = get_attr_from_cfg(cfg, 'trainer.fp16', False)
+
+        # 训练配置
+        self.total_epochs = get_attr_from_cfg(cfg, 'trainer.total_epochs', 0)
+        self.save_epoch = get_attr_from_cfg(cfg, 'trainer.save_epoch', 0)
+        self.valid_epoch = get_attr_from_cfg(cfg, 'trainer.valid_epoch', 0)
+        self.batch_size = get_attr_from_cfg(cfg, 'trainer.batch_size', 0)
+
+        # 任务配置
+        self.task_select = get_attr_from_cfg(cfg, 'task.select', '')
+        
+        # 任务
+        self.task = self.__build_task()
     
-    def distributed_initializer(self, rank, world_size):
+    def __build_task(self):
+
+        task = lazy_import_module('tasks',self.task_select)
+
+        return task(self.cfg)
+    
+    def __distributed_initializer(self, rank, world_size):
         # 设置主节点地址和端口
         os.environ['MASTER_ADDR'] = 'localhost'  # 或者设置为主节点的IP
         os.environ['MASTER_PORT'] = '12355'      # 选择一个合适的端口
@@ -54,8 +56,7 @@ class Trainer(object):
 
         # torch.cuda.set_device(rank)  # 设置当前进程所使用的 GPU
 
-        # 加载task
-        self.task = self.load_task(cfg=self.cfg,rank=rank,world_size=world_size)
+        
 
 
  
@@ -64,14 +65,26 @@ class Trainer(object):
         # 初始化分布式进程
         self.distributed_initializer(rank=rank, world_size=world_size)
 
-        # 加载dataloader
-        train_loader, dev_loader, test_loader = self.task.load_data()
-        # 加载optimizer
-        optimizer = self.task.load_optimizer()
-        # 加载scheduler
-        lr_scheduler = self.task.load_lr_scheduler()
-        # 加载sampler
-        train_sampler, dev_sampler, test_sampler = self.task.load_sampler()
+        # 加载数据集
+        train_dataset = self.task.get_train_dataset()
+        dev_dataset = self.task.get_dev_dataset()
+        test_dataset = self.task.get_test_dataset()
+
+        # 构造采样器
+        train_sampler = build_dis_sampler(train_dataset, world_size, rank)
+        # dev_sampler = build_dis_sampler(dev_dataset, world_size, rank)
+        # test_sampler = build_dis_sampler(test_dataset, world_size, rank)
+
+        # 构造数据加载器
+        train_loader = build_data_loader(train_dataset, self.batch_size, train_sampler)
+        dev_loader = build_data_loader(dev_dataset, self.batch_size,sampler=None)
+        test_loader = build_data_loader(test_dataset, self.batch_size,sampler=None)
+
+        # 加载优化器
+        optimizer = self.task.get_optimizer()
+
+        # 加载学习率调度器
+        lr_scheduler = self.task.get_lr_scheduler()
 
         # 如果使用FP16，初始化 GradScaler
         scaler = GradScaler() if self.fp16 else None
@@ -79,8 +92,24 @@ class Trainer(object):
         # 训练
         self.task.train()
         for epoch in range(self.total_epochs):
-            train_sampler.set_epoch(epoch)
-            for batch_idx, (data, target) in enumerate(train_loader):
+            self.__train_epoch(train_loader,optimizer,scaler,scaler,train_sampler,epoch)
+            
+            if rank == 0:
+                lr_scheduler.step()
+
+            if epoch % self.valid_epoch == 0:
+                self.__eval_step(dev_loader,epoch)
+            
+            if epoch % self.save_epoch == 0:
+                self.__save_checkpoint('state_dict')
+
+
+        # 结束分布式进程
+        dist.destroy_process_group()
+    
+    def __train_epoch(self, loader, optimizer, scaler, sampler, epoch):
+        sampler.set_epoch(epoch)
+        for batch_idx, (data, target) in enumerate(loader):
                 # data, target = data.to(rank), target.to(rank)
                 optimizer.zero_grad()
                 # 使用自动混合精度（autocast）
@@ -99,44 +128,31 @@ class Trainer(object):
 
                 if batch_idx % 10 == 0:
                     print(f"Epoch {epoch}, Loss: {result['loss'].item()}")
-            
-            if rank == 0:
-                lr_scheduler.step()
 
-            # if epoch % self.valid_epoch == 0:
-            #     self.task.eval()
-            #     total_val_loss = 0
-            #     with torch.no_grad():  
-            #         for batch_idx,(data, target) in enumerate(dev_loader):  
-            #             val_loss = self.task.valid_step(data, target)
-            #             total_val_loss += val_loss.item()
+    def __eval_step(self,loader, epoch):
+        self.task.eval()
+        total_val_loss = 0
+        with torch.no_grad():  
+            for batch_idx,(data, target) in enumerate(loader):  
+                val_result = self.task.valid_step(data, target)
+                val_loss = val_result['loss']
+                total_val_loss += val_loss.item()
                 
-            #     avg_val_loss = total_val_loss / len(dev_loader)  
-            #     print(f"Epoch {epoch}, Validation Loss: {avg_val_loss}")
-            #     self.task.train()
-            # if epoch % self.save_epoch == 0:
-            #     self.save_checkpoint('state_dict')
+        avg_val_loss = total_val_loss / len(loader)  
+        print(f"Epoch {epoch}, Validation Loss: {avg_val_loss}")
+        self.task.train()
 
-
-        # 结束分布式进程
-        dist.destroy_process_group()
-    
-    
-
-    def save_checkpoint(self, filename):
-
-        checkpoint = self.task.state_dict()
-        torch.save(checkpoint, filename)
-
-        print(f"Checkpoint saved to {filename}")
-
-    def load_checkpoint(self, filename):
-
-        # checkpoint = torch.load(filename)
-        # self.task.model.load_state_dict(checkpoint['model_state_dict'])
-
-        # print(f"Checkpoint loaded from {filename}")
+    def __test_step(self,loader,epoch):
         pass
+
+    def __save_checkpoint(self, filename):
+
+        self.task.save_checkpoint(filename)
+
+
+    def __load_checkpoint(self, filename):
+
+        self.task.load_checkpoint(filename)
 
     
         
