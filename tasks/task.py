@@ -50,112 +50,60 @@ class PRLTask(object):
         self.gamma = get_attr_from_cfg(cfg, 'lr_scheduler.gamma', 0.1)
 
 
-        # 数据集
-        self.train_dataset = self.__build_dataset(self.train_fpath)
-        self.dev_dataset = self.__build_dataset(self.eval_fpath[0])
-        self.test_dataset = self.__build_dataset(self.eval_fpath[1])
-        
-        # 模型、优化器与学习率调度器
-        self.model = self.__build_model()
-        self.optimizer = self.__build_optimizer()
-        self.lr_scheduler = self.__build_lr_scheduler()
-        self.loss = self.__build_loss()
+        self.loss = self.build_loss()
 
     
-    def __build_dataset(self, filename: str):
+    def build_dataset(self, filename: str):
         """ 构建数据集 """
         Dataset = lazy_import_module('dataset', self.dataset)
         transforms = [lazy_import_module('dataset.transforms', t) for t in self.transforms_select]
         return Dataset(os.path.join(self.dataset_root, filename), transforms)
 
-    def __build_model(self):
+    def build_model(self):
         raise NotImplementedError
 
-    def __build_loss(self):
+    def build_loss(self):
         """ 构建损失函数 """
         loss_cls = lazy_import_module('torch.nn', self.loss_select)
         loss_args = {'weight': torch.tensor(self.loss_weight, dtype=torch.float32)} if self.loss_weight else {}
         return loss_cls(**loss_args)
 
-    def __build_optimizer(self):
+    def build_optimizer(self,model):
         """ 构建优化器 """
         optimizer_cls = lazy_import_module('torch.optim', self.optimizer_select)
-        return optimizer_cls(self.model.parameters(), lr=self.lr)
+        return optimizer_cls(model.parameters(), lr=self.lr)
 
-    def __build_lr_scheduler(self):
+    def build_lr_scheduler(self,optimizer):
         """ 构建学习率调度器 """
         scheduler_cls = lazy_import_module('torch.optim.lr_scheduler', self.lr_scheduler_select)
-        return scheduler_cls(self.optimizer, step_size=self.step_size, gamma=self.gamma)
+        return scheduler_cls(optimizer, step_size=self.step_size, gamma=self.gamma)
 
-    def __get_dataset(self, attr_name, fpath: str) -> Dataset:
-        """
-        通用的获取 dataset 方法，如果已经存在则直接返回，否则构建并返回
-        :param attr_name: 用于标识 dataset 的属性名称
-        :param fpath: 数据集文件子路径
-        :return: dataset
-        """
-        dataset = getattr(self, attr_name, None)
-        if dataset is None:
-            dataset = self.__build_dataset(fpath)
-            setattr(self, attr_name, dataset)
-        return dataset
+    # def get_dataset(self, attr_name, fpath: str) -> Dataset:
+    #     """
+    #     通用的获取 dataset 方法，如果已经存在则直接返回，否则构建并返回
+    #     :param attr_name: 用于标识 dataset 的属性名称
+    #     :param fpath: 数据集文件子路径
+    #     :return: dataset
+    #     """
+    #     dataset = getattr(self, attr_name, None)
+    #     if dataset is None:
+    #         dataset = self.build_dataset(fpath)
+    #         setattr(self, attr_name, dataset)
+    #     return dataset
     
     @property
-    def model(self):
-        if self.model is None:
-            self.model = self.__build_model()
-        return self.model
-
-    @property
     def train_dataset(self) -> Dataset:
-        return self.__get_dataset("train_dataset", self.train_fpath)
+        return self.build_dataset(self.train_fpath)
     
     @property
     def dev_dataset(self) -> Dataset:
-        return self.__get_dataset("dev_dataset", self.eval_fpath[0])
+        return self.build_dataset(self.eval_fpath[0])
     
     @property
     def test_dataset(self) -> Dataset:
-        return self.__get_dataset("test_dataset", self.eval_fpath[1])
+        return self.build_dataset(self.eval_fpath[1])
 
-    @property
-    def optimizer(self):
-        if self.optimizer is None:
-            self.optimizer = self.__build_optimizer()
-        return self.optimizer
-
-    @property
-    def lr_scheduler(self):
-        if self.lr_scheduler is None:
-            self.lr_scheduler = self.__build_lr_scheduler()
-        return self.lr_scheduler
-  
-    def train(self):
-        self.model.train()
-
-    def eval(self):
-        self.model.eval()
-
-    def state_dict(self):
-        return {
-            "args": self.cfg,
-            "model": self.model.state_dict(),
-            "optimzer": self.optimizer.state_dict(),
-            "lr_scheduler": self.lr_scheduler.state_dict()
-        }
-
-    def save_checkpoint(self, filename):
-        checkpoint = self.state_dict()
-        torch.save(checkpoint, filename)
-        print(f"Checkpoint saved to {filename}")
-
-    def load_checkpoint(self, filename):
-        ckpt_params = torch.load(filename)
-        self.args = ckpt_params["args"]
-        self.model.load_state_dict(ckpt_params["model"])
-        self.optimizer.load_state_dict(ckpt_params["optimizer"])
-        self.lr_scheduler.load_state_dict(ckpt_params["lr_scheduler"])
-
+    
     def train_step(self, model, x, *args, **kwargs):
         raise NotImplementedError
 

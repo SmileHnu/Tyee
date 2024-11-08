@@ -1,15 +1,13 @@
 dataset:
-  batch_size: 32
   dataset: CarDataset
   eval:
   - car_dev.txt
   - car_test.txt
   num_workers: 2
-  path: data\
+  path: data
   train: car_train.txt
   transforms:
-    select:
-    - MFCC
+    select: []
 lr_scheduler:
   gamma: 0.1
   select: StepLR
@@ -23,7 +21,7 @@ model:
     trainable: true
 optimizer:
   lr: 0.01
-  select: SGD
+  select: Adam
 task:
   loss:
     select: CrossEntropyLoss
@@ -34,6 +32,7 @@ task:
     - 2.0
   select: EmotionRecognitionTask
 trainer:
+  batch_size: 32
   ddp_backend: gloo
   fp16: false
   save_epoch: 20

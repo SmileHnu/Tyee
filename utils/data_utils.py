@@ -42,13 +42,13 @@ def build_data_loader(dataset: Dataset, batch_size, sampler:Sampler):
     # 如果sampler是None，保持数据原有顺序构造加载器
     if sampler is None:
         try:
-            data_loader = DataLoader(dataset, batch_size=batch_size, shuffle=False)
+            data_loader = DataLoader(dataset, batch_size=batch_size, shuffle=False, collate_fn=dataset.collate_fn)
         except Exception as e:
             raise RuntimeError(f"Failed to create DataLoader: {e}")
 
     else:
         try:
-            data_loader = DataLoader(dataset, batch_size=batch_size, sampler=sampler)
+            data_loader = DataLoader(dataset, batch_size=batch_size, sampler=sampler, collate_fn=dataset.collate_fn)
         except Exception as e:
             raise RuntimeError(f"Failed to create DataLoader: {e}")
     
