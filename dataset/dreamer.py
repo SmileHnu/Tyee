@@ -10,11 +10,13 @@
 @Desc    : 
 """
 import os
-import numpy as np
+import torch
+import random
 import scipy.io as sio
 from pathlib import Path
+from torch.nn import functional as F
 from base_dataset import BaseDataset
-import librosa
+
 
 
 class Dreamer(object):
@@ -79,6 +81,9 @@ class Dreamer(object):
             stimuli = [sl[0] for sl in signal_data["stimuli"][0, 0].tolist()]
             return baseline, stimuli
 
+        def unwrap(data: list):
+            return [d[0] for d in data]
+
         data = raw["Data"][0]
         # for loop to all subject
         for sample in list(data):
@@ -89,66 +94,70 @@ class Dreamer(object):
                 "Gender": str(sample["Gender"][0, 0][0]),
                 "EEG": {
                     "baseline": eeg_bl_lst,
-                    "stomuli": eeg_sl_lst
+                    "stimuli": eeg_sl_lst
                 },
                 "ECG": {
                     "baseline": ecg_bl_lst,
-                    "stomuli": ecg_sl_lst
+                    "stimuli": ecg_sl_lst
                 },
-                "ScoreValence": sample["ScoreValence"][0, 0].tolist(),
-                "ScoreArousal": sample["ScoreArousal"][0, 0].tolist(),
-                "ScoreDominance": sample["ScoreDominance"][0, 0].tolist(),
+                "ScoreValence": unwrap(sample["ScoreValence"][0, 0].tolist()),
+                "ScoreArousal": unwrap(sample["ScoreArousal"][0, 0].tolist()),
+                "ScoreDominance": unwrap(sample["ScoreDominance"][0, 0].tolist()),
             }
             self.data.append(res)
         pass
 
     
 class DreamerDataset(BaseDataset):
-    def __init__(self, source: Path) -> None:
+    def __init__(self, source: Path, clip_length: int = 4, split: str = "train") -> None:
         super().__init__()
+        random.seed(575)
+
         if not source.exists():
             raise FileExistsError(f"Input dataset path {source} not exists !!!")
         
-        self.data, self.num_samples = self._load_data(source)
+        self.data, self.targets = self._load_data(source, clip_length=clip_length, split=split)
     
-    def _load_data(self, source: str):
+    def _load_data(self, source: str, clip_length: int = 2, split: str = "train"):
         dreamer = Dreamer(source)
-        return None, 0
+        data, target = [], []
+        num = int(len(dreamer.data) * 0.8)
+        if split == "train":
+            curr_data = dreamer.data[:num]
+        else:
+            curr_data = dreamer.data[num:]
+        for subject in curr_data:
+            sr = dreamer.eeg_sampling_rate
+            subject_data = subject["EEG"]["stimuli"]
+            arousal = subject["ScoreArousal"]
+            for idx, sample in enumerate(subject_data):
+                num_frames = int(sample.shape[0])
+                for start in range(0, num_frames, clip_length * sr):
+                    data.append(sample[start:start+sr*clip_length])
+                    target.append(arousal[idx])
+        # tot = len(data)
+        # shuffle_indices = list(range(tot))
+        # random.shuffle(shuffle_indices)
+        # if split == "train":
+        #     data = [data[i] for i in shuffle_indices[:int(tot * 0.8)]]
+        #     target = [target[i] for i in shuffle_indices[:int(tot * 0.8)]]
+        # else:
+        #     data = [data[i] for i in shuffle_indices[int(tot * 0.8):]]
+        #     target = [target[i] for i in shuffle_indices[int(tot * 0.8):]]
+        return data, target
         
     def __getitem__(self, idx):
-        
-        # eeg_data = self.data[idx]["EEG"]
-        # ecg_data = self.data[idx]["ECG"]
-        # valence_scores = self.data[idx]["ScoreValence"]
-        # arousal_scores = self.data[idx]["ScoreArousal"]
-        # dominance_scores = self.data[idx]["ScoreDominance"]
-
-        eeg_data = self.data["EEG"]
-        ecg_data = self.data["ECG"]
-        valence_scores = self.data["ScoreValence"]
-        arousal_scores = self.data["ScoreArousal"]
-        dominance_scores = self.data["ScoreDominance"]
-        
-        print(type(eeg_data))
-        print(type(eeg_data))
-        print(type(valence_scores))
-        print(type(arousal_scores))
-        print(type(dominance_scores))
-
-        # MFCC
-        eeg_mfcc = [librosa.feature.mfcc(y,sr=128,n_mfcc=13) for y in eeg_data]
-        ecg_mfcc = [librosa.feature.mfcc(y,sr=256,n_mfcc=13) for y in ecg_data]
-
-        return{
-            eeg_mfcc,
-            ecg_mfcc,
-            valence_scores,
-            arousal_scores,
-            dominance_scores
-        }
+        data = torch.tensor(self.data[idx] * 1e-3, dtype=torch.float32)
+        if self.targets[idx] >= 3:
+            target = torch.tensor(1, dtype=torch.long)
+        else:
+            target = torch.tensor(0, dtype=torch.long)
+        with torch.no_grad():
+            data = F.layer_norm(data, normalized_shape=data.shape)
+        return data, target
 
     def __len__(self):
-        return self.num_samples
+        return len(self.targets)
 
     def collate_fn(self, samples):
         wavs, labels = [], []
