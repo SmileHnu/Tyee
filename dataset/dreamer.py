@@ -15,7 +15,7 @@ import random
 import scipy.io as sio
 from pathlib import Path
 from torch.nn import functional as F
-from base_dataset import BaseDataset
+from dataset.base_dataset import BaseDataset
 
 
 
@@ -108,7 +108,7 @@ class Dreamer(object):
         pass
 
     
-class DreamerDataset(BaseDataset):
+class DREAMERDataset(BaseDataset):
     def __init__(self, source: Path, clip_length: int = 4, split: str = "train") -> None:
         super().__init__()
         random.seed(575)

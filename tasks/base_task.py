@@ -91,17 +91,17 @@ class PRLTask(object):
     #         setattr(self, attr_name, dataset)
     #     return dataset
     
-    @property
-    def train_dataset(self) -> Dataset:
-        return self.build_dataset(self.train_fpath)
+    # @property
+    # def train_dataset(self) -> Dataset:
+    #     return self.build_dataset(self.train_fpath)
     
-    @property
-    def dev_dataset(self) -> Dataset:
-        return self.build_dataset(self.eval_fpath[0])
+    # @property
+    # def dev_dataset(self) -> Dataset:
+    #     return self.build_dataset(self.eval_fpath[0])
     
-    @property
-    def test_dataset(self) -> Dataset:
-        return self.build_dataset(self.eval_fpath[1])
+    # @property
+    # def test_dataset(self) -> Dataset:
+    #     return self.build_dataset(self.eval_fpath[1])
 
     
     def train_step(self, model, x, *args, **kwargs):

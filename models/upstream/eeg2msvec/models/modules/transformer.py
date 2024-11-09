@@ -25,7 +25,7 @@ try:
 except ImportError:
     print("flash_attn not installed, please install it first")
 # from utils import SamePad, Transpose
-from models.modules.utils import SamePad, Transpose
+from .utils import SamePad, Transpose
 
 
 class ConvPositionEmbedding(nn.Module):

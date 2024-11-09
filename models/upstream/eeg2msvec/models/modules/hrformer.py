@@ -16,8 +16,8 @@ from typing import List, Tuple
 # from transformer import TransformerEncoderLayer
 # from utils import Transpose
 
-from models.modules.transformer import TransformerEncoderLayer
-from models.modules.utils import Transpose
+from .transformer import TransformerEncoderLayer
+from .utils import Transpose
 
 
 

@@ -10,7 +10,7 @@
 @Desc    : 
 """
 from torch import nn
-from models.modules.utils import SamePad, Transpose
+from .utils import SamePad, Transpose
 
 
 class Decoder1d(nn.Module):

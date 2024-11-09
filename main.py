@@ -12,6 +12,7 @@
 import os
 import yaml
 import torch
+import datetime
 import torch.nn as nn
 import torch.optim as optim
 import torch.distributed as dist
@@ -19,6 +20,7 @@ import torch.multiprocessing as mp
 from torch.utils.data import DataLoader, DistributedSampler
 from torch.nn.parallel import DistributedDataParallel as DDP
 from trainer import Trainer
+from utils import get_attr_from_cfg
 
 
 from argparse import ArgumentParser
@@ -98,8 +100,12 @@ def main() -> None:
     args = dict(vars(args))
     print(cfg)
     cfg = merge_config(cfg, args)
+
     # 写回
-    with open(args['config'], 'w', encoding='utf-8') as f:
+    exp_dir = get_attr_from_cfg(cfg, "common.exp_dir", f"./experiments/{datetime.datetime.now().strftime('%Y-%m-%d/%H-%M-%S')}")
+    if not os.path.exists(exp_dir): 
+        os.makedirs(exp_dir)
+    with open(os.path.join(exp_dir, "config.yaml"), 'w', encoding='utf-8') as f:
         yaml.dump(cfg, f, default_flow_style=False, allow_unicode=True)
 
     trainer = Trainer(cfg)

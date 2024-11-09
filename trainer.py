@@ -43,9 +43,9 @@ class Trainer(object):
         self.task = self.build_task()
 
         # 加载数据集
-        self.train_dataset = self.task.train_dataset
-        self.dev_dataset = self.task.dev_dataset
-        self.test_dataset = self.task.test_dataset
+        self.train_dataset = self.task.get_train_dataset()
+        self.dev_dataset = self.task.get_dev_dataset()
+        self.test_dataset = self.task.get_test_dataset()
 
         # 模型、优化器与学习率调度器
         self.model = self.task.build_model()

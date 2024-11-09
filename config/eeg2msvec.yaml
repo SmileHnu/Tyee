@@ -1,13 +1,12 @@
-
 dataset:
   batch_size: 32
-  dataset: CarDataset
+  dataset: DREAMERDataset
   eval:
   - car_dev.txt
   - car_test.txt
   num_workers: 2
-  path: data\
-  train: car_train.txt
+  path: /home/taoz/data/PhysioSignal/dreamer/
+  train: DREAMER.mat
   transforms:
     select:
     - MFCC
@@ -22,8 +21,9 @@ model:
     classes: 4
     select: MLP
   upstream:
-    select: EEG2MSVec
+    select: EEG2MSVecExpert
     trainable: false
+    ckpt: /home/taoz/code/p4seq/eeg2msvec/2024-11-01/15-07-13/checkpoints/checkpoint_994_275000.bak.pt
     expert:
       enable: true
       hooks:
@@ -36,7 +36,7 @@ optimizer:
   select: SGD
 
 task:
-  select: EmotionRecognitionTask
+  select: DREAMERTask
 
   loss:
     select: CrossEntropyLoss

@@ -21,9 +21,9 @@ from .hrformer import (
     TemporalFeatureExtractor,
     HRFormerEncoder
 )
-from models.modules.transformer import ConvPositionEmbedding
-from models.modules.decoder import Decoder1d
-from models.modules.utils import GradMultiply, Transpose
+from .transformer import ConvPositionEmbedding
+from .decoder import Decoder1d
+from .utils import GradMultiply, Transpose
 
 
 # Construct the tuple to record the mask info and seed
