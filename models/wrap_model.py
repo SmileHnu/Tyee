@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 
-class UpstreamDownstreamModel(nn.Module):
+class WrappedMode(nn.Module):
     def __init__(self, upstream, downstream, upstream_trainable):
         super().__init__()
         self.upstream = upstream
