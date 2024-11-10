@@ -15,12 +15,12 @@ def get_attr_from_cfg(cfg: dict, path: str, default=None):
 
     for key in keys:
         if not isinstance(value, dict):
-            print(f"Warning: '{key}' is not a valid key at path '{path}', returning default value.")
+            print(f"Warning: '{key}' is not a valid key at path '{path}', returning `{default}` for default value.")
             return default
         
         value = value.get(key, default)
         if value == default:
-            print(f"Warning: Key '{key}' not found in path '{path}', using default value.")
+            print(f"Warning: Key '{key}' not found in path '{path}', using `{default}` for default value.")
             return default
 
     return value

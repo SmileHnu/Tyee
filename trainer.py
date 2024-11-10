@@ -9,13 +9,13 @@
 @Time    : 2024/09/25 16:46:17
 @Desc    : 
 """
+import os
 import torch
-from utils import lazy_import_module, get_attr_from_cfg
-from utils import build_dis_sampler, build_data_loader
 import torch.distributed as dist
 from torch.cuda.amp import autocast, GradScaler
 from torch.nn.parallel import DistributedDataParallel as DDP
-import os
+from utils import lazy_import_module, get_attr_from_cfg, build_dis_sampler, build_data_loader
+
 
 class Trainer(object):
     def __init__(self, cfg) -> None:
@@ -30,16 +30,17 @@ class Trainer(object):
         self.fp16 = get_attr_from_cfg(cfg, 'trainer.fp16', False)
 
         # 训练配置
-        self.total_epochs = get_attr_from_cfg(cfg, 'trainer.total_epochs', 100)
-        self.save_epoch = get_attr_from_cfg(cfg, 'trainer.save_epoch', 10)
-        self.dev_epoch = get_attr_from_cfg(cfg, 'trainer.valid_epoch', 10)
-        self.test_epoch = get_attr_from_cfg(cfg, 'trainer.valid_epoch', 10)
-        self.batch_size = get_attr_from_cfg(cfg, 'trainer.batch_size', 1)
+        self.total_steps = get_attr_from_cfg(cfg, 'trainer.total_steps', 100)
+        self.save_interval = get_attr_from_cfg(cfg, 'trainer.save_interval', 10)
+        self.dev_interval = get_attr_from_cfg(cfg, 'trainer.valid_interval', 10)
+        self.test_interval = get_attr_from_cfg(cfg, 'trainer.valid_interval', 10)
+        self.batch_size = get_attr_from_cfg(cfg, 'dataset.batch_size', 1)
 
         # 任务配置
         self.task_select = get_attr_from_cfg(cfg, 'task.select', '')
         
         # 任务
+
         self.task = self.build_task()
 
         # 加载数据集
@@ -70,10 +71,10 @@ class Trainer(object):
 
         self.model = DDP(self.model.to(rank),device_ids=[rank])
  
-    def train(self,rank,world_size):
+    def train(self, rank, world_size):
 
         # 初始化分布式进程
-        self.distributed_initializer(rank=rank, world_size=world_size)
+        # self.distributed_initializer(rank=rank, world_size=world_size)
 
         # 构造采样器
         train_sampler = build_dis_sampler(self.train_dataset, world_size, rank)
@@ -88,34 +89,35 @@ class Trainer(object):
         scaler = GradScaler() if self.fp16 else None
 
         # 训练
+        self.model = self.model.to(rank)
         self.model.train()
-        for epoch in range(self.total_epochs):
-            self.train_epoch(train_loader,scaler,train_sampler,epoch,rank)
+        for epoch in range(self.total_steps):
+            self.train_epoch(train_loader, scaler, train_sampler, epoch, rank)
             
             if rank == 0:
                 self.lr_scheduler.step()
 
-            if epoch % self.dev_epoch == 0:
+            if epoch % self.dev_interval == 0:
                 self.eval_step(dev_loader,epoch,rank)
             
-            if epoch%self.test_epoch == 0:
+            if epoch%self.test_interval == 0:
                 self.eval_step(test_loader,epoch,rank)
             
-            if epoch % self.save_epoch == 0:
+            if epoch % self.save_interval == 0:
                 self.save_checkpoint('state_dict')
 
 
         # 结束分布式进程
-        dist.destroy_process_group()
+        # dist.destroy_process_group()
     
     def train_epoch(self, loader, scaler, sampler, epoch, rank):
         sampler.set_epoch(epoch)
-        for batch_idx, (data, target) in enumerate(loader):
+        for batch_idx, (data, target, *args) in enumerate(loader):
                 data, target = data.to(rank), target.to(rank)
                 self.optimizer.zero_grad()
                 # 使用自动混合精度（autocast）
                 with autocast(enabled=self.fp16):
-                    result = self.task.train_step(self.model, data, target)
+                    result = self.task.train_step(self.model, data, target, *args)
                     loss = result['loss']
 
                 # 如果启用FP16，使用Scaler来缩放梯度
@@ -134,7 +136,7 @@ class Trainer(object):
         self.model.eval()
         total_val_loss = 0
         with torch.no_grad():  
-            for batch_idx,(data, target) in enumerate(loader):  
+            for batch_idx,(data, target, *args) in enumerate(loader):  
                 data, target = data.to(rank), target.to(rank)
                 val_result = self.task.valid_step(self.model, data, target)
                 val_loss = val_result['loss']

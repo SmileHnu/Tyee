@@ -141,7 +141,10 @@ class BaseExpert(nn.Module):
                 result[f"hidden_state_{layer_id}"] = hidden_state
 
         else:
-            raise ValueError("No results from hooks.")
+            if "x" in result:
+                return result["x"]
+            else:
+                raise ValueError("No results from hooks.")
 
         return result
 

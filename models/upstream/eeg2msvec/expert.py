@@ -37,7 +37,7 @@ class EEG2MSVecExpert(BaseExpert):
         ) -> None:
         super().__init__(**kwargs)
         model, task_cfg = self._build_model_from_fairseq_ckpt(ckpt)
-        self.model = model
+        self.expert_model = model
         self.normalize = task_cfg.normalize
         self.np_normalize = False
         self.apply_padding_mask = False
@@ -68,33 +68,33 @@ class EEG2MSVecExpert(BaseExpert):
         else:
             raise ValueError("layer_hook_strs is required.")
 
-    def forward(self, wavs: list[torch.Tensor]) -> dict:
+    def forward(self, wavs: list[torch.Tensor], padding_mask: torch.BoolTensor = None, *args, **kwargs) -> dict:
         # input data normal
-        device = wavs[0].device
-        if self.normalize:
-            if self.np_normalize:
-                tmp_wavs = [wav.cpu().numpy() for wav in wavs]
-                wavs = [(x - np.mean(x)) / np.sqrt(np.var(x) + 1e-5) for x in tmp_wavs]
-                wavs = [torch.from_numpy(wav).to(device) for wav in wavs]
-            else:
-                wavs = [F.layer_norm(wav, wav.shape) for wav in wavs]
+        # device = wavs[0].device
+        # if self.normalize:
+        #     if self.np_normalize:
+        #         tmp_wavs = [wav.cpu().numpy() for wav in wavs]
+        #         wavs = [(x - np.mean(x)) / np.sqrt(np.var(x) + 1e-5) for x in tmp_wavs]
+        #         wavs = [torch.from_numpy(wav).to(device) for wav in wavs]
+        #     else:
+        #         wavs = [F.layer_norm(wav, wav.shape) for wav in wavs]
 
-        wav_lengths = torch.LongTensor([len(wav) for wav in wavs]).to(device)
-        wav_padding_mask = ~torch.lt(
-            torch.arange(max(wav_lengths)).unsqueeze(0).to(device),
-            wav_lengths.unsqueeze(1),
-        )
-        padded_wav = pad_sequence(wavs, batch_first=True)
+        # wav_lengths = torch.LongTensor([len(wav) for wav in wavs]).to(device)
+        # wav_padding_mask = ~torch.lt(
+        #     torch.arange(max(wav_lengths)).unsqueeze(0).to(device),
+        #     wav_lengths.unsqueeze(1),
+        # )
+        # padded_wav = pad_sequence(wavs, batch_first=True)
 
-        results = self.model.extract_features(
-            padded_wav, wav_padding_mask if self.apply_padding_mask else None
+        results = self.expert_model.extract_features(
+            wavs, padding_mask
         )
 
         return results
         
 
     def get_downsample_rates(self, key: str) -> int:
-        return 320
+        return 160
     
     def _build_model_from_fairseq_ckpt(self, ckpt_path: str, **override):
         """

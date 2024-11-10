@@ -10,48 +10,41 @@ dataset:
   transforms:
     select:
     - MFCC
-
 lr_scheduler:
   gamma: 0.1
   select: StepLR
   step_size: 20
-
 model:
   downstream:
     classes: 2
-    num_feat_dim: 1024
+    num_feat_dim: 256
     select: EmoMLP
   upstream:
-    select: EEG2MSVecExpert
-    trainable: false
     ckpt: /home/taoz/code/p4seq/eeg2msvec/2024-11-01/15-07-13/checkpoints/checkpoint_994_275000.bak.pt
     expert:
       enable: true
       hooks:
-        module_path: 
-          - self.expert_model.model.encoder.final_fused_layer
-        transform: "lambda input, output: output"
-  
+        module_path:
+        - self.expert_model.model.encoder.final_fused_layer
+        transform: 'lambda input, output: output'
+    select: EEG2MSVecExpert
+    trainable: false
 optimizer:
   lr: 0.01
   select: SGD
-
 task:
-  select: DREAMERTask
-
   loss:
     select: CrossEntropyLoss
-    # weight:
-    # - 1.0
-    # - 1.0
-    # - 1.0
-    # - 2.0
-  
-
+    weight:
+    - 1.0
+    - 1.0
+    - 1.0
+    - 2.0
+  select: DREAMERTask
 trainer:
   ddp_backend: gloo
   fp16: false
-  total_steps: 1000
   save_interval: 20
+  total_steps: 1000
   valid_interval: 20
   world_size: 1

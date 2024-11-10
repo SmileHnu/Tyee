@@ -440,6 +440,34 @@ class EEG2MSVec(BaseFairseqModel):
 
         return result
 
+    def extract_features(
+        self,
+        source: torch.Tensor,
+        padding_mask: torch.BoolTensor = None,
+    ):
+
+        # forward encoder model ( CNN + HRFormerEncoder )
+        extractor_out = self.model(
+            source,
+            padding_mask,
+            mask=False,
+            remove_masked=False,
+            clone_batch=1,
+            mask_seeds=None,
+            precomputed_mask=None,
+        )
+
+        x = extractor_out["x"]
+        encoder_mask = extractor_out["encoder_mask"]
+        masked_padding_mask = extractor_out["padding_mask"]
+        
+        return {
+            "x": x,
+            "padding_mask": masked_padding_mask,
+            "layer_results": None,
+            "mask": encoder_mask,
+        }
+
     def _make_ema_same_to(self, x: torch.Tensor):
         # 用于检测 EMA 的 target model 与输入是否具有相同的 type 与设备
         p: torch.Tensor = next(self.ema.model.parameters())

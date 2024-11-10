@@ -109,9 +109,19 @@ class Dreamer(object):
 
     
 class DREAMERDataset(BaseDataset):
-    def __init__(self, source: Path, clip_length: int = 4, split: str = "train") -> None:
+    def __init__(
+            self,
+            source: Path,
+            clip_length: int = 4,
+            split: str = "train",
+            pad: bool = False,
+            drop: bool = True
+        ) -> None:
         super().__init__()
         random.seed(575)
+        self.pad = pad
+        self.drop = drop
+        self.max_sample_size = 1e+12
 
         if not source.exists():
             raise FileExistsError(f"Input dataset path {source} not exists !!!")
@@ -133,6 +143,8 @@ class DREAMERDataset(BaseDataset):
             for idx, sample in enumerate(subject_data):
                 num_frames = int(sample.shape[0])
                 for start in range(0, num_frames, clip_length * sr):
+                    if self.drop and start + sr * clip_length > num_frames:
+                        continue
                     data.append(sample[start:start+sr*clip_length])
                     target.append(arousal[idx])
         # tot = len(data)
@@ -147,7 +159,13 @@ class DREAMERDataset(BaseDataset):
         return data, target
         
     def __getitem__(self, idx):
+        # shape: [L, C]
         data = torch.tensor(self.data[idx] * 1e-3, dtype=torch.float32)
+        # shape: [C, L]
+        data = data.transpose(0, 1)
+
+        # AF3, F7, F3, FC5, T7, P7, O1, O2, P8, T8, FC6, F4, F8, AF4
+        data = data[2].unsqueeze(0)
         if self.targets[idx] >= 3:
             target = torch.tensor(1, dtype=torch.long)
         else:
@@ -159,17 +177,71 @@ class DREAMERDataset(BaseDataset):
     def __len__(self):
         return len(self.targets)
 
-    def collate_fn(self, samples):
+    def collate_fn(
+            self,
+            samples: list[tuple[torch.Tensor, torch.Tensor]],
+        ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor | None]:
         wavs, labels = [], []
+
         for wav, label in samples:
             wavs.append(wav)
             labels.append(label)
-        return wavs, labels
+        
+        sizes = [w.shape[-1] for w in wavs]
+
+        if self.pad:
+            target_size = min(max(sizes), self.max_sample_size)
+        else:
+            target_size = min(min(sizes), self.max_sample_size)
+
+        B, chn = len(wavs), wavs[0].shape[0]
+
+        collated_data = wavs[0].new_zeros(B, chn, target_size)
+        padding_mask = (
+            torch.BoolTensor(collated_data.shape).fill_(False) if self.pad else None
+        )
+        for i, data in enumerate(wavs):
+            chn, num_frames = data.shape
+            diff = num_frames - target_size
+            if diff == 0:
+                # 长度等于 target_size，直接复制
+                collated_data[i] = data
+            elif diff < 0:
+                # 长度小于 target_size，需要填充
+                assert self.pad
+                collated_data[i] = torch.cat(
+                    [data, data.new_full((chn, -diff), 0.0)], dim=-1
+                )
+                padding_mask[i, :, diff:] = True
+            else:
+                # 长度大于 target_size，需要裁剪
+                collated_data[i], _ = self.crop_to_max_size(data, target_size)
+        return collated_data, torch.tensor(labels).long(), padding_mask
+
+    def crop_to_max_size(self, raw: torch.Tensor, target_size: int) -> tuple[torch.Tensor, int]:
+        """
+        crop the raw physio to the target size if the raw physio size is greater than target size
+        :param torch.Tensor raw: the raw bio signal which is needed to crop
+        :param int target_size: the crop size
+        :return tuple[torch.Tensor, int]: the cropped bio signal and crop start position
+        """
+        assert raw.dim() == 2, "crop_to_max_size only support 2-dim data"
+        _, size = raw.shape
+        diff = size - target_size
+        # if the data physio size if lower than target size, skip the crop ops
+        if diff <= 0:
+            return raw, 0
+
+        start, end = 0, target_size
+        if self.random_crop:
+            start = np.random.randint(0, diff + 1)
+            end = size - diff + start
+        return raw[:, start:end], start
 
 
 if __name__ == "__main__":
     # source = "data\DREAMER.mat"
     source = "/home/taoz/data/PhysioSignal/dreamer/DREAMER.mat"
-    dataset = DreamerDataset(Path(source))
+    dataset = DREAMERDataset(Path(source))
     data = dataset[0]
     pass

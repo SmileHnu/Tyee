@@ -8,8 +8,8 @@ class MLP(nn.Module):
         self.relu = nn.ReLU()                        
         self.fc2 = nn.Linear(hidden_dim, classes)  
 
-    def forward(self, x, x_len):
+    def forward(self, x: torch.Tensor):
         x = self.fc1(x)
         x = self.relu(x)
         x = self.fc2(x)
-        return x, x_len
+        return x

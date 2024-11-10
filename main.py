@@ -112,68 +112,9 @@ def main() -> None:
 
     trainer_config = cfg.get('trainer',{})
     world_size = trainer_config.get('world_size',1)
+    trainer.train(rank=0, world_size=world_size)
 
-    mp.spawn(trainer.train, args=(world_size,), nprocs=world_size, join=True)
-
-    
-    
-    
-    
-    # distributed learning
-
-
-    # run
-    
-
-
-
-# # 训练函数
-# def train(rank, world_size):
-#     # 初始化分布式环境
-#     dist.init_process_group(backend='nccl', rank=rank, world_size=world_size)
-    
-#     # 创建模型并将其移动到对应的设备
-#     model = SimpleModel().to(rank)
-#     ddp_model = DDP(model, device_ids=[rank])
-    
-#     # 使用随机数据集
-#     dataset = torch.utils.data.TensorDataset(torch.randn(1000, 10), torch.randn(1000, 10))
-    
-#     # 使用 DistributedSampler 以确保数据被均匀分布到各个进程
-#     sampler = DistributedSampler(dataset, num_replicas=world_size, rank=rank)
-#     dataloader = DataLoader(dataset, batch_size=32, sampler=sampler)
-    
-#     # 优化器
-#     optimizer = optim.SGD(ddp_model.parameters(), lr=0.01)
-#     criterion = nn.MSELoss()
-
-#     # 模型训练
-#     ddp_model.train()
-#     for epoch in range(5):
-#         sampler.set_epoch(epoch)  # 确保每个 epoch 的数据是不同的
-#         for batch_idx, (data, target) in enumerate(dataloader):
-#             data, target = data.to(rank), target.to(rank)
-#             optimizer.zero_grad()
-#             output = ddp_model(data)
-#             loss = criterion(output, target)
-#             loss.backward()
-#             optimizer.step()
-#             if batch_idx % 10 == 0 and rank == 0:
-#                 print(f"Rank {rank}, Epoch {epoch}, Loss: {loss.item()}")
-
-#     # 结束分布式进程
-#     dist.destroy_process_group()
-
-
-# # 主函数
-# def main():
-#     world_size = 4  # 假设使用 4 个 GPU
-#     mp.spawn(train, args=(world_size,), nprocs=world_size, join=True)
-
-
-# def main() -> None:
-
-#     pass
+    # mp.spawn(trainer.train, args=(world_size,), nprocs=world_size, join=True)
 
 
 if __name__ == "__main__":
