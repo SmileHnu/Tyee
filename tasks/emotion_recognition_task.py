@@ -51,8 +51,3 @@ class EmotionRecognitionTask(PRLTask):
         return {
             'loss':loss
         }
-    
-    
-    
-
-        

@@ -821,7 +821,7 @@ class HRFormerEncoder(nn.Module):
         for i in range(len(outs)):
             outs[i] = self.final_proj_layers[i](outs[i])
         out = torch.concat(outs, axis=1)
-        # out = self.final_fused_layer(out)
+        out = self.final_fused_layer(out)
 
         if need_branches:
             return out, outs
