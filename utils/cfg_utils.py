@@ -1,3 +1,16 @@
+#!/usr/bin/env python
+# -*- encoding: utf-8 -*-
+"""
+@Author  : shulingyu
+@License : (C) Copyright 2024, Hunan University
+@Contact : shulingyu@hnu.edu.cn
+@Software: Visual Studio Code
+@File    : cfg_utils.py
+@Time    : 2024/11/11 19:00:41
+@Desc    : 
+"""
+
+
 def get_attr_from_cfg(cfg: dict, path: str, default=None):
     """
     从配置中获取值，支持路径获取

@@ -1,6 +1,19 @@
+#!/usr/bin/env python
+# -*- encoding: utf-8 -*-
+"""
+@Author  : shulingyu
+@License : (C) Copyright 2024, Hunan University
+@Contact : shulingyu@hnu.edu.cn
+@Software: Visual Studio Code
+@File    : emotion_recognition_task.py
+@Time    : 2024/11/11 18:58:58
+@Desc    : 
+"""
+
+
 from . import PRLTask
 from utils import lazy_import_module
-from models.wrap_model import WrappedMode
+from models import WrappedMode
 
 class EmotionRecognitionTask(PRLTask):
     def __init__(self, cfg):
@@ -9,17 +22,17 @@ class EmotionRecognitionTask(PRLTask):
         
     def build_model(self):
         up_module = lazy_import_module('models.upstream', self.upstream_select)
-        uptream = up_module()
+        upstream = up_module()
 
         down_module = lazy_import_module('models.downstream',self.downstream_select)
         downstream = down_module(classes=self.downstream_classes)
 
-        return WrappedMode(uptream, downstream, self.upstream_trainable)
+        return WrappedMode(upstream, downstream, self.upstream_trainable)
 
     def train_step(self, model, data, target):
         # print(type(data),type(target))
         
-        output,_ = model(data, data.size(1))
+        output, _ = model(data, data.size(1))
         # print(target.device)
         # print(self.loss.weight.device)
         self.loss.weight = self.loss.weight.to(target.device)
@@ -33,17 +46,11 @@ class EmotionRecognitionTask(PRLTask):
         # print(type(data),type(target))
         output, _ = model(data, data.size(1))
         self.loss.weight = self.loss.weight.to(target.device)
-        loss = self.loss(output,target)
+        loss = self.loss(output, target)
 
         return {
             'loss':loss
         }
-    
-    def train(self,) -> None:
-        self.model.train()
-    
-    def eval(self,) -> None:
-        self.model.eval()
     
     
     

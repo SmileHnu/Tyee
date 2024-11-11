@@ -1,6 +1,31 @@
+#!/usr/bin/env python
+# -*- encoding: utf-8 -*-
+"""
+@Author  : shulingyu
+@License : (C) Copyright 2024, Hunan University
+@Contact : shulingyu@hnu.edu.cn
+@Software: Visual Studio Code
+@File    : data_utils.py
+@Time    : 2024/11/11 19:01:00
+@Desc    : 
+"""
+
+
 from torch.utils.data import Dataset, Sampler, DataLoader, DistributedSampler
 
-def build_dis_sampler(dataset: Dataset, world_size, rank):
+def build_dis_sampler(dataset: Dataset, world_size: int, rank: int):
+    """
+    构建分布式数据加载器的采样器，根据给定的进程数量和进程编号，划分数据集并进行分布式训练。
+    
+    :param dataset: Dataset, 要进行分布式采样的数据集。
+    :param world_size: int, 总进程数，即分布式训练的总工作节点数。
+    :param rank: int, 当前进程的编号，用于标识不同的工作节点。
+    :return: DistributedSampler, 用于分布式训练的数据采样器。
+    :raises TypeError: 如果 dataset 不是 Dataset 类型。
+    :raises ValueError: 如果 world_size 或 rank 的值不合法。
+    :raises RuntimeError: 如果创建 DistributedSampler 失败。
+    """
+
     # 检查dataset类型
     if not isinstance(dataset, Dataset):
         raise TypeError(f"Expected 'dataset' to be of type Dataset, but got {type(dataset)}")
@@ -20,8 +45,18 @@ def build_dis_sampler(dataset: Dataset, world_size, rank):
 
     return sampler
 
-def build_data_loader(dataset: Dataset, batch_size, sampler:Sampler):
-
+def build_data_loader(dataset: Dataset, batch_size: int, sampler:Sampler):
+    """
+    创建数据加载器，用于根据给定的批大小和采样器加载数据。
+    
+    :param dataset: Dataset, 用于训练或评估的数据集。
+    :param batch_size: int, 每个 batch 的数据量。
+    :param sampler: Sampler, 用于数据分配的采样器。如果为 None，则默认按照顺序加载数据。
+    :return: DataLoader, 用于加载数据的 DataLoader 实例。
+    :raises TypeError: 如果 dataset 不是 Dataset 类型，或者 sampler 不是 Sampler 类型。
+    :raises ValueError: 如果数据集为空并且没有提供采样器。
+    :raises RuntimeError: 如果创建 DataLoader 失败。
+    """
      # 检查dataset类型
     if not isinstance(dataset, Dataset):
         raise TypeError(f"Expected 'dataset' to be of type torch.utils.data.Dataset, but got {type(dataset)}")
