@@ -50,6 +50,9 @@ class PRLTask(object):
         self.gamma = get_attr_from_cfg(cfg, 'lr_scheduler.gamma', 0.1)
 
 
+        self.train_dataset = None
+        self.dev_dataset = None
+        self.test_dataset = None
         self.loss = self.build_loss()
 
     
@@ -60,6 +63,7 @@ class PRLTask(object):
         return Dataset(os.path.join(self.dataset_root, filename), transforms)
 
     def build_model(self):
+        """ 构建模型 """
         raise NotImplementedError
 
     def build_loss(self):
@@ -68,7 +72,7 @@ class PRLTask(object):
         loss_args = {'weight': torch.tensor(self.loss_weight, dtype=torch.float32)} if self.loss_weight else {}
         return loss_cls(**loss_args)
 
-    def build_optimizer(self,model):
+    def build_optimizer(self,model: torch.nn.Module):
         """ 构建优化器 """
         optimizer_cls = lazy_import_module('torch.optim', self.optimizer_select)
         return optimizer_cls(model.parameters(), lr=self.lr)
@@ -77,6 +81,24 @@ class PRLTask(object):
         """ 构建学习率调度器 """
         scheduler_cls = lazy_import_module('torch.optim.lr_scheduler', self.lr_scheduler_select)
         return scheduler_cls(optimizer, step_size=self.step_size, gamma=self.gamma)
+    
+    def get_train_dataset(self):
+        """ 获得训练集的方法 """
+        if self.train_dataset is None:
+            self.train_dataset = self.build_dataset(self.train_fpath)
+        return self.train_dataset
+
+    def get_dev_dataset(self):
+        """ 获得验证集的方法 """
+        if self.dev_dataset is None:
+            self.dev_dataset = self.build_dataset(self.eval_fpath[0])
+        return self.dev_dataset
+    
+    def get_test_dataset(self):
+        """ 获得测试集的方法 """
+        if self.test_dataset is None:
+            self.test_dataset = self.build_dataset(self.eval_fpath[1])
+        return self.test_dataset
 
     # def get_dataset(self, attr_name, fpath: str) -> Dataset:
     #     """
@@ -104,9 +126,9 @@ class PRLTask(object):
     #     return self.build_dataset(self.eval_fpath[1])
 
     
-    def train_step(self, model, x, *args, **kwargs):
+    def train_step(self, model: torch.nn.Module, x: torch.Tensor, *args, **kwargs):
         raise NotImplementedError
 
     @torch.no_grad()
-    def valid_step(self, model, x, *args, **kwargs):
+    def valid_step(self, model: torch.nn.Module, x: torch.Tensor, *args, **kwargs):
         raise NotImplementedError
