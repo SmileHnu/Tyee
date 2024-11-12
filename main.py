@@ -143,7 +143,7 @@ def main() -> None:
         yaml.dump(cfg, f, default_flow_style=False, allow_unicode=True)
 
     # 加入随机种子
-    seed = get_attr_from_cfg(cfg,'seed',1337)
+    seed = get_attr_from_cfg(cfg, 'seed', 1337)
     random.seed(seed)
     np.random.seed(seed)
     torch.manual_seed(seed)
@@ -152,7 +152,7 @@ def main() -> None:
     # 训练
     trainer = Trainer(cfg)
 
-    world_size = get_attr_from_cfg(cfg, 'trainer.world_size',1)
+    world_size = get_attr_from_cfg(cfg, 'trainer.world_size', 1)
     trainer.train(rank=0, world_size=world_size)
 
     # mp.spawn(trainer.train, args=(world_size,), nprocs=world_size, join=True)
