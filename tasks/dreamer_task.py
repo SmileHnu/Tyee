@@ -10,6 +10,7 @@
 @Desc    : 
 """
 import torch
+from torch import nn
 from pathlib import Path
 from models import WrappedMode
 from tasks.base_task import PRLTask
@@ -24,7 +25,7 @@ class DREAMERTask(PRLTask):
         self.test_dataset = None
         self.num_feat_dim = get_attr_from_cfg(self.cfg, "model.downstream.num_feat_dim")
         self.ckpt = get_attr_from_cfg(self.cfg, "model.upstream.ckpt")
-        self.hook_layer_strs = get_attr_from_cfg(self.cfg, "model.upstream.expert.hooks.module_path", ["self.model.encoder.final_fused_layer"])
+        self.hook_layer_strs = get_attr_from_cfg(self.cfg, "model.upstream.expert.hooks.module_path", ["self.expert_model.model.encoder.final_fused_layer"])
         self.hook_transform = get_attr_from_cfg(self.cfg, "model.upstream.expert.hooks.transform", "lambda input, output: output")
 
     
@@ -58,18 +59,26 @@ class DREAMERTask(PRLTask):
         print(downstream)
         return WrappedMode(upstream, downstream)
         
-    def train_step(self, model, x, target, *args, **kwargs):
-        output = model(x, *args, **kwargs)
-        loss = self.loss(output, target)
+    def train_step(self, model: nn.Module, sample: dict[str, torch.Tensor]):
+        x = sample["x"]
+        target = sample["target"]
+        padding_mask = sample["padding_mask"]
+        pred = model(x, padding_mask)
+        loss = self.loss(pred, target)
         return {
             'loss':loss
         }
 
     @torch.no_grad()
-    def valid_step(self, model, x, target, *args, **kwargs):
-        output = model(x)
-        loss = self.loss(output, target)
+    def valid_step(self, model, sample: dict[str, torch.Tensor]):
+        x = sample["x"]
+        target = sample["target"]
+        padding_mask = sample["padding_mask"]
+        pred = model(x, padding_mask)
+        loss = self.loss(pred, target)
 
         return {
-            'loss':loss
+            "loss": loss,
+            "pred": pred,
+            "target": target
         }

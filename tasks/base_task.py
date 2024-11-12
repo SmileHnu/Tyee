@@ -42,7 +42,7 @@ class PRLTask(object):
 
         # 优化器配置
         self.optimizer_select = get_attr_from_cfg(cfg, 'optimizer.select', '')
-        self.lr = get_attr_from_cfg(cfg, 'optimizer.lr', 0.01)
+        self.lr = get_attr_from_cfg(cfg, 'optimizer.lr', 0.0001)
 
         # 学习率调度器配置
         self.lr_scheduler_select = get_attr_from_cfg(cfg, 'lr_scheduler.select', '')

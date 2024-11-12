@@ -1,6 +1,6 @@
 import torch
-import pandas as pd
-from sklearn.preprocessing import LabelEncoder
+# import pandas as pd
+# from sklearn.preprocessing import LabelEncoder
 from . import BaseDataset
 class CarDataset(BaseDataset):
     def __init__(self, path, transforms):

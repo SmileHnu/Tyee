@@ -140,13 +140,12 @@ class BaseExpert(nn.Module):
             for layer_id, hidden_state in enumerate(result["hidden_states"]):
                 result[f"hidden_state_{layer_id}"] = hidden_state
 
+            return result["last_hidden_state"]
         else:
             if "x" in result:
                 return result["x"]
             else:
                 raise ValueError("No results from hooks.")
-
-        return result
 
     def get_downsample_rates(self) -> int:
         """ get downsample rates """

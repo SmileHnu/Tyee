@@ -112,7 +112,7 @@ class DREAMERDataset(BaseDataset):
     def __init__(
             self,
             source: Path,
-            clip_length: int = 4,
+            clip_length: int = 2,
             split: str = "train",
             pad: bool = False,
             drop: bool = True
@@ -216,7 +216,11 @@ class DREAMERDataset(BaseDataset):
             else:
                 # 长度大于 target_size，需要裁剪
                 collated_data[i], _ = self.crop_to_max_size(data, target_size)
-        return collated_data, torch.tensor(labels).long(), padding_mask
+        return {
+            "x": collated_data,
+            "target": torch.tensor(labels).long(),
+            "padding_mask": padding_mask
+        }
 
     def crop_to_max_size(self, raw: torch.Tensor, target_size: int) -> tuple[torch.Tensor, int]:
         """

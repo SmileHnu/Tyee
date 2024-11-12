@@ -1,12 +1,12 @@
 dataset:
   batch_size: 32
-  dataset: DREAMERDataset
+  dataset: EEG2RepCrowdsourceDataset
   eval:
   - car_dev.txt
   - car_test.txt
   num_workers: 2
-  path: /home/taoz/data/PhysioSignal/dreamer/
-  train: DREAMER.mat
+  path: /home/taoz/data/EEG2Rep/
+  train: Crowdsource.npy
   transforms:
     select:
     - MFCC
