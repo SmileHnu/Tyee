@@ -25,7 +25,8 @@ model:
     select: EEG2MSVecExpert
     trainable: false
     # ckpt: /home/taoz/code/p4seq/eeg2msvec/2024-11-01/15-07-13/checkpoints/checkpoint_994_275000.bak.pt
-    ckpt: /home/taoz/code/p4seq/eeg2msvec/2024-11-08/16-15-22/checkpoints/checkpoint_633_175000.pt
+    # ckpt: /home/taoz/code/p4seq/eeg2msvec/2024-11-08/16-15-22/checkpoints/checkpoint_633_175000.pt
+    ckpt: /home/taoz/code/p4seq/eeg2msvec/2024-11-08/16-15-22/checkpoints/checkpoint_813_225000.pt
     expert:
       enable: true
       # hooks:

@@ -15,7 +15,7 @@ import torch.distributed as dist
 from torch.cuda.amp import autocast, GradScaler
 from sklearn.metrics import accuracy_score, roc_auc_score
 from torch.nn.parallel import DistributedDataParallel as DDP
-from utils import lazy_import_module, get_attr_from_cfg
+from utils import lazy_import_module, get_nested_field
 
 
 class Trainer(object):
@@ -24,21 +24,21 @@ class Trainer(object):
         self.cfg = cfg
 
         # 分布式环境配置
-        self._ddp_backend = get_attr_from_cfg(self.cfg, "trainer.ddp_backend", "nccl")
-        self._init_method = get_attr_from_cfg(self.cfg, "trainer.init_method", "tcp://127.0.0.1:60575")
+        self._ddp_backend = get_nested_field(self.cfg, "trainer.ddp_backend", "nccl")
+        self._init_method = get_nested_field(self.cfg, "trainer.init_method", "tcp://127.0.0.1:60575")
 
         # 自动混合精度配置
-        self.fp16 = get_attr_from_cfg(cfg, 'trainer.fp16', False)
+        self.fp16 = get_nested_field(cfg, 'trainer.fp16', False)
 
         # 训练配置
-        self._total_steps = get_attr_from_cfg(cfg, 'trainer.total_steps', 100)
-        self._save_interval = get_attr_from_cfg(cfg, 'trainer.save_interval', 10)
-        self._eval_interval = get_attr_from_cfg(cfg, 'trainer.eval_interval', 10)
-        self._log_interval = get_attr_from_cfg(cfg, 'trainer.log_interval', 10)
-        self._batch_size = get_attr_from_cfg(cfg, 'dataset.batch_size', 1)
-        self._metrics = get_attr_from_cfg(cfg, 'trainer.metrics', None)
+        self._total_steps = get_nested_field(cfg, 'trainer.total_steps', 100)
+        self._save_interval = get_nested_field(cfg, 'trainer.save_interval', 10)
+        self._eval_interval = get_nested_field(cfg, 'trainer.eval_interval', 10)
+        self._log_interval = get_nested_field(cfg, 'trainer.log_interval', 10)
+        self._batch_size = get_nested_field(cfg, 'dataset.batch_size', 1)
+
         # 任务配置
-        self.task_select = get_attr_from_cfg(cfg, 'task.select', '')
+        self.task_select = get_nested_field(cfg, 'task.select', '')
         
         # 任务
         self.task = self._build_task()

@@ -14,7 +14,7 @@ from torch import nn
 from pathlib import Path
 from models import WrappedMode
 from tasks.base_task import PRLTask
-from utils import lazy_import_module, get_attr_from_cfg
+from utils import lazy_import_module, get_nested_field
 
 
 class DREAMERTask(PRLTask):
@@ -23,10 +23,10 @@ class DREAMERTask(PRLTask):
         self.train_dataset = None
         self.dev_dataset = None
         self.test_dataset = None
-        self.num_feat_dim = get_attr_from_cfg(self.cfg, "model.downstream.num_feat_dim")
-        self.ckpt = get_attr_from_cfg(self.cfg, "model.upstream.ckpt")
-        self.hook_layer_strs = get_attr_from_cfg(self.cfg, "model.upstream.expert.hooks.module_path", ["self.expert_model.model.encoder.final_fused_layer"])
-        self.hook_transform = get_attr_from_cfg(self.cfg, "model.upstream.expert.hooks.transform", "lambda input, output: output")
+        self.num_feat_dim = get_nested_field(self.cfg, "model.downstream.num_feat_dim")
+        self.ckpt = get_nested_field(self.cfg, "model.upstream.ckpt")
+        self.hook_layer_strs = get_nested_field(self.cfg, "model.upstream.expert.hooks.module_path", ["self.expert_model.model.encoder.final_fused_layer"])
+        self.hook_transform = get_nested_field(self.cfg, "model.upstream.expert.hooks.transform", "lambda input, output: output")
 
     
     def get_train_dataset(self):

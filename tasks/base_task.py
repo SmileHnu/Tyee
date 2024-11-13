@@ -12,7 +12,7 @@
 import os
 import torch
 from torch.utils.data import Dataset
-from utils import lazy_import_module, get_attr_from_cfg
+from utils import lazy_import_module, get_nested_field
 from torch.utils.data import Dataset, Sampler, DataLoader, DistributedSampler
 
 
@@ -24,30 +24,30 @@ class PRLTask(object):
         self.cfg = cfg
         
         # 数据集路径和变换
-        self.dataset_root = get_attr_from_cfg(cfg, 'dataset.path', '')
-        self.train_fpath = get_attr_from_cfg(cfg, 'dataset.train', '')
-        self.eval_fpath = get_attr_from_cfg(cfg, 'dataset.eval', [])
-        self.transforms_select = get_attr_from_cfg(cfg, 'dataset.transforms.select', [])
-        self.dataset = get_attr_from_cfg(cfg, 'dataset.dataset', '')
+        self.dataset_root = get_nested_field(cfg, 'dataset.path', '')
+        self.train_fpath = get_nested_field(cfg, 'dataset.train', '')
+        self.eval_fpath = get_nested_field(cfg, 'dataset.eval', [])
+        self.transforms_select = get_nested_field(cfg, 'dataset.transforms.select', [])
+        self.dataset = get_nested_field(cfg, 'dataset.dataset', '')
 
         # 模型配置
-        self.downstream_classes = get_attr_from_cfg(cfg, 'model.downstream.classes', 1)
-        self.downstream_select = get_attr_from_cfg(cfg, 'model.downstream.select', '')
-        self.upstream_select = get_attr_from_cfg(cfg, 'model.upstream.select', '')
-        self.upstream_trainable = get_attr_from_cfg(cfg, 'model.upstream.trainable', False)
+        self.downstream_classes = get_nested_field(cfg, 'model.downstream.classes', 1)
+        self.downstream_select = get_nested_field(cfg, 'model.downstream.select', '')
+        self.upstream_select = get_nested_field(cfg, 'model.upstream.select', '')
+        self.upstream_trainable = get_nested_field(cfg, 'model.upstream.trainable', False)
 
         # 损失函数配置
-        self.loss_select = get_attr_from_cfg(cfg, 'task.loss.select', '')
-        self.loss_weight = get_attr_from_cfg(cfg, 'task.loss.weight', [])
+        self.loss_select = get_nested_field(cfg, 'task.loss.select', '')
+        self.loss_weight = get_nested_field(cfg, 'task.loss.weight', [])
 
         # 优化器配置
-        self.optimizer_select = get_attr_from_cfg(cfg, 'optimizer.select', '')
-        self.lr = get_attr_from_cfg(cfg, 'optimizer.lr', 0.0001)
+        self.optimizer_select = get_nested_field(cfg, 'optimizer.select', '')
+        self.lr = get_nested_field(cfg, 'optimizer.lr', 0.0001)
 
         # 学习率调度器配置
-        self.lr_scheduler_select = get_attr_from_cfg(cfg, 'lr_scheduler.select', None)
-        self.step_size = get_attr_from_cfg(cfg, 'lr_scheduler.step_size', 20)
-        self.gamma = get_attr_from_cfg(cfg, 'lr_scheduler.gamma', 0.1)
+        self.lr_scheduler_select = get_nested_field(cfg, 'lr_scheduler.select', '')
+        self.step_size = get_nested_field(cfg, 'lr_scheduler.step_size', 20)
+        self.gamma = get_nested_field(cfg, 'lr_scheduler.gamma', 0.1)
 
 
         self.train_dataset = None

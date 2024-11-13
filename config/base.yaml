@@ -1,3 +1,8 @@
+common:
+  seed: 42
+  verbose: true
+  exp_dir: experiments
+
 dataset:
   batch_size: 32
   dataset: CarDataset
