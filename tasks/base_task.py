@@ -190,30 +190,15 @@ class PRLTask(object):
                 raise RuntimeError(f"Failed to create DataLoader: {e}")
         
         return data_loader
-    # def get_dataset(self, attr_name, fpath: str) -> Dataset:
-    #     """
-    #     通用的获取 dataset 方法，如果已经存在则直接返回，否则构建并返回
-    #     :param attr_name: 用于标识 dataset 的属性名称
-    #     :param fpath: 数据集文件子路径
-    #     :return: dataset
-    #     """
-    #     dataset = getattr(self, attr_name, None)
-    #     if dataset is None:
-    #         dataset = self.build_dataset(fpath)
-    #         setattr(self, attr_name, dataset)
-    #     return dataset
     
-    # @property
-    # def train_dataset(self) -> Dataset:
-    #     return self.build_dataset(self.train_fpath)
-    
-    # @property
-    # def dev_dataset(self) -> Dataset:
-    #     return self.build_dataset(self.eval_fpath[0])
-    
-    # @property
-    # def test_dataset(self) -> Dataset:
-    #     return self.build_dataset(self.eval_fpath[1])
+    def load_sample(self, iterator):
+        sample = next(iterator)
+            
+        for k, v in sample.items():
+            if v is not None:
+                sample[k] = v
+        
+        return sample
 
     
     def train_step(self, model: torch.nn.Module, x: torch.Tensor, *args, **kwargs):

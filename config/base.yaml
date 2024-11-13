@@ -47,8 +47,16 @@ trainer:
   fp16: false
   total_steps: 1000
   save_interval: 20
-  valid_interval: 20
+  eval_interval: 20
+  log_interval: 20
   world_size: 1
   metrics:
-  - accuracy
-  - auroc
+    log:
+    eval:
+      Accuracy: {}
+      Precision:
+        average: "micro"
+      Recall:
+        average: "micro"
+      F1:
+        average: "micro"
