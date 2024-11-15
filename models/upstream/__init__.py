@@ -9,5 +9,5 @@
 @Time    : 2024/11/09 23:46:48
 @Desc    : 
 """
-
+from models.upstream.wavelet import Wavelet
 from models.upstream.eeg2msvec.expert import EEG2MSVecExpert

@@ -14,18 +14,18 @@ dataset:
 lr_scheduler:
   gamma: 0.1
   select: StepLR
-  step_size: 20
+  step_size: 10000
 
 model:
   downstream:
     classes: 2
-    num_feat_dim: 256
+    num_feat_dim: 2560
     select: EmoMLP
   upstream:
     select: EEG2MSVecExpert
     trainable: false
     # ckpt: /home/taoz/code/p4seq/eeg2msvec/2024-11-01/15-07-13/checkpoints/checkpoint_994_275000.bak.pt
-    ckpt: /home/taoz/code/p4seq/eeg2msvec/2024-11-08/16-15-22/checkpoints/checkpoint_813_225000.pt
+    ckpt: /home/taoz/code/p4seq/eeg2msvec/2024-11-08/16-15-22/checkpoints/checkpoint_last.pt
     expert:
       enable: true
       # hooks:
@@ -34,8 +34,8 @@ model:
         # transform: "lambda input, output: output"
   
 optimizer:
-  lr: 0.0001
-  select: SGD
+  lr: 0.001
+  select: Adam
 
 task:
   select: DREAMERTask

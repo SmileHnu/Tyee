@@ -13,9 +13,9 @@ from torch import nn
 from torch.nn import functional as F
 
 
-class EmoMLP(nn.Module):
+class MIMLP(nn.Module):
     def __init__(self, num_classes: int = 2, num_features: int = 512):
-        super(EmoMLP, self).__init__()
+        super(MIMLP, self).__init__()
         self.fc = nn.Sequential(
             nn.Linear(num_features, 256),
             nn.ReLU(),
@@ -24,7 +24,7 @@ class EmoMLP(nn.Module):
 
     def forward(self, x, *args, **kwargs):
         # x = F.adaptive_avg_pool1d(x, 1)
-        
-        x = x.contiguous().view(x.shape[0], -1)
+        # x = x.view(x.shape[0], -1)
+        # print(x.shape)
         return self.fc(x)
     

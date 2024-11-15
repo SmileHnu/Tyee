@@ -18,11 +18,10 @@ class WrappedMode(nn.Module):
         self.upstream_trainable = upstream_trainable
 
     def forward(self, wav, *args, **kwargs):
-        with torch.set_grad_enabled(self.upstream_trainable):
-            if self.upstream_trainable:
+        if self.upstream_trainable:
+            hiddens = self.upstream(wav, *args, **kwargs)
+        else:
+            with torch.no_grad():
                 hiddens = self.upstream(wav, *args, **kwargs)
-            else:
-                with torch.no_grad():
-                    hiddens = self.upstream(wav, *args, **kwargs)
         # print(hiddens.shape)
         return self.downstream(hiddens, *args, **kwargs)

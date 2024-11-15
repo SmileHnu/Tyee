@@ -51,6 +51,7 @@ class Trainer(object):
         
         # 任务
         self.task = self._build_task()
+        self._metrics = get_nested_field(cfg, 'trainer.metrics', ['accuracy_score'])
 
 
     def _build_task(self) -> object:
@@ -176,7 +177,6 @@ class Trainer(object):
         with autocast(enabled=self.fp16):
             result = self.task.train_step(model, sample)
             loss = result['loss']
-            
 
         # 如果启用FP16，使用Scaler来缩放梯度
         if self.fp16:

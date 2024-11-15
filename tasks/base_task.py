@@ -115,7 +115,7 @@ class PRLTask(object):
         
         return iter(dataloader)
         
-    def build_sampler(dataset: Dataset, world_size: int, rank: int):
+    def build_sampler(self, dataset: Dataset, world_size: int, rank: int):
         """
         构建分布式数据加载器的采样器，根据给定的进程数量和进程编号，划分数据集并进行分布式训练。
         
@@ -147,7 +147,7 @@ class PRLTask(object):
 
         return sampler
 
-    def build_dataloader(dataset: Dataset, batch_size: int, sampler:Sampler):
+    def build_dataloader(self, dataset: Dataset, batch_size: int, sampler:Sampler):
         """
         创建数据加载器，用于根据给定的批大小和采样器加载数据。
         
