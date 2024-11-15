@@ -16,7 +16,7 @@ import torch.distributed as dist
 from torch.cuda.amp import autocast, GradScaler
 from sklearn.metrics import accuracy_score, roc_auc_score
 from torch.nn.parallel import DistributedDataParallel as DDP
-from utils import lazy_import_module, get_nested_field, calculate_metrics, build_metrics
+from utils import lazy_import_module, get_nested_field, MetricEvaluator
 
 
 class Trainer(object):
@@ -39,10 +39,10 @@ class Trainer(object):
         self._batch_size = get_nested_field(cfg, 'dataset.batch_size', 1)
 
         # 指标
-        eval_metrics_dict = get_nested_field(cfg, 'trainer.metrics.eval', None)
-        log_metrics_dict = get_nested_field(cfg, 'trainer.metrics.log', None)
-        self._eval_metrics = build_metrics(eval_metrics_dict)
-        self._log_metrics = build_metrics(log_metrics_dict)
+        self.eval_metric = get_nested_field(cfg, 'trainer.eval_metric', None)
+        metrics_dict = get_nested_field(cfg, 'trainer.metrics', None)
+        self._metrics_evaluator = MetricEvaluator(metrics_dict)
+        
 
         # 保存路径
         root = get_nested_field(cfg, "common.exp_dir", "./experiments/")
@@ -118,7 +118,7 @@ class Trainer(object):
             # eval
             if step % self._eval_interval == 0:
                 # 验证集
-                dev_metrics = self._eval_step(model, dev_loader, device, 'eval')
+                dev_metrics = self._eval_step(model, dev_loader, device, world_size)
 
                 # 保存最好的模型
                 pass
@@ -129,7 +129,7 @@ class Trainer(object):
                 print(f"{metrics_output}")
 
                 # 训练集
-                test_metrics = self._eval_step(model, test_loader, device, 'eval')
+                test_metrics = self._eval_step(model, test_loader, device, world_size)
                 print(f"Step {step}, ", end="")
                 # 动态打印所有在 metrics 中的指标
                 metrics_output = ", ".join([f"{metric}: {value:.4f}" for metric, value in test_metrics.items()])
@@ -140,7 +140,7 @@ class Trainer(object):
                 print(f"Step {step}, Loss: {tot_loss / self._log_interval}")
                 tot_loss = 0
 
-                metrics = self._eval_step(model, test_loader, device, 'log')
+                metrics = self._eval_step(model, test_loader, device, world_size)
 
                 # acc = (correct / total).item()
                 # print(f"Step {step}, Test Loss: {tot_eval_loss / total}, acc: {acc}")
@@ -152,11 +152,10 @@ class Trainer(object):
             # save
             if step % self._save_interval == 0:
                 pass
-                
 
-        
         # 结束分布式进程
         # dist.destroy_process_group()
+
     
     def _train_step(self, iterator, model, optimizer, lr_scheduler, scaler, device):
         """
@@ -193,20 +192,16 @@ class Trainer(object):
 
         return loss.item()
 
-    def _eval_step(self, model, loader, device, str):
+    def _eval_step(self, model, loader, device, world_size):
         """
         执行单个评估步骤，包括模型评估、损失计算以及指标计算。
 
         :param model: torch.nn.Module, 当前模型。
         :param loader: DataLoader, 用于加载数据的迭代器。
         :param device: torch.device, 模型和数据的计算设备（如GPU）。
-        :param str: str, 用于指示计算日志指标或评估指标的标志 ('log' 或 'eval')。
+        :param world_size: int, 分布式训练中的总进程数，用于计算全局的平均损失。
         :return: tuple, 包含总评估损失和计算出的指标字典。
         """
-        results = {
-            "y_true": [],
-            "y_pred": []
-        }
 
         model.eval()
         with torch.no_grad():
@@ -217,21 +212,29 @@ class Trainer(object):
                     if v is not None:
                         sample[k] = v.to(device)
                 result = self.task.valid_step(model, sample)
-                tot_eval_loss += result['loss'].item()
+                tot_eval_loss += result['loss'].item()  # 累加损失
                 total += len(result["target"])
 
-                # probabilities = result["pred"].softmax(dim=-1)  # 获取每个类别的概率
-                # 保存结果
-                # 将结果添加到字典中
-                results["y_true"].extend(result["target"].cpu())
-                results["y_pred"].extend(result["pred"].cpu().argmax(dim=-1))  # 将预测结果转为标签
-                # y_scores.extend(probabilities[:, 1].cpu())  # 假设我们对二分类任务，只关注正类概率
-        if str == 'log':
-            metrics = calculate_metrics(self._log_metrics, results)
-        elif str =='eval':
-            metrics = calculate_metrics(self._eval_metrics, results)
-        # metrics = calculate_metrics(self._eval_metrics, y_pred, y_true)
-        return tot_eval_loss / total, metrics
+                self._metrics_evaluator.update_metrics(result)  # 更新指标
+
+            metrics = self._metrics_evaluator.calculate_metrics()  # 计算最终的指标
+
+        # 同步损失值，确保所有进程计算相同的损失
+        tot_eval_loss = torch.tensor(tot_eval_loss).to(device)
+        dist.all_reduce(tot_eval_loss, op=dist.ReduceOp.SUM)  # 聚合所有进程的损失
+        tot_eval_loss /= world_size  # 计算所有进程的平均损失
+
+        # 同步所有指标，确保所有进程计算相同的指标
+        for metric, value in metrics.items():
+            if isinstance(value, torch.Tensor):  # 仅同步 tensor 类型的指标
+                dist.all_reduce(value, op=dist.ReduceOp.SUM)  # 聚合所有进程的指标
+                value /= world_size  # 计算所有进程的平均值
+
+        # 将所有指标转化为标量并返回
+        metrics = {metric: value.item() for metric, value in metrics.items()}
+
+        return tot_eval_loss.item(), metrics
+
         
 
 

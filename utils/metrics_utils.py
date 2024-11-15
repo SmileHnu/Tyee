@@ -1,51 +1,89 @@
+#!/usr/bin/env python
+# -*- encoding: utf-8 -*-
+"""
+@Author  : shulingyu
+@License : (C) Copyright 2024, Hunan University
+@Contact : shulingyu@hnu.edu.cn
+@Software: Visual Studio Code
+@File    : metrics_utils.py
+@Time    : 2024/11/15 20:28:51
+@Desc    : 
+"""
+
 import numpy as np
 from .import_utils import lazy_import_module
 
 
-def build_metrics(metric_dict: dict):
+class MetricEvaluator:
     """
-    根据配置字典动态构建并返回指标类实例列表。
+    MetricEvaluator 类用于根据配置字典动态构建并计算指标。
 
-    该方法遍历传入的字典 `metric_dict`，从指定模块中动态导入每个指标类，并根据配置的参数实例化相应的指标对象。 
-    所有实例化的指标对象将被添加到 `metrics` 列表中并返回。
+    它提供了两个主要功能：
+    1. 根据给定的配置字典，动态构建和实例化各个指标类。
+    2. 计算这些指标并返回结果。
 
-    :param metric_dict: dict, 配置字典，其中包含指标名称及其对应的参数。
-                        字典的键是指标函数的名称（例如 'accuracy_score'），值是该函数需要的参数（字典形式）。
-                        示例：{'accuracy_score': {}, 'precision_score': {'average': 'micro'}}。
-    :return: list, 指标类实例的列表，包含所有根据配置文件实例化的指标对象。
+    :param metric_dict: dict, 配置字典，包含指标名称和对应的参数。
     """
-    metrics = []
-    # 遍历指标字典，动态导入相应的指标函数并计算
-    for metric_name, params in metric_dict.items():
-        # 动态导入sklearn.metrics中的指标函数
-        metric_cls = lazy_import_module("metrics", metric_name)
-        
-        # 计算指标值
-        metric = metric_cls( **params) if params else metric_cls()
-        
-        # 将结果存入列表
-        metrics.append(metric)
-    return metrics
 
-def calculate_metrics(metric_list: list, params: dict):
-    """
-    根据列表动态计算指标，并返回计算结果的字典。
+    def __init__(self, metric_dict: dict):
+        """
+        初始化 MetricEvaluator 类，构建指标实例列表。
 
-    :param metric_list: dist, 指定要计算的指标类。
-    param params: 字典，包含 'y_true' 和 'y_pred'
+        :param metric_dict: dict, 配置字典，其中包含指标名称及其对应的参数。
+        """
+        self.metrics = self.build_metrics(metric_dict)
 
-    :return: dict, 包含每个指标名称和对应计算结果的字典。
-    """
-    metrics_result = {}
+    def build_metrics(self, metric_dict: dict):
+        """
+        根据配置字典动态构建并返回指标类实例列表。
 
-    for metric in metric_list:
-        # 获取指标实例的类名称作为字典的键
-        metric_name = metric.__class__.__name__
-        
-        # 调用每个指标实例的 compute 方法计算指标结果
-        result = metric.compute(params)
-        
-        # 将计算结果添加到结果字典
-        metrics_result[metric_name] = result
+        :param metric_dict: dict, 配置字典，包含指标名称及其对应的参数。
+                            字典的键是指标函数的名称（例如 'accuracy'），值是该函数需要的参数（字典形式）。
+                            示例：{'accuracy': {}, 'precision': {'average': 'micro'}}。
+        :return: list, 指标类实例的列表，包含所有根据配置文件实例化的指标对象。
+        """
+        metrics = []
+        # 遍历指标字典，动态导入相应的指标类并计算
+        for metric_name, params in metric_dict.items():
+            # 动态导入metrics中的指标类
+            metric_cls = lazy_import_module("metrics", metric_name)
 
-    return metrics_result
+            # 实例化指标类对象
+            metric = metric_cls(**params) if params else metric_cls()
+
+            # 将指标对象添加到指标列表
+            metrics.append(metric)
+        return metrics
+
+    def update_metrics(self, result: dict):
+        """
+        更新每个指标的计算数据，通常是每个 batch 的预测结果。
+
+        :param result: dict, 包含一个 batch 的预测结果，可以包含多个字段，如 'y_true', 'y_pred' 等。
+        """
+        for metric in self.metrics:
+            # 更新每个指标的计算数据
+            metric.update(result)
+
+    def calculate_metrics(self):
+        """
+        计算所有已更新的指标，并返回指标计算结果。
+
+        :return: dict, 包含每个指标名称和对应计算结果的字典。
+        """
+        metrics_result = {}
+
+        for metric in self.metrics:
+            # 获取指标实例的类名称作为字典的键
+            metric_name = metric.__class__.__name__
+
+            # 调用每个指标实例的 compute 方法计算指标结果
+            result = metric.compute()
+
+            # 将计算结果添加到结果字典
+            metrics_result[metric_name] = result
+
+            # 清空每个指标的内部结果
+            metric.clear()
+
+        return metrics_result
