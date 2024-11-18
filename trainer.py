@@ -12,9 +12,10 @@
 import os
 import torch
 import datetime
+import logging
 import torch.distributed as dist
 from torch.cuda.amp import autocast, GradScaler
-from sklearn.metrics import accuracy_score, roc_auc_score
+from torch.utils.tensorboard import SummaryWriter
 from torch.nn.parallel import DistributedDataParallel as DDP
 from utils import lazy_import_module, get_nested_field, MetricEvaluator
 
@@ -23,6 +24,17 @@ class Trainer(object):
     def __init__(self, cfg) -> None:
 
         self.cfg = cfg
+
+        # 获取实验保存路径
+        root = get_nested_field(self.cfg, "common.exp_dir", "./experiments/")
+        self.exp_dir = f"{root}/{datetime.datetime.now().strftime('%Y-%m-%d/%H-%M-%S')}"
+        self.log_dir, self.tb_dir, self.checkpoint_dir, self.config_dir = self._create_experiment_directories()
+
+        # 配置logging
+        self.logger = self._setup_logging()
+
+        # TensorBoard日志
+        self.tb_writer = SummaryWriter(log_dir=self.tb_dir)
 
         # 分布式环境配置
         self._ddp_backend = get_nested_field(self.cfg, "trainer.ddp_backend", "nccl")
@@ -44,8 +56,6 @@ class Trainer(object):
         self._metrics_evaluator = MetricEvaluator(metrics_dict)
         
 
-        # 保存路径
-        root = get_nested_field(cfg, "common.exp_dir", "./experiments/")
         # 任务配置
         self.task_select = get_nested_field(cfg, 'task.select', '')
         
@@ -71,6 +81,49 @@ class Trainer(object):
             world_size=world_size,
             rank=rank,
         )
+    
+    def _create_experiment_directories(self):
+        """创建实验目录结构，包括保存log, config, checkpoint, 和 TensorBoard文件夹。"""
+        # 创建实验根目录
+        os.makedirs(self.exp_dir, exist_ok=True)
+
+        # 创建日志文件夹
+        log_dir = f"{self.exp_dir}/log"
+        os.makedirs(log_dir, exist_ok=True)
+
+        # 创建TensorBoard文件夹
+        tb_dir = f"{self.exp_dir}/tb"
+        os.makedirs(tb_dir, exist_ok=True)
+
+        # 创建Checkpoint文件夹
+        checkpoint_dir = f"{self.exp_dir}/checkpoint"
+        os.makedirs(checkpoint_dir, exist_ok=True)
+
+        # 创建Config文件夹
+        config_dir = f"{self.exp_dir}/config"
+        os.makedirs(config_dir, exist_ok=True)
+
+        return log_dir, tb_dir, checkpoint_dir, config_dir
+
+    def _setup_logging(self):
+        """配置日志记录器，输出日志到控制台和文件。"""
+        log_file = os.path.join(self.log_dir, "training.log")
+        logging.basicConfig(
+            level=logging.INFO,
+            format="%(asctime)s - %(message)s",
+            handlers=[
+                logging.StreamHandler(),  # 输出到控制台
+                logging.FileHandler(log_file),  # 输出到日志文件
+            ]
+        )
+        return logging.getLogger()
+
+    def save_config(self):
+        """将配置文件保存到experiment目录下的config.yaml。"""
+        import yaml
+        config_file = os.path.join(self.config_dir, "config.yaml")
+        with open(config_file, "w", encoding='utf-8') as f:
+            yaml.dump(self.cfg, f, default_flow_style=False, allow_unicode=True)
  
     def train(self, rank, world_size):
         """
@@ -118,41 +171,55 @@ class Trainer(object):
 
             # eval
             if step % self._eval_interval == 0:
-                # 验证集
                 dev_metrics = self._eval_step(model, dev_loader, device, world_size)
+                self.logger.info(f"Step {step}, Validation Metrics: {dev_metrics}")
 
-                # 保存最好的模型
-                pass
-
-                print(f"Step {step}, ", end="")
-                # 动态打印所有在 metrics 中的指标
-                metrics_output = ", ".join([f"{metric}: {value:.4f}" for metric, value in dev_metrics.items()])
-                print(f"{metrics_output}")
-
-                # 训练集
                 test_metrics = self._eval_step(model, test_loader, device, world_size)
-                print(f"Step {step}, ", end="")
-                # 动态打印所有在 metrics 中的指标
-                metrics_output = ", ".join([f"{metric}: {value:.4f}" for metric, value in test_metrics.items()])
-                print(f"{metrics_output}")
+                self.logger.info(f"Step {step}, Test Metrics: {test_metrics}")
+
+                # 判断评估指标是否达到了最优
+                current_metric_value = dev_metrics.get(self.eval_metric, None)  # 获取当前评估指标的值
+
+                # 初始化最优指标值和模型保存路径
+                if hasattr(self, 'best_metric_value') and current_metric_value is not None:
+                    if current_metric_value > self.best_metric_value:
+                        self.best_metric_value = current_metric_value
+                        # 保存最优模型
+                        best_model_filename = f"{self.checkpoint_dir}/best_model.pt"
+                        self._save_checkpoint(best_model_filename)
+                        self.logger.info(f"Best model saved with {self.eval_metric}: {current_metric_value}")
+                else:
+                    # 如果是第一次初始化或配置中没有提供评估指标，保存模型
+                    if current_metric_value is not None:
+                        self.best_metric_value = current_metric_value
+                        best_model_filename = f"{self.checkpoint_dir}/best_model.pt"
+                        self._save_checkpoint(best_model_filename)
+                        self.logger.info(f"Best model saved with {self.eval_metric}: {current_metric_value}")
 
             # log
             if step % self._log_interval == 0:
-                print(f"Step {step}, Loss: {tot_loss / self._log_interval}")
+                self.logger.info(f"Step {step}, Loss: {tot_loss / self._log_interval}")
                 tot_loss = 0
 
                 metrics = self._eval_step(model, test_loader, device, world_size)
+                self.logger.info(f"Step {step}, Test Metrics: {metrics}")
 
-                # acc = (correct / total).item()
-                # print(f"Step {step}, Test Loss: {tot_eval_loss / total}, acc: {acc}")
-                print(f"Step {step}, ", end="")
-                # 动态打印所有在 metrics 中的指标
-                metrics_output = ", ".join([f"{metric}: {value:.4f}" for metric, value in metrics.items()])
-                print(f"{metrics_output}")
-            
+            # 记录到TensorBoard
+            self.tb_writer.add_scalar('Loss/train', tot_loss / self._log_interval, step)
+            for metric, value in metrics.items():
+                self.tb_writer.add_scalar(f'Metrics/{metric}', value, step)
+
             # save
             if step % self._save_interval == 0:
-                pass
+                # 构造保存路径和文件名
+                checkpoint_filename = f"{self.checkpoint_dir}/checkpoint_step_{step}.pt"
+                
+                # 保存模型参数
+                self._save_checkpoint(checkpoint_filename)
+
+                # 记录日志
+                self.logger.info(f"Checkpoint and config saved for step {step}. Checkpoint file: {checkpoint_filename}")
+
 
         # 结束分布式进程
         # dist.destroy_process_group()

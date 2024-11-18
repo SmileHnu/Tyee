@@ -11,3 +11,4 @@
 """
 from models.upstream.wavelet import Wavelet
 from models.upstream.eeg2msvec.expert import EEG2MSVecExpert
+from models.upstream.mlp import MLP

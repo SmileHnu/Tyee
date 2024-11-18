@@ -32,7 +32,7 @@ class EmotionRecognitionTask(PRLTask):
     def train_step(self, model, data, target):
         # print(type(data),type(target))
         
-        output, _ = model(data, data.size(1))
+        output= model(data)
         # print(target.device)
         # print(self.loss.weight.device)
         self.loss.weight = self.loss.weight.to(target.device)
@@ -44,10 +44,12 @@ class EmotionRecognitionTask(PRLTask):
         
     def valid_step(self, model, data, target):
         # print(type(data),type(target))
-        output, _ = model(data, data.size(1))
+        output= model(data)
         self.loss.weight = self.loss.weight.to(target.device)
         loss = self.loss(output, target)
 
         return {
-            'loss':loss
+            'loss':loss,
+            'output':output,
+            'target':target
         }

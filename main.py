@@ -47,15 +47,6 @@ def main() -> None:
     print(cfg)
     cfg = merge_config(cfg, args)
 
-    # 写回
-    root = get_nested_field(cfg, "common.exp_dir", "./experiments/")
-    exp_dir = f"{root}/{datetime.datetime.now().strftime('%Y-%m-%d/%H-%M-%S')}"
-
-    if not os.path.exists(exp_dir): 
-        os.makedirs(exp_dir)
-    
-    with open(os.path.join(exp_dir, "config.yaml"), 'w', encoding='utf-8') as f:
-        yaml.dump(cfg, f, default_flow_style=False, allow_unicode=True)
 
     # 加入随机种子
     seed = get_nested_field(cfg, "common.seed", 1337)
