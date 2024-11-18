@@ -72,7 +72,7 @@ class BCICIV2aTask(PRLTask):
         pred = model(x, padding_mask)
         loss = self.loss(pred, target)
         return {
-            "pred": pred,
+            "output": pred,
             "target": target,
             "loss": loss
         }
@@ -87,6 +87,6 @@ class BCICIV2aTask(PRLTask):
 
         return {
             "loss": loss,
-            "pred": pred,
+            "output": pred,
             "target": target
         }

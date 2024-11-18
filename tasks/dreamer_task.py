@@ -79,6 +79,6 @@ class DREAMERTask(PRLTask):
 
         return {
             "loss": loss,
-            "pred": pred,
+            "output": pred,
             "target": target
         }

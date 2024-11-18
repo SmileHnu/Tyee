@@ -71,7 +71,7 @@ class WaveletBCICIV2aTask(PRLTask):
         pred = model(x)
         loss = self.loss(pred, target)
         return {
-            "pred": pred,
+            "output": pred,
             "target": target,
             "loss": loss
         }
@@ -85,6 +85,6 @@ class WaveletBCICIV2aTask(PRLTask):
 
         return {
             "loss": loss,
-            "pred": pred,
+            "output": pred,
             "target": target
         }

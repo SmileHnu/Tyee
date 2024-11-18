@@ -25,7 +25,7 @@ class Metric(ABC):
     def update(self, result: dict):
         """
         更新指标的计算数据，通常是将每个 batch 的预测值和真实值累积到一个内部结构中。
-        :param result: 一个包含多个键值对的字典，可能包括 'y_true', 'y_pred'，或者其他你需要的字段
+        :param result: 一个包含多个键值对的字典，可能包括 'target', 'output'，或者其他你需要的字段
         """
         pass
 
@@ -55,24 +55,24 @@ class Accuracy(Metric):
     def update(self, result: dict):
         """
         更新准确率指标的计算数据
-        :param result: 字典，包含 'y_true' 和 'y_pred'
+        :param result: 字典，包含 'target' 和 'output'
         """
-        y_true = result.get('y_true')
-        y_pred = result.get('y_pred')
-        if y_true is not None and y_pred is not None:
-            self._accumulated_results.append((y_true, y_pred))
+        target = result.get('target')
+        output = result.get('output')
+        if target is not None and output is not None:
+            self._accumulated_results.append((target, output))
 
     def compute(self):
         """
         计算准确率
         :return: 准确率
         """
-        all_true = []
-        all_pred = []
-        for y_true, y_pred in self._accumulated_results:
-            all_true.extend(y_true)
-            all_pred.extend(y_pred)
-        return accuracy_score(all_true, all_pred)
+        all_targets = []
+        all_outputs = []
+        for target, output in self._accumulated_results:
+            all_targets.extend(target)
+            all_outputs.extend(output)
+        return accuracy_score(all_targets, all_outputs)
 
 
 # 子类：精确度指标
@@ -84,24 +84,24 @@ class Precision(Metric):
     def update(self, result: dict):
         """
         更新精确度指标的计算数据
-        :param result: 字典，包含 'y_true' 和 'y_pred'
+        :param result: 字典，包含 'target' 和 'output'
         """
-        y_true = result.get('y_true')
-        y_pred = result.get('y_pred')
-        if y_true is not None and y_pred is not None:
-            self._accumulated_results.append((y_true, y_pred))
+        target = result.get('target')
+        output = result.get('output')
+        if target is not None and output is not None:
+            self._accumulated_results.append((target, output))
 
     def compute(self):
         """
         计算精确度
         :return: 精确度
         """
-        all_true = []
-        all_pred = []
-        for y_true, y_pred in self._accumulated_results:
-            all_true.extend(y_true)
-            all_pred.extend(y_pred)
-        return precision_score(all_true, all_pred, average=self.average)
+        all_targets = []
+        all_outputs = []
+        for target, output in self._accumulated_results:
+            all_targets.extend(target)
+            all_outputs.extend(output)
+        return precision_score(all_targets, all_outputs, average=self.average)
 
 
 # 子类：召回率指标
@@ -113,24 +113,24 @@ class Recall(Metric):
     def update(self, result: dict):
         """
         更新召回率指标的计算数据
-        :param result: 字典，包含 'y_true' 和 'y_pred'
+        :param result: 字典，包含 'target' 和 'output'
         """
-        y_true = result.get('y_true')
-        y_pred = result.get('y_pred')
-        if y_true is not None and y_pred is not None:
-            self._accumulated_results.append((y_true, y_pred))
+        target = result.get('target')
+        output = result.get('output')
+        if target is not None and output is not None:
+            self._accumulated_results.append((target, output))
 
     def compute(self):
         """
         计算召回率
         :return: 召回率
         """
-        all_true = []
-        all_pred = []
-        for y_true, y_pred in self._accumulated_results:
-            all_true.extend(y_true)
-            all_pred.extend(y_pred)
-        return recall_score(all_true, all_pred, average=self.average)
+        all_targets = []
+        all_outputs = []
+        for target, output in self._accumulated_results:
+            all_targets.extend(target)
+            all_outputs.extend(output)
+        return recall_score(all_targets, all_outputs, average=self.average)
 
 
 # 子类：F1分数指标
@@ -142,21 +142,21 @@ class F1(Metric):
     def update(self, result: dict):
         """
         更新F1分数指标的计算数据
-        :param result: 字典，包含 'y_true' 和 'y_pred'
+        :param result: 字典，包含 'target' 和 'output'
         """
-        y_true = result.get('y_true')
-        y_pred = result.get('y_pred')
-        if y_true is not None and y_pred is not None:
-            self._accumulated_results.append((y_true, y_pred))
+        target = result.get('target')
+        output = result.get('output')
+        if target is not None and output is not None:
+            self._accumulated_results.append((target, output))
 
     def compute(self):
         """
         计算F1分数
         :return: F1分数
         """
-        all_true = []
-        all_pred = []
-        for y_true, y_pred in self._accumulated_results:
-            all_true.extend(y_true)
-            all_pred.extend(y_pred)
-        return f1_score(all_true, all_pred, average=self.average)
+        all_targets = []
+        all_outputs = []
+        for target, output in self._accumulated_results:
+            all_targets.extend(target)
+            all_outputs.extend(output)
+        return f1_score(all_targets, all_outputs, average=self.average)
