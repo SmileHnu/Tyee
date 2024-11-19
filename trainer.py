@@ -36,6 +36,9 @@ class Trainer(object):
         # TensorBoard日志
         self.tb_writer = SummaryWriter(log_dir=self.tb_dir)
 
+        # 保存config
+        self.save_config()
+
         # 分布式环境配置
         self._ddp_backend = get_nested_field(self.cfg, "trainer.ddp_backend", "nccl")
         self._init_method = get_nested_field(self.cfg, "trainer.init_method", "tcp://127.0.0.1:60575")
