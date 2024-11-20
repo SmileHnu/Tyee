@@ -11,7 +11,7 @@ dataset:
   - car_test.txt
   num_workers: 2
   path: data
-  train: car_train.txt
+  train: car_1000.txt
   transforms:
     select: []
 

@@ -59,11 +59,20 @@ class MetricEvaluator:
         """
         更新每个指标的计算数据，通常是每个 batch 的预测结果。
 
-        :param result: dict, 包含一个 batch 的预测结果，可以包含多个字段，如 'y_true', 'y_pred' 等。
+        :param result: dict, 包含一个 batch 的预测结果，可以包含多个字段，如 'target', 'output' 等。
         """
+        target = result.get('target')
+        output = result.get('output')
+
+        if target is None or output is None:
+            raise ValueError("Result dictionary must contain 'target' and 'output'.")
+
         for metric in self.metrics:
-            # 更新每个指标的计算数据
+            # 确保 target 和 output 数据一致性
+            if len(target) != len(output):
+                raise ValueError("Target and output must have the same length.")
             metric.update(result)
+
 
     def calculate_metrics(self):
         """

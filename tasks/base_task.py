@@ -191,12 +191,12 @@ class PRLTask(object):
         
         return data_loader
     
-    def load_sample(self, iterator):
+    def load_sample(self, iterator, device):
         sample = next(iterator)
             
         for k, v in sample.items():
             if v is not None:
-                sample[k] = v
+                sample[k] = v.to(device)
         
         return sample
 
