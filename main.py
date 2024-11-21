@@ -15,8 +15,9 @@ import torch
 import random
 import datetime
 import numpy as np
-from torch import multiprocessing as mp
 from trainer import Trainer
+from utils import init_logging
+from torch import multiprocessing as mp
 from utils.cfg_utils import get_nested_field, merge_config
 
 

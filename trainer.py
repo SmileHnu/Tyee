@@ -132,9 +132,6 @@ class Trainer(object):
         optimizer = self.task.build_optimizer(model)
         lr_scheduler = self.task.build_lr_scheduler(optimizer)
 
-        self.model = model
-        self.optimizer = optimizer
-        self.lr_scheduler = lr_scheduler
 
         device = torch.device(rank)
         model = model.to(device)
@@ -223,26 +220,23 @@ class Trainer(object):
                     if save_best:
                         self.best_metric_value = current_metric_value
                         best_model_filename = f"{self.checkpoint_dir}/checkpoint_best.pt"
-                        self._save_checkpoint(best_model_filename)
+                        self._save_checkpoint(best_model_filename, model, optimizer, lr_scheduler)
                         self.logger.info(f"Best checkpoint saved with {self.eval_metric}: {current_metric_value}")
 
-
-            # 记录上一次保存的检查点文件名
-            last_checkpoint = None
 
             if step % self._save_interval == 0:
                 # 构造保存路径和文件名
                 checkpoint_filename = f"{self.checkpoint_dir}/checkpoint_step_{step}.pt"
 
                 # 保存模型参数
-                self._save_checkpoint(checkpoint_filename)
+                self._save_checkpoint(checkpoint_filename, model, optimizer, lr_scheduler)
 
                 # 删除之前的检查点文件（如果存在）
-                if last_checkpoint and os.path.exists(last_checkpoint):
-                    os.remove(last_checkpoint)
+                if hasattr(self, 'last_checkpoint') and os.path.exists(self.last_checkpoint):
+                    os.remove(self.last_checkpoint)
 
                 # 更新记录的上一次检查点文件名
-                last_checkpoint = checkpoint_filename
+                self.last_checkpoint = checkpoint_filename
 
                 # 记录日志
                 self.logger.info(f"Checkpoint saved for step {step}")
@@ -346,16 +340,16 @@ class Trainer(object):
         
 
 
-    def _state_dict(self):
+    def _state_dict(self, model, optimizer, lr_scheduler):
         return {
             "args": self.cfg,
-            "model": self.model.state_dict(),
-            "optimizer": self.optimizer.state_dict(),
-            "lr_scheduler": self.lr_scheduler.state_dict()
+            "model": model.state_dict(),
+            "optimizer": optimizer.state_dict(),
+            "lr_scheduler": lr_scheduler.state_dict()
         }
     
-    def _save_checkpoint(self, filename):
-        checkpoint = self._state_dict()
+    def _save_checkpoint(self, filename, model, optimizer, lr_scheduler):
+        checkpoint = self._state_dict(model, optimizer, lr_scheduler)
         torch.save(checkpoint, filename)
         print(f"Checkpoint saved to {filename}")
 
