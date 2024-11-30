@@ -1,0 +1,63 @@
+common:
+  seed: 0
+  verbose: true
+  exp_dir: experiments
+
+dataset:
+  batch_size: 8
+  dataset: MoBIDataset
+  eval:
+  num_workers: 2
+  path: data\MoBI
+  train: 
+  transforms:
+    select: []
+
+lr_scheduler:
+  gamma: 0.1
+  select: StepLR
+  step_size: 4500
+
+model:
+  downstream:
+    classes: 4
+    select: mlp
+  upstream:
+    select: labram_base_patch200_200
+    trainable: true
+    finetune: models\upstream\labram\checkpoints\labram-base.pth
+    nb_classes: 12
+    drop: 0.0
+    drop_path: 0.1
+    attn_drop_rate: 0.0
+    drop_block_rate: null
+    use_mean_pooling: true
+    init_scale: 0.001
+    rel_pos_bias: true
+    abs_pos_emb: true
+    layer_scale_init_value: 0.1
+    qkv_bias: true
+
+optimizer:
+  lr: 5e-4
+  select: Adam
+
+task:
+  loss:
+    select: MSELoss
+    weight:
+  select: MoBITask
+
+trainer:
+  ddp_backend: gloo
+  fp16: false
+  total_steps: 5100
+  save_interval: 20
+  eval_interval: 20
+  log_interval: 100
+  world_size: 1
+  eval_metric: r2
+  metrics:
+    pea_cor: {}
+    r2: {}
+    rmse: {}

@@ -43,6 +43,8 @@ class PRLTask(object):
         # 优化器配置
         self.optimizer_select = get_nested_field(cfg, 'optimizer.select', '')
         self.lr = get_nested_field(cfg, 'optimizer.lr', 0.0001)
+        # lr可能是科学表示法
+        self.lr = float(self.lr)
 
         # 学习率调度器配置
         self.lr_scheduler_select = get_nested_field(cfg, 'lr_scheduler.select', '')

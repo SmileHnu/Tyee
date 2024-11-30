@@ -12,3 +12,4 @@
 from models.upstream.wavelet import Wavelet
 from models.upstream.eeg2msvec.expert import EEG2MSVecExpert
 from models.upstream.mlp import MLP
+from models.upstream.labram.modeling_finetune import labram_base_patch200_200, labram_huge_patch200_200, labram_large_patch200_200

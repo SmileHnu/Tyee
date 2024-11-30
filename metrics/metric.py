@@ -13,30 +13,36 @@
 import torch
 import numpy as np
 from abc import ABC, abstractmethod
-from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
+from sklearn.metrics import (
+    accuracy_score, balanced_accuracy_score,
+    precision_score, recall_score, f1_score,
+    roc_auc_score, precision_recall_curve, auc,
+    mean_squared_error, r2_score
+)
 
-def process_result(result: dict):
+
+def process_result(result: dict, is_classification: bool = True):
     """
-    处理输入的 result 字典：
-    1. 将其中的 Tensor 数据转换为 CPU 上的 NumPy 数组。
-    2. 如果 output 是概率分布（多维数组），转换为类别标签。
-
-    :param result: 字典，包含 'target' 和 'output'。
-    :return: 处理后的字典。
+    处理输入的 result 字典：将 Tensor 数据转换为 NumPy 数组，并根据任务类型处理输出。
+    :param result: 字典，包含 'target' 和 'output'
+    :param is_classification: 布尔值，判断当前任务是否为分类任务（默认是分类任务）
+    :return: 处理后的字典
     """
     processed_result = {}
     for key, value in result.items():
         if isinstance(value, torch.Tensor):
-            value = value.detach().cpu().numpy()  # 确保与计算图分离
+            value = value.detach().cpu().numpy()  # 分离计算图，转为 NumPy
 
-        # 如果是 output 且是概率分布，将其转换为类别标签
-        if key == 'output' and value is not None:
-            if value.ndim > 1:
-                value = np.argmax(value, axis=1)  # 多分类转换为类别索引
-            elif value.ndim == 1:
-                pass  # 一维数据，无需处理
-            else:
-                raise ValueError(f"Unexpected output shape: {value.shape}")
+        if key == "output" and value is not None:
+            if is_classification:
+                if value.ndim > 1:  # 多分类问题
+                    processed_result["output_raw"] = value.copy()  # 保留原始输出
+                    value = np.argmax(value, axis=1)  # 转为类别索引
+                elif value.ndim == 1:  # 二分类问题
+                    processed_result["output_raw"] = value.copy()
+                    value = (value > 0.5).astype(int)  # 转为二分类标签
+                else:
+                    raise ValueError(f"Unexpected output shape: {value.shape}")
 
         processed_result[key] = value
 
@@ -46,22 +52,19 @@ def process_result(result: dict):
 def merge_results(accumulated_results):
     """
     合并累积的 target 和 output 数据
-    :param accumulated_results: 累积的结果列表 [(target1, output1), (target2, output2), ...]
-    :return: all_targets, all_outputs 合并后的 NumPy 数组
     """
-    all_targets = np.array([])
-    all_outputs = np.array([])
-    for target, output in accumulated_results:
-        all_targets = np.concatenate((all_targets, target), axis=0) if all_targets.size > 0 else target
-        all_outputs = np.concatenate((all_outputs, output), axis=0) if all_outputs.size > 0 else output
+    all_targets = np.concatenate([res[0] for res in accumulated_results], axis=0)
+    all_outputs = np.concatenate([res[1] for res in accumulated_results], axis=0)
     return all_targets, all_outputs
 
 
 class Metric(ABC):
     """
-    指标的父类，定义了计算指标的接口
+    指标的抽象基类，定义了 update、compute 和 reset 接口。
     """
-    def __init__(self):
+
+    def __init__(self, average="binary"):
+        self.average = average
         self.reset()
 
     @abstractmethod
@@ -81,90 +84,110 @@ class Metric(ABC):
 
 class Accuracy(Metric):
     def update(self, result: dict):
-        """
-        更新准确率指标的计算数据
-        :param result: 字典，包含 'target' 和 'output'
-        """
-
         result = process_result(result)
-        target = result.get('target')
-        output = result.get('output')
-
+        target = result.get("target")
+        output = result.get("output")
         if target is not None and output is not None:
             self._accumulated_results.append((target, output))
 
     def compute(self):
-        """
-        计算准确率
-        :return: 准确率
-        """
         all_targets, all_outputs = merge_results(self._accumulated_results)
         return accuracy_score(all_targets, all_outputs)
 
 
-class Precision(Metric):
-    def __init__(self, average='binary'):
-        super().__init__()
-        self.average = average
-
+class BalancedAccuracy(Metric):
     def update(self, result: dict):
-        """
-        更新精确度指标的计算数据
-        :param result: 字典，包含 'target' 和 'output'
-        """
         result = process_result(result)
-        target = result.get('target')
-        output = result.get('output')
-
+        target = result.get("target")
+        output = result.get("output")
         if target is not None and output is not None:
             self._accumulated_results.append((target, output))
 
     def compute(self):
-        """
-        计算精确度
-        :return: 精确度
-        """
+        all_targets, all_outputs = merge_results(self._accumulated_results)
+        return balanced_accuracy_score(all_targets, all_outputs)
+
+
+class PR_AUC(Metric):
+    def update(self, result: dict):
+        result = process_result(result)
+        target = result.get("target")
+        output_raw = result.get("output_raw")
+        if target is not None and output_raw is not None:
+            self._accumulated_results.append((target, output_raw))
+
+    def compute(self):
+        all_targets, all_outputs = merge_results(self._accumulated_results)
+        if len(np.unique(all_targets)) == 1:  # 所有标签相同
+            return 0.0
+        precision, recall, _ = precision_recall_curve(all_targets, all_outputs)
+        return auc(recall, precision)
+
+
+class ROC_AUC(Metric):
+    def update(self, result: dict):
+        result = process_result(result)
+        target = result.get("target")
+        output_raw = result.get("output_raw")
+        if target is not None and output_raw is not None:
+            self._accumulated_results.append((target, output_raw))
+
+    def compute(self):
+        all_targets, all_outputs = merge_results(self._accumulated_results)
+        if len(np.unique(all_targets)) == 1:  # 所有标签相同
+            return 0.0
+        return roc_auc_score(all_targets, all_outputs)
+
+
+class Precision(Metric):
+    def update(self, result: dict):
+        result = process_result(result)
+        target = result.get("target")
+        output = result.get("output")
+        if target is not None and output is not None:
+            self._accumulated_results.append((target, output))
+
+    def compute(self):
         all_targets, all_outputs = merge_results(self._accumulated_results)
         return precision_score(all_targets, all_outputs, average=self.average)
 
 
 class Recall(Metric):
-    def __init__(self, average='binary'):
-        super().__init__()
-        self.average = average
-
     def update(self, result: dict):
-        """
-        更新召回率指标的计算数据
-        :param result: 字典，包含 'target' 和 'output'
-        """
         result = process_result(result)
-        target = result.get('target')
-        output = result.get('output')
-
+        target = result.get("target")
+        output = result.get("output")
         if target is not None and output is not None:
             self._accumulated_results.append((target, output))
 
     def compute(self):
-        """
-        计算召回率
-        :return: 召回率
-        """
         all_targets, all_outputs = merge_results(self._accumulated_results)
         return recall_score(all_targets, all_outputs, average=self.average)
 
 
-class F1(Metric):
-    def __init__(self, average='binary'):
+class F1Score(Metric):
+    def update(self, result: dict):
+        result = process_result(result)
+        target = result.get("target")
+        output = result.get("output")
+        if target is not None and output is not None:
+            self._accumulated_results.append((target, output))
+
+    def compute(self):
+        all_targets, all_outputs = merge_results(self._accumulated_results)
+        return f1_score(all_targets, all_outputs, average=self.average)
+
+"""   回归任务  """
+class PearsonCorrelation(Metric):
+    def __init__(self):
         super().__init__()
-        self.average = average
 
     def update(self, result: dict):
         """
-        更新F1分数指标的计算数据
+        更新Pearson相关系数指标的计算数据
         :param result: 字典，包含 'target' 和 'output'
         """
-        result = process_result(result)
+        result = process_result(result, is_classification=False)
         target = result.get('target')
         output = result.get('output')
 
@@ -173,9 +196,59 @@ class F1(Metric):
 
     def compute(self):
         """
-        计算F1分数
-        :return: F1分数
+        计算Pearson相关系数
+        :return: Pearson相关系数
         """
         all_targets, all_outputs = merge_results(self._accumulated_results)
-        return f1_score(all_targets, all_outputs, average=self.average)
+        return np.corrcoef(all_targets, all_outputs)[0, 1]
+    
 
+class R2Score(Metric):
+    def __init__(self):
+        super().__init__()
+
+    def update(self, result: dict):
+        """
+        更新R²得分指标的计算数据
+        :param result: 字典，包含 'target' 和 'output'
+        """
+        result = process_result(result, is_classification=False)
+        target = result.get('target')
+        output = result.get('output')
+
+        if target is not None and output is not None:
+            self._accumulated_results.append((target, output))
+
+    def compute(self):
+        """
+        计算R²得分
+        :return: R²得分
+        """
+        all_targets, all_outputs = merge_results(self._accumulated_results)
+        return r2_score(all_targets, all_outputs)
+
+
+class RMSE(Metric):
+    def __init__(self):
+        super().__init__()
+
+    def update(self, result: dict):
+        """
+        更新RMSE指标的计算数据
+        :param result: 字典，包含 'target' 和 'output'
+        """
+        result = process_result(result, is_classification=False)
+        target = result.get('target')
+        output = result.get('output')
+
+        if target is not None and output is not None:
+            self._accumulated_results.append((target, output))
+
+    def compute(self):
+        """
+        计算均方根误差(RMSE)
+        :return: RMSE值
+        """
+        all_targets, all_outputs = merge_results(self._accumulated_results)
+        mse = mean_squared_error(all_targets, all_outputs)
+        return np.sqrt(mse)
