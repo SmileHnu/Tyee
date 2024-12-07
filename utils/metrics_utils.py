@@ -89,6 +89,9 @@ class MetricEvaluator:
             # 调用每个指标实例的 compute 方法计算指标结果
             result = metric.compute()
 
+            # 保留结果的小数点后四位
+            result = round(result, 4)
+
             # 将计算结果添加到结果字典
             metrics_result[metric_name] = result
 

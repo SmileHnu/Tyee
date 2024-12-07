@@ -8,6 +8,6 @@ from .metric import (
     F1Score as f1,
     R2Score as r2,
     PearsonCorrelation as pea_cor,
-    RMSE as rmse
-    
+    RMSE as rmse,
+    CohenKappa as cohen_kappa
 )

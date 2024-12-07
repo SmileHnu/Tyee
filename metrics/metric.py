@@ -17,7 +17,7 @@ from sklearn.metrics import (
     accuracy_score, balanced_accuracy_score,
     precision_score, recall_score, f1_score,
     roc_auc_score, precision_recall_curve, auc,
-    mean_squared_error, r2_score
+    mean_squared_error, r2_score, cohen_kappa_score
 )
 
 
@@ -176,6 +176,30 @@ class F1Score(Metric):
     def compute(self):
         all_targets, all_outputs = merge_results(self._accumulated_results)
         return f1_score(all_targets, all_outputs, average=self.average)
+    
+class CohenKappa(Metric):
+    def __init__(self):
+        super().__init__()
+
+    def update(self, result: dict):
+        """
+        更新 Cohen's Kappa 指标的计算数据
+        :param result: 字典，包含 'target' 和 'output'
+        """
+        result = process_result(result)
+        target = result.get('target')
+        output = result.get('output')
+
+        if target is not None and output is not None:
+            self._accumulated_results.append((target, output))
+
+    def compute(self):
+        """
+        计算 Cohen's Kappa 值
+        :return: Cohen's Kappa
+        """
+        all_targets, all_outputs = merge_results(self._accumulated_results)
+        return cohen_kappa_score(all_targets, all_outputs)
 
 """   回归任务  """
 class PearsonCorrelation(Metric):

@@ -1,0 +1,81 @@
+common:
+  seed: 0
+  verbose: true
+  exp_dir: experiments
+
+dataset:
+  batch_size: 16
+  dataset: TUEVDataset
+  eval:
+  - processed_eval
+  - processed_test
+  num_workers: 2
+  path: /home/lingyus/data/TUEV/tuh_eeg_events/v2.0.1/edf/processed
+  train: processed_train
+  transforms:
+    select: []
+
+lr_scheduler:
+  select: WarmupCosineAnnealingLR
+  T_max: 127320
+  eta_min: 0
+  warmup_start_lr: 0
+  warmup_steps: 12732
+
+model:
+  downstream:
+    classes: 4
+    select: mlp
+  upstream:
+    select: labram_base_patch200_200
+    trainable: true
+    finetune: /home/lingyus/code/PRL/models/upstream/labram/checkpoints/labram-base.pth
+    nb_classes: 6
+    drop: 0.0
+    drop_path: 0.1
+    attn_drop_rate: 0.0
+    drop_block_rate: null
+    use_mean_pooling: true
+    init_scale: 0.001
+    rel_pos_bias: false
+    abs_pos_emb: true
+    layer_scale_init_value: 0.1
+    qkv_bias: false
+
+optimizer:
+  lr: 5e-4
+  select: AdamW
+  opt: adamw                    # 优化器类型
+  opt_eps: 1e-8                  # 优化器的 epsilon 参数
+  opt_betas: null                # 优化器的 beta 参数 (如使用 Adam 时的 beta1, beta2)
+  clip_grad: null                # 梯度裁剪值 (可选)
+  momentum: 0.9                  # 动量 (如果优化器支持)
+  weight_decay: 0.05             # 权重衰减 (L2正则化)
+  weight_decay_end: null         # 权重衰减结束值 (可选)
+
+  lr: 5e-4                         # 初始学习率
+  layer_decay: 0.65                # 层级学习率衰减
+  warmup_lr: 1e-6                  # 预热学习率
+  min_lr: 1e-6                     # 最小学习率
+
+task:
+  loss:
+    select: LabelSmoothingCrossEntropy
+    weight:
+  select: TUEVTask
+
+trainer:
+  ddp_backend: gloo
+  fp16: true
+  total_steps: 127320
+  save_interval: 4244
+  eval_interval: 4244
+  log_interval: 20
+  world_size: 1
+  eval_metric: BalancedAccuracy
+  metrics:
+    acc: {}
+    bal_acc: {}
+    f1:
+      average: 'weighted'
+    cohen_kappa: {}

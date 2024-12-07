@@ -18,7 +18,7 @@ from utils import MetricEvaluator
 from utils import init_logging
 from torch.cuda.amp import autocast, GradScaler
 from torch.utils.tensorboard import SummaryWriter
-from utils import lazy_import_module, get_nested_field
+from utils import lazy_import_module, get_nested_field, get_grad_norm
 from torch.nn.parallel import DistributedDataParallel as DDP
 
 
@@ -145,7 +145,8 @@ class Trainer(object):
         test_loader = self.task.build_dataloader(test_dataset, self._batch_size, sampler=None)
 
         # 如果使用FP16，初始化 GradScaler
-        scaler = GradScaler() if self.fp16 else None
+        scaler = torch.amp.GradScaler(enabled=self.fp16) if self.fp16 else None
+
 
         iterator = self.task.get_batch_iterator(train_loader)
         # 初始化累积指标
@@ -165,30 +166,46 @@ class Trainer(object):
                     accumulated_train_metrics[metric] = 0
                 accumulated_train_metrics[metric] += value
 
+            # 在更新参数之前，计算梯度范数
+            grad_norm = get_grad_norm(model.parameters(), norm_type=2)  # 可以选择L2范数
+
+            # 打印lr
+            min_lr = 10.
+            max_lr = 0.
+            for group in optimizer.param_groups:
+                min_lr = min(min_lr, group["lr"])
+                max_lr = max(max_lr, group["lr"])
+                weight_decay = group['weight_decay']
+
+            self.writer.add_scalar(f'opt/lr', max_lr, step)
+            self.writer.add_scalar(f'opt/min_lr', min_lr, step)
+            self.writer.add_scalar(f'opt/weight_decay', weight_decay, step)
+            self.writer.add_scalar(f'opt/grad_norm', grad_norm, step)
             # 日志记录
             if step % self._log_interval == 0:
                 # 计算平均训练指标
                 avg_train_metrics = {
-                    metric: value / self._log_interval for metric, value in accumulated_train_metrics.items()
+                    metric: round(value / self._log_interval, 4) for metric, value in accumulated_train_metrics.items()
                 }
-
+            
                 # 打印训练日志
                 self.logger.info(f"Train, Step {step}, Metrics: {avg_train_metrics}")
-
                 # 重置累积值
                 accumulated_train_metrics = {}
 
-                # 测试集日志
-                test_result = self._eval_step(model, test_loader, device, world_size)
+                # # 测试集日志
+                # test_result = self._eval_step(model, test_loader, device, world_size)
 
-                # 打印测试日志
-                self.logger.info(f"Test, Step {step}, Metrics: {test_result}")
+                # # 打印测试日志
+                # self.logger.info(f"Test, Step {step}, Metrics: {test_result}")
 
                 # 写入 TensorBoard
                 for metric, value in avg_train_metrics.items():
-                    self.writer.add_scalar(f'Metrics/train/{metric}', value, step)
-                for metric, value in test_result.items():
-                    self.writer.add_scalar(f'Metrics/test/{metric}', value, step)
+                    self.writer.add_scalar(f'train/{metric}', value, step)
+                # # 输出模型的所有参数
+                # for name, param in model.named_parameters():
+                #     self.logger.info(f"Parameter Name: {name}, Parameter Shape: {param.shape}")
+                #     self.logger.info(param.data)
 
             # 验证集日志
             if step % self._eval_interval == 0:
@@ -201,6 +218,12 @@ class Trainer(object):
 
                 # 打印测试日志
                 self.logger.info(f"Test, Step {step}, Metrics: {test_result}")
+
+                # 写入 TensorBoard
+                for metric, value in dev_result.items():
+                    self.writer.add_scalar(f'dev/{metric}', value, step)
+                for metric, value in test_result.items():
+                    self.writer.add_scalar(f'test/{metric}', value, step)
 
                 # 判断评估指标是否达到了最优
                 current_metric_value = dev_result.get(self.eval_metric, None)  # 获取当前评估指标的值
@@ -264,13 +287,18 @@ class Trainer(object):
         optimizer.zero_grad()
 
         # 使用自动混合精度（autocast）
-        with autocast(enabled=self.fp16):
+        with torch.amp.autocast('cuda', enabled=self.fp16):
             result = self.task.train_step(model, sample)  # 执行训练步骤
             loss = result['loss']  # 提取损失
 
-        # 如果启用FP16，使用Scaler来缩放梯度
+        # 如果启用了FP16，使用Scaler来缩放梯度
         if self.fp16:
             scaler.scale(loss).backward()  # 使用缩放后的梯度反向传播
+            
+            # 反缩放梯度
+            scaler.unscale_(optimizer)  # 反缩放梯度
+            
+            # 更新参数
             scaler.step(optimizer)  # 更新参数
             scaler.update()  # 更新Scaler状态
         else:
@@ -279,6 +307,7 @@ class Trainer(object):
 
         if lr_scheduler:
             lr_scheduler.step()
+
 
         # 更新指标
         self._metrics_evaluator.update_metrics(result)  # 更新指标数据
@@ -311,7 +340,7 @@ class Trainer(object):
                         sample[k] = v.to(device)
                 result = self.task.valid_step(model, sample)
                 tot_eval_loss += result['loss'].item()  # 累加损失
-                total += len(result["target"])
+                total += 1
 
                 self._metrics_evaluator.update_metrics(result)  # 更新指标
 
@@ -332,7 +361,7 @@ class Trainer(object):
         # metrics = {metric: value.item() for metric, value in metrics.items()}
 
         # 合并损失和指标到一个字典中
-        result = {"loss": tot_eval_loss / total}
+        result = {"loss": round(tot_eval_loss / total, 4)}
         result.update(metrics)
 
         return result
