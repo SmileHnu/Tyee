@@ -35,14 +35,18 @@ def process_result(result: dict, is_classification: bool = True):
 
         if key == "output" and value is not None:
             if is_classification:
-                if value.ndim > 1:  # 多分类问题
+                if value.ndim == 2 and value.shape[1] > 1:  # 多分类问题
                     processed_result["output_raw"] = value.copy()  # 保留原始输出
                     value = np.argmax(value, axis=1)  # 转为类别索引
-                elif value.ndim == 1:  # 二分类问题
+                elif value.ndim == 2 and value.shape[1] == 1:  # 二分类问题（输出是概率值）
+                    processed_result["output_raw"] = value.copy()
+                    value = (value > 0.5).astype(int)  # 转为二分类标签
+                elif value.ndim == 1:  # 二分类问题（输出是一维数组，通常是概率值）
                     processed_result["output_raw"] = value.copy()
                     value = (value > 0.5).astype(int)  # 转为二分类标签
                 else:
                     raise ValueError(f"Unexpected output shape: {value.shape}")
+
 
         processed_result[key] = value
 

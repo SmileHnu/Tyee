@@ -7,18 +7,20 @@ dataset:
   batch_size: 64
   dataset: TUABDataset
   eval:
-  - 
-  - 
+  - val
+  - test
   num_workers: 2
-  path: 
-  train: 
+  path: /home/lingyus/data/tuh_eeg_abnormal/v3.0.1/edf/processed
+  train: train
   transforms:
     select: []
 
 lr_scheduler:
-  gamma: 0.1
-  select: StepLR
-  step_size: 20
+  select: WarmupCosineAnnealingLR
+  T_max: 138990
+  eta_min: 0
+  warmup_start_lr: 0
+  warmup_steps: 13899
 
 model:
   downstream:
@@ -27,7 +29,7 @@ model:
   upstream:
     select: labram_base_patch200_200
     trainable: true
-    finetune: models\upstream\labram\checkpoints\labram-base.pth
+    finetune: /home/lingyus/code/PRL/models/upstream/labram/checkpoints/labram-base.pth
     nb_classes: 1
     drop: 0.0
     drop_path: 0.1
@@ -35,14 +37,26 @@ model:
     drop_block_rate: null
     use_mean_pooling: true
     init_scale: 0.001
-    rel_pos_bias: true
-    abs_pos_emb: false
+    rel_pos_bias: false
+    abs_pos_emb: true
     layer_scale_init_value: 0.1
-    qkv_bias: true
+    qkv_bias: false
 
 optimizer:
   lr: 5e-4
-  select: Adam
+  select: AdamW
+  opt: adamw                    # 优化器类型
+  opt_eps: 1e-8                  # 优化器的 epsilon 参数
+  opt_betas: null                # 优化器的 beta 参数 (如使用 Adam 时的 beta1, beta2)
+  clip_grad: null                # 梯度裁剪值 (可选)
+  momentum: 0.9                  # 动量 (如果优化器支持)
+  weight_decay: 0.05             # 权重衰减 (L2正则化)
+  weight_decay_end: null         # 权重衰减结束值 (可选)
+
+  lr: 5e-4                         # 初始学习率
+  layer_decay: 0.65                # 层级学习率衰减
+  warmup_lr: 1e-6                  # 预热学习率
+  min_lr: 1e-6                     # 最小学习率
 
 task:
   loss:
@@ -52,15 +66,15 @@ task:
 
 trainer:
   ddp_backend: gloo
-  fp16: false
-  total_steps: 1000
-  save_interval: 20
-  eval_interval: 20
-  log_interval: 100
+  fp16: true
+  total_steps: 138990
+  save_interval: 4633
+  eval_interval: 4633
+  log_interval: 20
   world_size: 1
-  eval_metric: acc
+  eval_metric: Accuracy
   metrics:
-    pr_auc: {}
-    roc_auc: {}
     acc: {}
     bal_acc: {}
+    pr_auc: {}
+    roc_auc: {}
