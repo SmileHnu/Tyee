@@ -91,3 +91,22 @@ def merge_config(cfg: dict, args: dict):
             temp_cfg[keys[-1]] = vv
 
     return cfg
+
+def convert_sci_notation(data):
+    """
+    递归地将配置中的科学计数法字符串转换为浮点数。
+    :param data: 配置数据，可以是字典、列表或其他类型。
+    :return: 转换后的配置数据。
+    """
+    if isinstance(data, dict):
+        return {k: convert_sci_notation(v) for k, v in data.items()}
+    elif isinstance(data, list):
+        return [convert_sci_notation(item) for item in data]
+    elif isinstance(data, str):
+        try:
+            # 尝试将字符串转换为浮点数
+            return float(data)
+        except ValueError:
+            return data
+    else:
+        return data

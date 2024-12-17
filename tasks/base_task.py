@@ -15,8 +15,6 @@ from torch.utils.data import Dataset
 from utils import lazy_import_module, get_nested_field
 from torch.utils.data import Dataset, Sampler, DataLoader, DistributedSampler
 
-
-
 class PRLTask(object):
     def __init__(self, cfg: dict) -> None:
         # 解析配置
@@ -37,18 +35,16 @@ class PRLTask(object):
 
         # 损失函数配置
         self.loss_select = get_nested_field(cfg, 'task.loss.select', '')
-        self.loss_weight = get_nested_field(cfg, 'task.loss.weight', [])
+        self.loss_params = get_nested_field(cfg, 'task.loss', {})
 
         # 优化器配置
         self.optimizer_select = get_nested_field(cfg, 'optimizer.select', '')
         self.lr = get_nested_field(cfg, 'optimizer.lr', 0.0001)
-        # lr可能是科学表示法
-        self.lr = float(self.lr)
-
+        self.layer_decay = get_nested_field(cfg, 'optimizer.layer_decay', 1.0)
+        self.weight_decay = get_nested_field(cfg, 'optimizer.weight_decay', 0.0)
         # 学习率调度器配置
         self.lr_scheduler_select = get_nested_field(cfg, 'lr_scheduler.select', '')
-        self.step_size = get_nested_field(cfg, 'lr_scheduler.step_size', 20)
-        self.gamma = get_nested_field(cfg, 'lr_scheduler.gamma', 0.1)
+        self.lr_scheduler_params = get_nested_field(cfg, 'lr_scheduler', {})
 
 
         self.train_dataset = None
@@ -69,21 +65,81 @@ class PRLTask(object):
 
     def build_loss(self):
         """ 构建损失函数 """
-        loss_cls = lazy_import_module('torch.nn', self.loss_select)
-        loss_args = {'weight': torch.tensor(self.loss_weight, dtype=torch.float32)} if self.loss_weight else {}
-        return loss_cls(**loss_args)
+        try:
+            loss_cls = lazy_import_module('torch.nn', self.loss_select)
+        except (ImportError, AttributeError):
+            loss_cls = lazy_import_module('criterions', self.loss_select)
+        
+        # 从配置中获取损失函数参数
+        loss_params = {k: v for k, v in self.loss_params.items() if k not in ['select']}
+        return loss_cls(**loss_params)
 
     def build_optimizer(self,model: torch.nn.Module):
         """ 构建优化器 """
-        optimizer_cls = lazy_import_module('torch.optim', self.optimizer_select)
-        return optimizer_cls(model.parameters(), lr=self.lr)
+        # 使用 set_lr 方法构造参数组
+        param_groups = self.set_lr(model, self.lr, self.layer_decay, self.weight_decay)
+        
+        # 动态导入优化器类
+        try:
+            optimizer_cls = lazy_import_module('torch.optim', self.optimizer_select)
+        except (ImportError, AttributeError):
+            optimizer_cls = lazy_import_module('optim', self.optimizer_select)
+    
+        return optimizer_cls(param_groups)
+    
+    def set_lr(self, model: torch.nn.Module, lr: float, layer_decay: float, weight_decay: float = 1e-5):
+        """
+        根据 lr 和 layer_decay 设置模型每一层的学习率，构造对应的参数组
+        :param model: 需要设置学习率的模型
+        :param lr: 基础学习率
+        :param layer_decay: 学习率衰减率
+        :return: 参数组列表，用于 optimizer 的创建
+        """
+        param_groups = []
+        num_layers = len(list(model.children()))  # 获取模型的层数
+        for name, param in model.named_parameters():
+            if not param.requires_grad:
+                continue  # 跳过冻结的参数
+            # 获取层号
+            layer_id = self.get_layer_id(name, num_layers)
+            # 计算该层的学习率缩放比例
+            scale = layer_decay ** (num_layers - layer_id - 1)
+            # 构造参数组
+            param_groups.append({
+                'params': param, 
+                'lr': lr * scale,
+                'weight_decay': weight_decay if 'bias' not in name and 'LayerNorm.weight' not in name else 0.0
+            })
+        return param_groups
 
+    def get_layer_id(self, var_name, num_max_layer):
+        """
+        获取参数所属的层号
+        :param var_name: 参数名
+        :param num_max_layer: 最大层数
+        :return: 层号
+        """
+        if var_name.startswith("layer"):
+            layer_id = int(var_name.split('.')[1])
+            return layer_id
+        elif "blocks" in var_name:
+            layer_id = int(var_name.split('.')[1])
+            return layer_id
+        else:
+            return num_max_layer - 1
+    
     def build_lr_scheduler(self,optimizer):
         """ 构建学习率调度器 """
         if self.lr_scheduler_select is None:
             return None
-        scheduler_cls = lazy_import_module('torch.optim.lr_scheduler', self.lr_scheduler_select)
-        return scheduler_cls(optimizer, step_size=self.step_size, gamma=self.gamma)
+        try:
+            scheduler_cls = lazy_import_module('torch.optim.lr_scheduler', self.lr_scheduler_select)
+        except (ImportError, AttributeError):
+            scheduler_cls = lazy_import_module('optim.lr_scheduler', self.lr_scheduler_select)
+        
+        # 从配置中获取调度器参数
+        scheduler_params = {k: v for k, v in self.lr_scheduler_params.items() if k not in ['select']}
+        return scheduler_cls(optimizer, **scheduler_params)
     
     def get_train_dataset(self):
         """ 获得训练集的方法 """

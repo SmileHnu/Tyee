@@ -23,24 +23,10 @@ lr_scheduler:
   warmup_steps: 12732
 
 model:
-  downstream:
-    classes: 4
-    select: mlp
   upstream:
     select: labram_base_patch200_200
-    trainable: true
-    finetune: /home/lingyus/code/PRL/models/upstream/labram/checkpoints/labram-base.pth
-    nb_classes: 6
-    drop: 0.0
-    drop_path: 0.1
-    attn_drop_rate: 0.0
-    drop_block_rate: null
-    use_mean_pooling: true
-    init_scale: 0.001
-    rel_pos_bias: false
-    abs_pos_emb: true
-    layer_scale_init_value: 0.1
-    qkv_bias: false
+    
+    
 
 optimizer:
   lr: 5e-4

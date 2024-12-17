@@ -18,7 +18,7 @@ import numpy as np
 from trainer import Trainer
 from utils import init_logging
 from torch import multiprocessing as mp
-from utils.cfg_utils import get_nested_field, merge_config
+from utils.cfg_utils import get_nested_field, merge_config, convert_sci_notation
 
 
 from argparse import ArgumentParser
@@ -48,7 +48,8 @@ def main() -> None:
     print(cfg)
     cfg = merge_config(cfg, args)
 
-
+    # 转换科学计数法
+    cfg = convert_sci_notation(cfg)
     # 加入随机种子
     seed = get_nested_field(cfg, "common.seed", 1337)
 

@@ -138,21 +138,46 @@ class TUEVTask(PRLTask):
         # transforms = [lazy_import_module('dataset.transforms', t) for t in self.transforms_select]
         return Dataset(os.path.join(root, fpath), files)
 
-    def build_lr_scheduler(self, optimizer):
-        lr_scheduler_select = get_nested_field(self.cfg, 'lr_scheduler.select', '')
-        if lr_scheduler_select == 'WarmupCosineAnnealingLR':
-            T_max = get_nested_field(self.cfg, 'lr_scheduler.T_max', 100)
-            eta_min = get_nested_field(self.cfg, 'lr_scheduler.eta_min', 0)
-            warmup_start_lr = get_nested_field(self.cfg, 'lr_scheduler.warmup_start_lr', 0)
-            warmup_steps = get_nested_field(self.cfg, 'lr_scheduler.warmup_steps', 0)
-            return WarmupCosineAnnealingLR(optimizer=optimizer, T_max=T_max, warmup_steps=warmup_steps, warmup_start_lr=warmup_start_lr, eta_min=eta_min)
+    def get_layer_id(self, var_name, num_max_layer):
+        if var_name in ("cls_token", "mask_token", "pos_embed"):
+            return 0
+        elif var_name.startswith("patch_embed"):
+            return 0
+        elif var_name.startswith("rel_pos_bias"):
+            return num_max_layer - 1
+        elif var_name.startswith("blocks"):
+            layer_id = int(var_name.split('.')[1])
+            return layer_id + 1
+        else:
+            return num_max_layer - 1
 
-    def build_loss(self):
-        if self.loss_select == 'LabelSmoothingCrossEntropy':
-            return LabelSmoothingCrossEntropy(smoothing=0.1)
-
-    def build_optimizer(self, model):
-        return self.optimizer
+    def set_lr(self, model: torch.nn.Module, lr: float, layer_decay: float, weight_decay: float):
+        """
+        根据 lr 和 layer_decay 设置模型每一层的学习率，构造对应的参数组
+        :param model: 需要设置学习率的模型
+        :param lr: 基础学习率
+        :param layer_decay: 学习率衰减率
+        :return: 参数组列表，用于 optimizer 的创建
+        """
+        param_groups = []
+        num_layers = model.get_num_layers()
+        layer_scales = [layer_decay ** (num_layers - i - 1) for i in range(num_layers + 2)]
+        
+        for name, param in model.named_parameters():
+            if not param.requires_grad:
+                continue  # 跳过冻结的参数
+            # 获取层号
+            layer_id = self.get_layer_id(name, num_layers)
+            
+            # 计算该层的学习率缩放比例
+            scale = layer_scales[layer_id]
+            # 构造参数组
+            param_groups.append({
+                'params': param, 
+                'lr': lr * scale,
+                'weight_decay': weight_decay if 'bias' not in name and 'LayerNorm.weight' not in name else 0.0
+            })
+        return param_groups
 
     def build_model(self):
 
@@ -232,24 +257,6 @@ class TUEVTask(PRLTask):
         print("Model = %s" % str(model_without_ddp))
         print('number of params:', n_parameters)
 
-
-        num_layers = model_without_ddp.get_num_layers()
-        if self.args.layer_decay < 1.0:
-            assigner = LayerDecayValueAssigner(list(self.args.layer_decay ** (num_layers + 1 - i) for i in range(num_layers + 2)))
-        else:
-            assigner = None
-
-        if assigner is not None:
-            print("Assigned values = %s" % str(assigner.values))
-
-        skip_weight_decay_list = model.no_weight_decay()
-        if self.disable_weight_decay_on_rel_pos_bias:
-            for i in range(num_layers):
-                skip_weight_decay_list.add("blocks.%d.attn.relative_position_bias_table" % i)
-        self.optimizer = create_optimizer(
-            self.args, model_without_ddp, skip_list=skip_weight_decay_list,
-            get_num_layer=assigner.get_layer_id if assigner is not None else None, 
-            get_layer_scale=assigner.get_scale if assigner is not None else None)
         return model
         
     def train_step(self, model: nn.Module, sample: dict[str, torch.Tensor]):
@@ -333,47 +340,3 @@ class TUEVTask(PRLTask):
                 model.__class__.__name__, ignore_missing_keys))
         if len(error_msgs) > 0:
             print('\n'.join(error_msgs))
-
-class WarmupCosineAnnealingLR(torch.optim.lr_scheduler._LRScheduler):
-    def __init__(self, optimizer, T_max, warmup_steps, warmup_start_lr=0, eta_min=0, last_epoch=-1):
-        """
-        初始化 Warmup 和 CosineAnnealing 的学习率调度器，使用 lr_scale 而不是 layer_decay 来调整学习率。
-
-        :param optimizer: 优化器
-        :param T_max: CosineAnnealing 的最大步数
-        :param warmup_steps: 预热阶段的步数
-        :param warmup_start_lr: 预热阶段的初始学习率
-        :param eta_min: 余弦退火阶段的最小学习率
-        :param last_epoch: 上一次更新的步数，默认为-1
-        """
-        self.warmup_steps = warmup_steps  # 预热的步数
-        self.T_max = T_max  # CosineAnnealing 的总步数
-        self.eta_min = eta_min  # 最小学习率
-        self.warmup_start_lr = warmup_start_lr  # 预热的起始学习率
-        super(WarmupCosineAnnealingLR, self).__init__(optimizer, last_epoch)
-
-    def get_lr(self):
-        # 获取当前步数
-        step = self.last_epoch
-        base_lr = self.base_lrs[0]  # 假设所有层使用相同的基本学习率
-
-        # 线性 warmup 阶段
-        if step < self.warmup_steps:
-            lr = self.warmup_start_lr + (base_lr - self.warmup_start_lr) * step / self.warmup_steps
-        else:
-            # CosineAnnealing 阶段
-            step_after_warmup = step - self.warmup_steps
-            lr = self.eta_min + 0.5 * (base_lr - self.eta_min) * (1 + math.cos(math.pi * step_after_warmup / (self.T_max - self.warmup_steps)))
-
-        # 获取每层的 lr_scale
-        layer_lr_list = []
-        for param_group in self.optimizer.param_groups:
-            
-            # 计算该层的学习率，使用 lr_scale 来调整
-            lr_scale = param_group.get('lr_scale', 1.0)  # 默认 lr_scale 为 1.0
-            adjusted_lr = lr * lr_scale  # 使用 lr_scale 调整学习率
-            # 更新该层的学习率
-            layer_lr_list.append(adjusted_lr)
-
-        # 返回每个参数组的最终学习率
-        return layer_lr_list
