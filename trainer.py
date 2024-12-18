@@ -28,6 +28,9 @@ class Trainer(object):
 
         self.cfg = cfg
 
+        # 获取任务名称
+        self.task_select = get_nested_field(cfg, 'task.select', '')
+        
         # 获取实验保存路径
         root = get_nested_field(self.cfg, "common.exp_dir", "./experiments/")
         self.exp_dir = f"{root}/{datetime.datetime.now().strftime('%Y-%m-%d/%H-%M-%S')}"
@@ -62,10 +65,6 @@ class Trainer(object):
         metrics_dict = get_nested_field(cfg, 'trainer.metrics', None)
         self._metrics_evaluator = MetricEvaluator(metrics_dict)
         
-
-        # 任务配置
-        self.task_select = get_nested_field(cfg, 'task.select', '')
-        
         # 任务
         self.task = self._build_task()
         self._metrics = get_nested_field(cfg, 'trainer.metrics', ['accuracy_score'])
@@ -95,7 +94,7 @@ class Trainer(object):
         os.makedirs(self.exp_dir, exist_ok=True)
 
         # 创建TensorBoard文件夹
-        tb_dir = f"{self.exp_dir}/tb"
+        tb_dir = f"{self.exp_dir}/{self.task_select}_tb"
         os.makedirs(tb_dir, exist_ok=True)
 
         # 创建Checkpoint文件夹
@@ -141,8 +140,14 @@ class Trainer(object):
 
         # 构造数据加载器
         train_loader = self.task.build_dataloader(train_dataset, self._batch_size, sampler=sampler)
-        dev_loader = self.task.build_dataloader(dev_dataset, self._batch_size, sampler=None)
-        test_loader = self.task.build_dataloader(test_dataset, self._batch_size, sampler=None)
+        if dev_dataset is not None:
+            dev_loader = self.task.build_dataloader(dev_dataset, self._batch_size, sampler=None)
+        else:
+            dev_loader = None
+        if test_dataset is not None:
+            test_loader = self.task.build_dataloader(test_dataset, self._batch_size, sampler=None)
+        else:
+            test_loader = None
 
         # 如果使用FP16，初始化 GradScaler
         scaler = torch.amp.GradScaler(enabled=self.fp16) if self.fp16 else None
@@ -209,21 +214,26 @@ class Trainer(object):
 
             # 验证集日志
             if step % self._eval_interval == 0:
+                
+                # 验证集评估
                 dev_result = self._eval_step(model, dev_loader, device, world_size)
 
                 # 打印验证日志
                 self.logger.info(f"Dev, Step {step}, Metrics: {dev_result}")
 
-                test_result = self._eval_step(model, test_loader, device, world_size)
-
-                # 打印测试日志
-                self.logger.info(f"Test, Step {step}, Metrics: {test_result}")
-
                 # 写入 TensorBoard
                 for metric, value in dev_result.items():
                     self.writer.add_scalar(f'dev/{metric}', value, step)
-                for metric, value in test_result.items():
-                    self.writer.add_scalar(f'test/{metric}', value, step)
+
+                # 测试集评估
+                if test_loader is not None:
+                    test_result = self._eval_step(model, test_loader, device, world_size)
+
+                    # 打印测试日志
+                    self.logger.info(f"Test, Step {step}, Metrics: {test_result}")
+
+                    for metric, value in test_result.items():
+                        self.writer.add_scalar(f'test/{metric}', value, step)
 
                 # 判断评估指标是否达到了最优
                 current_metric_value = dev_result.get(self.eval_metric, None)  # 获取当前评估指标的值

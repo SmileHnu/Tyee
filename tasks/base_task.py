@@ -77,8 +77,10 @@ class PRLTask(object):
     def build_optimizer(self,model: torch.nn.Module):
         """ 构建优化器 """
         # 使用 set_lr 方法构造参数组
-        param_groups = self.set_lr(model, self.lr, self.layer_decay, self.weight_decay)
-        
+        if self.layer_decay != 1.0:
+            param_groups = self.set_lr(model, self.lr, self.layer_decay, self.weight_decay)
+        else:
+            param_groups = [{'params': model.parameters(), 'lr': self.lr, 'weight_decay': self.weight_decay}]
         # 动态导入优化器类
         try:
             optimizer_cls = lazy_import_module('torch.optim', self.optimizer_select)
@@ -204,7 +206,7 @@ class PRLTask(object):
 
         return sampler
 
-    def build_dataloader(self, dataset: Dataset, batch_size: int, sampler:Sampler):
+    def build_dataloader(self, dataset: Dataset, batch_size: int, sampler:Sampler, shuffle: bool = False):
         """
         创建数据加载器，用于根据给定的批大小和采样器加载数据。
         
@@ -236,7 +238,7 @@ class PRLTask(object):
         # 如果sampler是None，保持数据原有顺序构造加载器
         if sampler is None:
             try:
-                data_loader = DataLoader(dataset, batch_size=batch_size, shuffle=False, collate_fn=dataset.collate_fn)
+                data_loader = DataLoader(dataset, batch_size=batch_size, shuffle=shuffle, collate_fn=dataset.collate_fn)
             except Exception as e:
                 raise RuntimeError(f"Failed to create DataLoader: {e}")
 
@@ -258,9 +260,9 @@ class PRLTask(object):
         return sample
 
     
-    def train_step(self, model: torch.nn.Module, x: torch.Tensor, *args, **kwargs):
+    def train_step(self, model: torch.nn.Module, sample: dict[str, torch.Tensor], *args, **kwargs):
         raise NotImplementedError
 
     @torch.no_grad()
-    def valid_step(self, model: torch.nn.Module, x: torch.Tensor, *args, **kwargs):
+    def valid_step(self, model: torch.nn.Module, sample: dict[str, torch.Tensor], *args, **kwargs):
         raise NotImplementedError
