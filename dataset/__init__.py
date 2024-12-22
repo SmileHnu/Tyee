@@ -9,3 +9,6 @@ from .bciciv_2a import BCICIV2aDataset
 from .tuab_dataset import TUABDataset
 from .mobi_dataset import MoBIDataset
 from .tuev_dataset import TUEVDataset
+from .kaggleern_dataset import KaggleERNDataset
+from .bciciv2a_dataset import BCICIV2ADataset
+from .physiop300_dataset import PhysioP300Dataset

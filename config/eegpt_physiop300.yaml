@@ -1,28 +1,29 @@
 common:
-  seed: 8
+  seed: 7
   verbose: true
   exp_dir: experiments
 
 dataset:
-  batch_size: 64
-  dataset: BCICIV2ADataset
-  num_workers: 0
-  path: /mnt/ssd/lingyus/BCICIV2a/BCIC_2a_row
-  test_subject: 9
+  batch_size: 32
+  dataset: PhysioP300Dataset
+  num_workers: 8
+  path: /mnt/ssd/lingyus/PhysioNetP300
+  train_subjects: [1,2,3,4,5,6,7,9]
+  dev_subjects: [11]
   
 
 lr_scheduler:
   select: OneCycleLR
-  total_steps: 6500
+  total_steps: 6800
   pct_start: 0.2
-  max_lr: 4e-4
+  max_lr: 8e-4
 model:
   upstream:
-    select: EEGPT_BCICIV2A
+    select: EEGPT_PhysioP300
     checkpoint: /home/lingyus/code/PRL/models/upstream/eegpt/checkpoint/eegpt_mcae_58chs_4s_large4E.ckpt
 
 optimizer:
-  lr: 4e-4
+  lr: 8e-4
   select: AdamW
   weight_decay: 0.01            # 权重衰减 (L2正则化)
   
@@ -30,14 +31,14 @@ optimizer:
 task:
   loss:
     select: CrossEntropyLoss
-  select: BCICIV2ATask
+  select: PhysioP300Task
 
 trainer:
   ddp_backend: gloo
   fp16: true
-  total_steps: 6500
-  save_interval: 65
-  eval_interval: 65
+  total_steps: 6800
+  save_interval: 68
+  eval_interval: 68
   log_interval: 10
   world_size: 1
   eval_metric: BalancedAccuracy
@@ -47,3 +48,4 @@ trainer:
     f1:
       average: 'weighted'
     cohen_kappa: {}
+    roc_auc: {}

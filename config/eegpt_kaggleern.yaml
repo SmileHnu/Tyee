@@ -1,24 +1,25 @@
 common:
-  seed: 8
+  seed: 7
   verbose: true
   exp_dir: experiments
 
 dataset:
   batch_size: 64
-  dataset: BCICIV2ADataset
+  dataset: KaggleERNDataset
   num_workers: 0
-  path: /mnt/ssd/lingyus/BCICIV2a/BCIC_2a_row
-  test_subject: 9
-  
+  path: /mnt/ssd/lingyus
+  train_subjects: [2,6,7,11,12,13,14,16,17,18,20,21]
+  dev_subjects: [1,3,4,5,8,9,10,15,19,25]
+  sessions: [1,2,3,4,5]
 
 lr_scheduler:
   select: OneCycleLR
-  total_steps: 6500
+  total_steps: 6400
   pct_start: 0.2
   max_lr: 4e-4
 model:
   upstream:
-    select: EEGPT_BCICIV2A
+    select: EEGPT_KaggleERN
     checkpoint: /home/lingyus/code/PRL/models/upstream/eegpt/checkpoint/eegpt_mcae_58chs_4s_large4E.ckpt
 
 optimizer:
@@ -30,15 +31,15 @@ optimizer:
 task:
   loss:
     select: CrossEntropyLoss
-  select: BCICIV2ATask
+  select: KaggleERNTask
 
 trainer:
   ddp_backend: gloo
   fp16: true
-  total_steps: 6500
-  save_interval: 65
-  eval_interval: 65
-  log_interval: 10
+  total_steps: 6400
+  save_interval: 64
+  eval_interval: 64
+  log_interval: 4
   world_size: 1
   eval_metric: BalancedAccuracy
   metrics:
@@ -47,3 +48,4 @@ trainer:
     f1:
       average: 'weighted'
     cohen_kappa: {}
+    roc_auc: {}

@@ -37,7 +37,7 @@ def process_result(result: dict, is_classification: bool = True):
             if is_classification:
                 if value.ndim == 2 and value.shape[1] > 1:  # 多分类问题
                     processed_result["output_raw"] = value.copy()  # 保留原始输出
-                    value = np.argmax(value, axis=1)  # 转为类别索引
+                    value = np.argmax(value, axis=-1)  # 转为类别索引
                 elif value.ndim == 2 and value.shape[1] == 1:  # 二分类问题（输出是概率值）
                     processed_result["output_raw"] = value.copy()
                     value = (value > 0.5).astype(int)  # 转为二分类标签
@@ -116,9 +116,9 @@ class PR_AUC(Metric):
     def update(self, result: dict):
         result = process_result(result)
         target = result.get("target")
-        output_raw = result.get("output_raw")
-        if target is not None and output_raw is not None:
-            self._accumulated_results.append((target, output_raw))
+        output = result.get("output")
+        if target is not None and output is not None:
+            self._accumulated_results.append((target, output))
 
     def compute(self):
         all_targets, all_outputs = merge_results(self._accumulated_results)
@@ -132,9 +132,9 @@ class ROC_AUC(Metric):
     def update(self, result: dict):
         result = process_result(result)
         target = result.get("target")
-        output_raw = result.get("output_raw")
-        if target is not None and output_raw is not None:
-            self._accumulated_results.append((target, output_raw))
+        output = result.get("output")
+        if target is not None and output is not None:
+            self._accumulated_results.append((target, output))
 
     def compute(self):
         all_targets, all_outputs = merge_results(self._accumulated_results)

@@ -70,7 +70,7 @@ def main() -> None:
 
 if __name__ == "__main__":
     # 指定要使用的GPU，例如使用第1个GPU
-    os.environ["CUDA_VISIBLE_DEVICES"] = "1"
+    os.environ["CUDA_VISIBLE_DEVICES"] = "5"
     main()
 
 

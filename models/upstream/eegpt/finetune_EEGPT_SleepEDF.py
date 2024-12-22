@@ -10,10 +10,10 @@ import os
 import tqdm
 import torch.nn.functional as F
 
-from Transformers.pos_embed import create_1d_absolute_sin_cos_embedding
-from models.EEGPT_mcae import EEGTransformer
+from .Transformers.pos_embed import create_1d_absolute_sin_cos_embedding
+from .models.EEGPT_mcae import EEGTransformer
 
-from Network.utils import Conv1dWithConstraint, LinearWithConstraint
+from .Network.utils import Conv1dWithConstraint, LinearWithConstraint
 
 use_channels_names = ['F3', 'F4', 'C3', 'C4', 'P3','P4', 'FPZ', 'FZ', 'CZ', 'CPZ', 'PZ', 'POZ', 'OZ' ]
 

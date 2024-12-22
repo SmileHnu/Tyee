@@ -12,9 +12,9 @@ import tqdm
 
 import torch.nn.functional as F
 
-from models.EEGPT_mcae import EEGTransformer
+from .models.EEGPT_mcae import EEGTransformer
 
-from Network.utils import Conv1dWithConstraint, LinearWithConstraint
+from .Network.utils import Conv1dWithConstraint, LinearWithConstraint
 
 use_channels_names = [      
                'FP1', 'FP2',
@@ -65,6 +65,11 @@ class LitEEGPTCausal(nn.Module):
         self.loss_fn        = torch.nn.CrossEntropyLoss()
         self.running_scores = {"train":[], "valid":[], "test":[]}
         self.is_sanity=True
+        self.optimizer = torch.optim.AdamW(
+            list(self.chan_conv.parameters())+
+            list(self.linear_probe1.parameters())+
+            list(self.linear_probe2.parameters()),
+            weight_decay=0.01)
         
     def forward(self, x):
         
