@@ -47,3 +47,10 @@ trainer:
     f1:
       average: 'weighted'
     cohen_kappa: {}
+
+distributed:
+  backend: nccl
+  world_size: 2
+  rank: 0
+  distributed_no_spawn: false
+  cuda_visible_devices: "2,3"  

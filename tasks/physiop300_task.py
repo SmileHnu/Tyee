@@ -53,7 +53,7 @@ class PhysioP300Task(PRLTask):
         target = sample['target']
         x, pred = model(x)
         loss = self.loss(pred, target)
-        pred = torch.argmax(pred, dim=-1)
+        pred =  torch.softmax(pred, dim=-1)[:,1]
         return{
             'loss': loss,
             'output': pred,
@@ -66,7 +66,7 @@ class PhysioP300Task(PRLTask):
         target = sample['target']
         x, pred = model(x)
         loss = self.loss(pred, target)
-        
+        pred =  torch.softmax(pred, dim=-1)[:,1]
         return{
             'loss': loss,
             'output': pred,

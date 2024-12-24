@@ -49,3 +49,10 @@ trainer:
       average: 'weighted'
     cohen_kappa: {}
     roc_auc: {}
+
+distributed:
+  backend: nccl
+  world_size: 1
+  rank: 0
+  distributed_no_spawn: false
+  cuda_visible_devices: "2,3"  

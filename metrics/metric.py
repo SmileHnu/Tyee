@@ -116,7 +116,7 @@ class PR_AUC(Metric):
     def update(self, result: dict):
         result = process_result(result)
         target = result.get("target")
-        output = result.get("output")
+        output = result.get("output_raw")
         if target is not None and output is not None:
             self._accumulated_results.append((target, output))
 
@@ -132,7 +132,7 @@ class ROC_AUC(Metric):
     def update(self, result: dict):
         result = process_result(result)
         target = result.get("target")
-        output = result.get("output")
+        output = result.get("output_raw")
         if target is not None and output is not None:
             self._accumulated_results.append((target, output))
 

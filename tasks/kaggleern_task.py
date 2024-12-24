@@ -53,6 +53,7 @@ class KaggleERNTask(PRLTask):
         target = sample['target']
         x, pred = model(x)
         loss = self.loss(pred, target)
+        pred =  torch.softmax(pred, dim=-1)[:,1]
         return{
             'loss': loss,
             'output': pred,
@@ -65,7 +66,7 @@ class KaggleERNTask(PRLTask):
         target = sample['target']
         x, pred = model(x)
         loss = self.loss(pred, target)
-        
+        pred =  torch.softmax(pred, dim=-1)[:,1]
         return{
             'loss': loss,
             'output': pred,

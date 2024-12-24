@@ -1,7 +1,7 @@
 common:
   seed: 42
   verbose: true
-  exp_dir: experiments
+  root: experiments
 
 dataset:
   batch_size: 32
@@ -50,7 +50,7 @@ trainer:
   eval_interval: 20
   log_interval: 20
   world_size: 1
-  eval_metric: acc
+  eval_metric: BalancedAccuracy
   metrics:
     acc: {}
     prec:
@@ -59,3 +59,10 @@ trainer:
       average: "micro"
     f1:
       average: "micro"
+
+distributed:
+  backend: ddp
+  world_size: 1
+  rank: 0
+  distributed_no_spawn: false
+  cuda_visible_devices: "0,1"  
