@@ -89,6 +89,10 @@ class MetricEvaluator:
             # 调用每个指标实例的 compute 方法计算指标结果
             result = metric.compute()
 
+            # 如果结果是 numpy 类型，转换为标准的 Python 浮点数
+            if isinstance(result, (np.float32, np.float64)):
+                result = float(result)
+
             # 保留结果的小数点后四位
             result = round(result, 4)
 
