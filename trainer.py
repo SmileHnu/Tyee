@@ -270,10 +270,15 @@ class Trainer(object):
         if lr_scheduler:
             lr_scheduler.step()
 
+        # 如果是自监督模型，需要额外的步骤
+        self.task.momentum_update(model)
 
         # 更新指标
-        self._metrics_evaluator.update_metrics(result)  # 更新指标数据
-        metrics = self._metrics_evaluator.calculate_metrics()  # 计算当前步骤的指标
+        if 'output' in result:
+            self._metrics_evaluator.update_metrics(result)  # 更新指标数据
+            metrics = self._metrics_evaluator.calculate_metrics()  # 计算当前步骤的指标
+        else:
+            metrics = None
 
         # 聚合和平均损失与指标
         result = self._aggregate_metrics(loss, metrics, world_size, device)
@@ -328,22 +333,29 @@ class Trainer(object):
             dist.all_reduce(loss, op=dist.ReduceOp.SUM)
             loss /= world_size
 
-            for metric, value in metrics.items():
-                if isinstance(value, torch.Tensor):
-                    dist.all_reduce(value, op=dist.ReduceOp.SUM)
-                    value /= world_size
-                    metrics[metric] = value.item()
-                elif isinstance(value, (int, float)):
-                    tensor_value = torch.tensor(value).to(device)
-                    dist.all_reduce(tensor_value, op=dist.ReduceOp.SUM)
-                    metrics[metric] = (tensor_value.item() / world_size)
+            if metrics is not None:
+                for metric, value in metrics.items():
+                    if isinstance(value, torch.Tensor):
+                        dist.all_reduce(value, op=dist.ReduceOp.SUM)
+                        value /= world_size
+                        metrics[metric] = round(value.item(), 4)
+                    elif isinstance(value, (int, float)):
+                        tensor_value = torch.tensor(value).to(device)
+                        dist.all_reduce(tensor_value, op=dist.ReduceOp.SUM)
+                        metrics[metric] = round(tensor_value.item() / world_size, 4)
+            else:
+                metrics = {}
 
         if total is not None:
             if isinstance(loss, torch.Tensor):
                 loss = loss.item()
             loss /= total
 
-        result = {"loss": loss}
+        # 确保 loss 是浮点数
+        if isinstance(loss, torch.Tensor):
+            loss = loss.item()
+
+        result = {"loss": round(loss, 4)}
         result.update(metrics)
 
         return result

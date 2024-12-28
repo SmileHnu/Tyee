@@ -266,3 +266,6 @@ class PRLTask(object):
     @torch.no_grad()
     def valid_step(self, model: torch.nn.Module, sample: dict[str, torch.Tensor], *args, **kwargs):
         raise NotImplementedError
+    
+    def momentum_update(self, model: torch.nn.Module, *args, **kwargs):
+        pass
