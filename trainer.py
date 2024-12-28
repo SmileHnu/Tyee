@@ -356,7 +356,9 @@ class Trainer(object):
             loss = loss.item()
 
         result = {"loss": round(loss, 4)}
-        result.update(metrics)
+        # 仅在 metrics 不为 None 时更新 result
+        if metrics is not None:
+            result.update(metrics)
 
         return result
 
