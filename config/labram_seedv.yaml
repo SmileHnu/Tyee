@@ -5,22 +5,22 @@ common:
 
 dataset:
   batch_size: 16
-  dataset: TUEVDataset
+  dataset: SEEDVDataset
   eval:
-  - processed_eval
-  - processed_test
+  - val
+  - test
   num_workers: 2
-  path: /home/lingyus/data/TUEV/tuh_eeg_events/v2.0.1/edf/processed
-  train: processed_train
+  path: /home/lingyus/data/SEED-V/EEG_raw/processed
+  train: train
   transforms:
     select: []
 
 lr_scheduler:
-  select: CosineScheduler
-  T_max: 127320
-  eta_min: 1e-6
-  warmup_start_lr: 1e-6
-  warmup_steps: 12732
+  select: WarmupCosineAnnealingLR
+  T_max: 11550
+  eta_min: 0
+  warmup_start_lr: 0
+  warmup_steps: 924
 
 model:
   downstream:
@@ -30,7 +30,7 @@ model:
     select: labram_base_patch200_200
     trainable: true
     finetune: /home/lingyus/code/PRL/models/upstream/labram/checkpoints/labram-base.pth
-    nb_classes: 6
+    nb_classes: 5
     drop: 0.0
     drop_path: 0.1
     attn_drop_rate: 0.0
@@ -52,17 +52,15 @@ task:
   loss:
     select: LabelSmoothingCrossEntropy
     smoothing: 0.1
-  select: TUEVTask
+  select: SEEDVTask
 
 trainer:
-  ddp_backend: gloo
   fp16: true
-  total_steps: 127320
-  save_interval: 4244
-  eval_interval: 4244
+  total_steps: 11550
+  save_interval: 231
+  eval_interval: 231
   log_interval: 20
-  world_size: 1
-  eval_metric: BalancedAccuracy
+  eval_metric: Accuracy
   metrics:
     acc: {}
     bal_acc: {}

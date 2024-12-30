@@ -12,3 +12,5 @@ from .tuev_dataset import TUEVDataset
 from .kaggleern_dataset import KaggleERNDataset
 from .bciciv2a_dataset import BCICIV2ADataset
 from .physiop300_dataset import PhysioP300Dataset
+from .sleepedfx_dataset import SleepEDFxDataset
+from .seedv_dataset import SEEDVDataset

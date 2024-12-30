@@ -5,17 +5,16 @@
 @License : (C) Copyright 2024, Hunan University
 @Contact : shulingyu@hnu.edu.cn
 @Software: Visual Studio Code
-@File    : mobi_dataset.py
-@Time    : 2024/11/26 19:50:44
+@File    : seedv_dataset.py
+@Time    : 2024/12/26 20:12:55
 @Desc    : 
 """
-
 import os
 import torch
 import pickle
 from scipy.signal import resample
 
-class MoBIDataset(torch.utils.data.Dataset):
+class SEEDVDataset(torch.utils.data.Dataset):
     def __init__(self, root, files, sampling_rate=200):
         self.root = root
         self.files = files
@@ -30,9 +29,8 @@ class MoBIDataset(torch.utils.data.Dataset):
         X = sample["X"]
         if self.sampling_rate != self.default_rate:
             X = resample(X, 5 * self.sampling_rate, axis=-1)
-        Y = sample["y"]
-        X = torch.FloatTensor(X.values).transpose(0, 1)  # 将 DataFrame 转换为 numpy 数组并转置
-        Y = torch.FloatTensor(Y.values)  # 将 Series 转换为 Tensor
+        Y = int(sample["y"])
+        X = torch.FloatTensor(X)
         return X, Y
     
     def collate_fn(self, batch):
@@ -40,8 +38,7 @@ class MoBIDataset(torch.utils.data.Dataset):
 
         # 将输入序列按维度拼接
         collated_data = torch.stack(inputs, dim=0)
-        collated_labels = torch.stack(labels, dim=0)
         return {
             "x": collated_data,
-            "target": collated_labels
+            "target": torch.tensor(labels).long()
         }

@@ -11,3 +11,5 @@ from .kaggleern_task import KaggleERNTask
 from .physiop300_task import PhysioP300Task
 from .sleepedfx_task import SleepEDFxTask
 from .bciciv2a_eegpt_task import BCICIV2ATask
+from .seedv_task import SEEDVTask
+from .eegpt_tuev_task import EEGPTTUEVTask

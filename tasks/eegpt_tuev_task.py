@@ -5,8 +5,8 @@
 @License : (C) Copyright 2024, Hunan University
 @Contact : shulingyu@hnu.edu.cn
 @Software: Visual Studio Code
-@File    : tuab_task.py
-@Time    : 2024/11/22 18:40:41
+@File    : eegpt_tuev_task.py
+@Time    : 2024/12/29 12:41:46
 @Desc    : 
 """
 
@@ -66,7 +66,7 @@ class Args:
         self.warmup_lr = float(self.warmup_lr)
 
 
-class TUABTask(PRLTask):
+class EEGPTTUEVTask(PRLTask):
     def __init__(self, cfg):
         super().__init__(cfg)
 
@@ -108,11 +108,6 @@ class TUABTask(PRLTask):
         self.disable_weight_decay_on_rel_pos_bias = get_nested_field(cfg, 'model.upstream.disable_weight_decay_on_rel_pos_bias', False)  # 获取是否禁用相对位置偏置的权重衰减
 
 
-        ch_names = ['EEG FP1', 'EEG FP2-REF', 'EEG F3-REF', 'EEG F4-REF', 'EEG C3-REF', 'EEG C4-REF', 'EEG P3-REF', 'EEG P4-REF', 'EEG O1-REF', 'EEG O2-REF', 'EEG F7-REF', \
-                    'EEG F8-REF', 'EEG T3-REF', 'EEG T4-REF', 'EEG T5-REF', 'EEG T6-REF', 'EEG A1-REF', 'EEG A2-REF', 'EEG FZ-REF', 'EEG CZ-REF', 'EEG PZ-REF', 'EEG T1-REF', 'EEG T2-REF']
-        ch_names = [name.split(' ')[-1].split('-')[0] for name in ch_names]
-        self.input_chans = self.get_input_chans(ch_names)
-
     def get_train_dataset(self):
         if self.train_dataset is None:
             self.train_dataset = self.build_dataset(self.dataset_root, self.train_fpath)
@@ -130,11 +125,9 @@ class TUABTask(PRLTask):
 
     def build_dataset(self, root: str, fpath: str = "train"):
         """ 构建数据集 """
-        seed = 12345
+        seed = 4523
         np.random.seed(seed)
         files = os.listdir(os.path.join(root, fpath))
-        if fpath == "train":
-            np.random.shuffle(files)
         Dataset = lazy_import_module('dataset', self.dataset)
         # transforms = [lazy_import_module('dataset.transforms', t) for t in self.transforms_select]
         return Dataset(os.path.join(root, fpath), files)
@@ -148,29 +141,32 @@ class TUABTask(PRLTask):
             warmup_steps = get_nested_field(self.cfg, 'lr_scheduler.warmup_steps', 0)
             return WarmupCosineAnnealingLR(optimizer=optimizer, T_max=T_max, warmup_steps=warmup_steps, warmup_start_lr=warmup_start_lr, eta_min=eta_min)
 
-
     def build_optimizer(self, model):
         return self.optimizer
 
     def build_model(self):
 
-        model = create_model(
-        self.model,
-        pretrained=False,
-        num_classes=self.nb_classes,
-        drop_rate=self.drop,
-        drop_path_rate=self.drop_path,
-        attn_drop_rate=self.attn_drop_rate,
-        drop_block_rate=None,
-        use_mean_pooling=self.use_mean_pooling,
-        init_scale=self.init_scale,
-        use_rel_pos_bias=self.rel_pos_bias,
-        use_abs_pos_emb=self.abs_pos_emb,
-        init_values=self.layer_scale_init_value,
-        qkv_bias=self.qkv_bias,
-        )
+        model_name = lazy_import_module('models.upstream', self.upstream_select)
+        use_channels_names = [      
+             'FP1','FPZ', 'FP2',
+        'F7', 'F3', 'FZ', 'F4', 'F8',
+        'T7', 'C3', 'CZ', 'C4', 'T8',
+        'P7', 'P3', 'PZ', 'P4', 'P8',
+                'O1', 'O2' ]
+        
+        ch_names = ['EEG FP1-REF', 'EEG FP2-REF', 'EEG F3-REF', 'EEG F4-REF', 'EEG C3-REF', 'EEG C4-REF', 'EEG P3-REF', 'EEG P4-REF', 'EEG O1-REF', 'EEG O2-REF', 'EEG F7-REF', \
+                        'EEG F8-REF', 'EEG T3-REF', 'EEG T4-REF', 'EEG T5-REF', 'EEG T6-REF', 'EEG A1-REF', 'EEG A2-REF', 'EEG FZ-REF', 'EEG CZ-REF', 'EEG PZ-REF', 'EEG T1-REF', 'EEG T2-REF']
+        
+        ch_names = [name.split(' ')[-1].split('-')[0] for name in ch_names]
+        model =  model_name(
+                num_classes=self.nb_classes,
+                in_channels=len(ch_names), 
+                img_size=[len(use_channels_names),1000], 
+                use_channels_names=use_channels_names, 
+                use_chan_conv=True,
+                use_mean_pooling=self.use_mean_pooling,)
 
-        patch_size = model.patch_size
+        patch_size = 200
         print("Patch size = %s" % str(patch_size))
         self.window_size = (1, self.input_size // patch_size)
         self.patch_size = patch_size
@@ -183,35 +179,8 @@ class TUABTask(PRLTask):
                 checkpoint = torch.load(self.finetune, map_location='cpu')
 
             print("Load ckpt from %s" % self.finetune)
-            checkpoint_model = None
-            for model_key in self.model_key.split('|'):
-                if model_key in checkpoint:
-                    checkpoint_model = checkpoint[model_key]
-                    print("Load state_dict by model_key = %s" % model_key)
-                    break
-            if checkpoint_model is None:
-                checkpoint_model = checkpoint
-            if (checkpoint_model is not None) and (self.model_filter_name != ''):
-                all_keys = list(checkpoint_model.keys())
-                new_dict = OrderedDict()
-                for key in all_keys:
-                    if key.startswith('student.'):
-                        new_dict[key[8:]] = checkpoint_model[key]
-                    else:
-                        pass
-                checkpoint_model = new_dict
-
-            state_dict = model.state_dict()
-            for k in ['head.weight', 'head.bias']:
-                if k in checkpoint_model and checkpoint_model[k].shape != state_dict[k].shape:
-                    print(f"Removing key {k} from pretrained checkpoint")
-                    del checkpoint_model[k]
-
-            all_keys = list(checkpoint_model.keys())
-            for key in all_keys:
-                if "relative_position_index" in key:
-                    checkpoint_model.pop(key)
-
+            
+            checkpoint_model = checkpoint['state_dict']
             self.load_state_dict(model, checkpoint_model, prefix=self.model_prefix)
 
         model_ema = None
@@ -230,7 +199,6 @@ class TUABTask(PRLTask):
         print("Model = %s" % str(model_without_ddp))
         print('number of params:', n_parameters)
 
-
         num_layers = model_without_ddp.get_num_layers()
         if self.args.layer_decay < 1.0:
             assigner = LayerDecayValueAssigner(list(self.args.layer_decay ** (num_layers + 1 - i) for i in range(num_layers + 2)))
@@ -248,6 +216,7 @@ class TUABTask(PRLTask):
             self.args, model_without_ddp, skip_list=skip_weight_decay_list,
             get_num_layer=assigner.get_layer_id if assigner is not None else None, 
             get_layer_scale=assigner.get_scale if assigner is not None else None)
+        
         return model
         
     def train_step(self, model: nn.Module, sample: dict[str, torch.Tensor]):
@@ -255,8 +224,7 @@ class TUABTask(PRLTask):
         target = sample["target"]
         x = x.float() / 100
         x = rearrange(x, 'B N (A T) -> B N A T', T=200)
-        target = target.float().unsqueeze(-1)
-        pred = model(x, self.input_chans)
+        pred = model(x)
         loss = self.loss(pred, target)
         return {
              "loss": loss,
@@ -270,8 +238,10 @@ class TUABTask(PRLTask):
         target = sample["target"]
         x = x.float() / 100
         x = rearrange(x, 'B N (A T) -> B N A T', T=200)
-        target = target.float().unsqueeze(-1)
-        pred = model(x, self.input_chans)
+        # 将输入数据转换为 Half 类型
+        if x.dtype != torch.float16:
+            x = x.half()
+        pred = model(x)
         loss = self.loss(pred, target)
 
         return {
@@ -333,7 +303,6 @@ class TUABTask(PRLTask):
                 model.__class__.__name__, ignore_missing_keys))
         if len(error_msgs) > 0:
             print('\n'.join(error_msgs))
-
 class WarmupCosineAnnealingLR(torch.optim.lr_scheduler._LRScheduler):
     def __init__(self, optimizer, T_max, warmup_steps, warmup_start_lr=0, eta_min=0, last_epoch=-1):
         """

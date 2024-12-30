@@ -65,10 +65,13 @@ class LitEEGPTCausal(nn.Module):
         self.cls_token =        torch.nn.Parameter(torch.rand(1,1,64)*0.001, requires_grad=True)
         self.linear_probe2   =   LinearWithConstraint(64, self.num_class, max_norm=0.25)
         
-        self.loss_fn        = torch.nn.CrossEntropyLoss()
-    
-        self.running_scores = {"train":[], "valid":[], "test":[]}
-        self.is_sanity = True
+        self.optimizer = torch.optim.AdamW(
+            list(self.chan_conv.parameters())+
+            list(self.linear_probe1.parameters())+
+            list(self.linear_probe2.parameters())+
+            [self.cls_token]+
+            list(self.decoder.parameters()),
+            weight_decay=0.01)
         
     def forward(self, x):
         B, C, T = x.shape

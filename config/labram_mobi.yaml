@@ -4,19 +4,23 @@ common:
   exp_dir: experiments
 
 dataset:
-  batch_size: 8
+  batch_size: 64
   dataset: MoBIDataset
   eval:
+  - val
+  - test
   num_workers: 2
-  path: data\MoBI
-  train: 
+  path: /mnt/ssd/lingyus/MoBI/processed
+  train: train
   transforms:
     select: []
 
 lr_scheduler:
-  gamma: 0.1
-  select: StepLR
-  step_size: 4500
+  select: WarmupCosineAnnealingLR
+  T_max: 210600
+  eta_min: 0
+  warmup_start_lr: 0
+  warmup_steps: 16848
 
 model:
   downstream:
@@ -25,7 +29,7 @@ model:
   upstream:
     select: labram_base_patch200_200
     trainable: true
-    finetune: models\upstream\labram\checkpoints\labram-base.pth
+    finetune: /home/lingyus/code/PRL/models/upstream/labram/checkpoints/labram-base.pth
     nb_classes: 12
     drop: 0.0
     drop_path: 0.1
@@ -33,31 +37,38 @@ model:
     drop_block_rate: null
     use_mean_pooling: true
     init_scale: 0.001
-    rel_pos_bias: true
+    rel_pos_bias: false
     abs_pos_emb: true
     layer_scale_init_value: 0.1
-    qkv_bias: true
+    qkv_bias: false
 
 optimizer:
   lr: 5e-4
-  select: Adam
+  select: AdamW
+  weight_decay: 0.05             # 权重衰减 (L2正则化)
+  layer_decay: 0.65                # 层级学习率衰减
 
 task:
   loss:
     select: MSELoss
-    weight:
   select: MoBITask
 
+
 trainer:
-  ddp_backend: gloo
-  fp16: false
-  total_steps: 5100
-  save_interval: 20
-  eval_interval: 20
-  log_interval: 100
-  world_size: 1
-  eval_metric: r2
+  fp16: true
+  total_steps: 210600
+  save_interval: 4212
+  eval_interval: 4212
+  log_interval: 20
+  eval_metric: R2Score
   metrics:
     pea_cor: {}
     r2: {}
     rmse: {}
+
+distributed:
+  backend: nccl
+  world_size: 1
+  rank: 0
+  distributed_no_spawn: false
+  cuda_visible_devices: "1,2"  

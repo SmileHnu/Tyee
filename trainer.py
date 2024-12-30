@@ -40,6 +40,7 @@ class Trainer(object):
         self._eval_interval = get_nested_field(cfg, 'trainer.eval_interval', 10)
         self._log_interval = get_nested_field(cfg, 'trainer.log_interval', 10)
         self._batch_size = get_nested_field(cfg, 'dataset.batch_size', 1)
+        self._max_grad_norm = get_nested_field(cfg, 'trainer.max_grad_norm', None)
 
         # 指标
         self.eval_metric = get_nested_field(cfg, 'trainer.eval_metric', None)
@@ -259,12 +260,19 @@ class Trainer(object):
             
             # 反缩放梯度
             scaler.unscale_(optimizer)  # 反缩放梯度
+
+            # 裁剪梯度
+            if self._max_grad_norm is not None:
+                torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=self._max_grad_norm)  # 裁剪梯度
             
             # 更新参数
             scaler.step(optimizer)  # 更新参数
             scaler.update()  # 更新Scaler状态
         else:
             loss.backward()  # 不使用FP16，常规反向传播
+            # 裁剪梯度
+            if self._max_grad_norm is not None:
+                torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=self._max_grad_norm)  # 裁剪梯度
             optimizer.step()  # 更新参数
 
         if lr_scheduler:
@@ -304,8 +312,10 @@ class Trainer(object):
                 for k, v in sample.items():
                     if v is not None:
                         sample[k] = v.to(device)
-                result = self.task.valid_step(model, sample)
-                tot_eval_loss += result['loss'].item()  # 累加损失
+                # 使用自动混合精度（autocast）
+                with torch.amp.autocast('cuda', enabled=self.fp16):
+                    result = self.task.valid_step(model, sample)
+                    tot_eval_loss += result['loss'].item()  # 累加损失
                 total += 1
 
                 self._metrics_evaluator.update_metrics(result)  # 更新指标

@@ -17,3 +17,4 @@ from models.upstream.eegpt.finetune_EEGPT_SleepEDF import LitEEGPTCausal as EEGP
 from models.upstream.eegpt.linear_probe_EEGPT_BCIC2A import LitEEGPTCausal as EEGPT_BCICIV2A
 from models.upstream.eegpt.linear_probe_EEGPT_KaggleERN import LitEEGPTCausal as EEGPT_KaggleERN
 from models.upstream.eegpt.linear_probe_EEGPT_PhysioP300 import LitEEGPTCausal as EEGPT_PhysioP300
+from models.upstream.eegpt.EEGPT_mcae_finetune_change_tuev import EEGPTClassifier as EEGPT_TUEV

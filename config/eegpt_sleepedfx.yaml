@@ -1,0 +1,55 @@
+common:
+  seed: 7
+  verbose: true
+  exp_dir: experiments
+
+dataset:
+  batch_size: 32
+  dataset: SleepEDFxDataset
+  num_workers: 8
+  path: /mnt/ssd/lingyus/sleep_edf/TrainFold
+  dev_subjects: [66, 71, 72, 73, 74, 75]
+  
+
+lr_scheduler:
+  select: OneCycleLR
+  total_steps: 55900
+  pct_start: 0.2
+  max_lr: 4e-4
+model:
+  upstream:
+    select: EEGPT_SleepEDF
+    checkpoint: /home/lingyus/code/PRL/models/upstream/eegpt/checkpoint/eegpt_mcae_58chs_4s_large4E.ckpt
+
+optimizer:
+  lr: 4e-4
+  select: AdamW
+  weight_decay: 0.01            # 权重衰减 (L2正则化)
+  
+
+task:
+  loss:
+    select: CrossEntropyLoss
+  select: SleepEDFxTask
+
+trainer:
+  fp16: true
+  total_steps: 55900
+  # [114320 115200 116600 111440 111640 110120 115560 114560 111440 111800]
+  save_interval: 1397
+  eval_interval: 1397
+  log_interval: 20
+  eval_metric: BalancedAccuracy
+  metrics:
+    acc: {}
+    bal_acc: {}
+    f1:
+      average: 'weighted'
+    cohen_kappa: {}
+
+distributed:
+  backend: nccl
+  world_size: 1
+  rank: 0
+  distributed_no_spawn: false
+  cuda_visible_devices: "5,6"  

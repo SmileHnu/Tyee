@@ -5,7 +5,7 @@
 @License : (C) Copyright 2024, Hunan University
 @Contact : shulingyu@hnu.edu.cn
 @Software: Visual Studio Code
-@File    : tuab_task.py
+@File    : labram_task.py
 @Time    : 2024/11/22 18:40:41
 @Desc    : 
 """
@@ -66,7 +66,7 @@ class Args:
         self.warmup_lr = float(self.warmup_lr)
 
 
-class TUABTask(PRLTask):
+class SEEDVTask(PRLTask):
     def __init__(self, cfg):
         super().__init__(cfg)
 
@@ -108,9 +108,17 @@ class TUABTask(PRLTask):
         self.disable_weight_decay_on_rel_pos_bias = get_nested_field(cfg, 'model.upstream.disable_weight_decay_on_rel_pos_bias', False)  # 获取是否禁用相对位置偏置的权重衰减
 
 
-        ch_names = ['EEG FP1', 'EEG FP2-REF', 'EEG F3-REF', 'EEG F4-REF', 'EEG C3-REF', 'EEG C4-REF', 'EEG P3-REF', 'EEG P4-REF', 'EEG O1-REF', 'EEG O2-REF', 'EEG F7-REF', \
-                    'EEG F8-REF', 'EEG T3-REF', 'EEG T4-REF', 'EEG T5-REF', 'EEG T6-REF', 'EEG A1-REF', 'EEG A2-REF', 'EEG FZ-REF', 'EEG CZ-REF', 'EEG PZ-REF', 'EEG T1-REF', 'EEG T2-REF']
-        ch_names = [name.split(' ')[-1].split('-')[0] for name in ch_names]
+        ch_names = ['FP1', 'FPZ', 'FP2', 'AF3', 'AF4', 'F7', 
+            'F5', 'F3', 'F1', 'FZ', 'F2', 'F4', 'F6', 
+            'F8', 'FT7', 'FC5', 'FC3', 'FC1', 'FCZ', 
+            'FC2', 'FC4', 'FC6', 'FT8', 'T7', 'C5', 
+            'C3', 'C1', 'CZ', 'C2', 'C4', 'C6', 'T8', 
+            'TP7', 'CP5', 'CP3', 'CP1', 'CPZ', 'CP2', 
+            'CP4', 'CP6', 'TP8', 'P7', 'P5', 'P3', 'P1', 
+            'PZ', 'P2', 'P4', 'P6', 'P8', 'PO7', 'PO5', 
+            'PO3', 'POZ', 'PO4', 'PO6', 'PO8', 'CB1', 'O1', 
+            'OZ', 'O2', 'CB2']
+        # ch_names = [name.split(' ')[-1].split('-')[0] for name in ch_names]
         self.input_chans = self.get_input_chans(ch_names)
 
     def get_train_dataset(self):
@@ -255,13 +263,13 @@ class TUABTask(PRLTask):
         target = sample["target"]
         x = x.float() / 100
         x = rearrange(x, 'B N (A T) -> B N A T', T=200)
-        target = target.float().unsqueeze(-1)
+        # target = target.float().unsqueeze(-1)
         pred = model(x, self.input_chans)
         loss = self.loss(pred, target)
         return {
              "loss": loss,
-            "output": pred,
-            "target": target
+            # "output": pred,
+            # "target": target
         }
 
     @torch.no_grad()
@@ -270,7 +278,7 @@ class TUABTask(PRLTask):
         target = sample["target"]
         x = x.float() / 100
         x = rearrange(x, 'B N (A T) -> B N A T', T=200)
-        target = target.float().unsqueeze(-1)
+        # target = target.float().unsqueeze(-1)
         pred = model(x, self.input_chans)
         loss = self.loss(pred, target)
 
