@@ -41,14 +41,9 @@ trainer:
   eval_interval: 64
   log_interval: 4
   world_size: 1
-  eval_metric: BalancedAccuracy
-  metrics:
-    acc: {}
-    bal_acc: {}
-    f1:
-      average: 'weighted'
-    cohen_kappa: {}
-    roc_auc: {}
+  eval_metric: balanced_accuracy
+  metrics: [ accuracy, balanced_accuracy, f1_weighted, cohen_kappa]
+    
 
 distributed:
   backend: nccl

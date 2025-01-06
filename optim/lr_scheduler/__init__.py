@@ -1,1 +1,1 @@
-from .cosine_scheduler import CosineScheduler
+from .cosine_scheduler import CosineScheduler, WarmupCosineAnnealingLR

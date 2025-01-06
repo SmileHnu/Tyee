@@ -1,5 +1,5 @@
 common:
-  seed: 0
+  seed: 7
   verbose: true
   exp_dir: experiments
 
@@ -14,6 +14,7 @@ dataset:
   train: processed_train
   transforms:
     select: []
+  
 
 lr_scheduler:
   select: WarmupCosineAnnealingLR
@@ -21,50 +22,36 @@ lr_scheduler:
   eta_min: 1e-6
   warmup_start_lr: 0
   warmup_steps: 12732
-
 model:
-
   upstream:
-    select: EEGPT_TUEV
-    trainable: true
-    finetune: /home/lingyus/code/PRL/models/upstream/eegpt/checkpoint/epoch=199-step=646600.ckpt
-    nb_classes: 6
-    drop: 0.0
-    drop_path: 0.1
-    attn_drop_rate: 0.0
-    drop_block_rate: null
-    use_mean_pooling: true
-    init_scale: 0.001
-    rel_pos_bias: false
-    abs_pos_emb: true
-    layer_scale_init_value: 0.1
-    qkv_bias: false
-
+    select: EEGPT_TUEV2
+    checkpoint: /home/lingyus/code/PRL/models/upstream/eegpt/checkpoint/epoch=199-step=646600.ckpt
 optimizer:
   lr: 5e-4
   select: AdamW
-  weight_decay: 0.05             # 权重衰减 (L2正则化)
-  layer_decay: 0.65                # 层级学习率衰减
+  weight_decay: 0.05            # 权重衰减 (L2正则化)
+  layer_decay: 0.65             # 层级学习率衰减
+  
 
 task:
   loss:
     select: LabelSmoothingCrossEntropy
     smoothing: 0.1
-  select: EEGPTTUEVTask
+  select: EEGPTTUEV2Task
 
 trainer:
   fp16: true
-  max_grad_norm: 80.0
   total_steps: 127320
+
   save_interval: 4244
   eval_interval: 4244
   log_interval: 20
   eval_metric: balanced_accuracy
   metrics: [balanced_accuracy, accuracy, f1_weighted, cohen_kappa]
-
+    
 distributed:
   backend: nccl
   world_size: 1
   rank: 0
   distributed_no_spawn: false
-  cuda_visible_devices: "1,2"  
+  cuda_visible_devices: "5,6"  

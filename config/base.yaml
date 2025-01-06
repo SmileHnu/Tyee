@@ -50,15 +50,8 @@ trainer:
   eval_interval: 20
   log_interval: 20
   world_size: 1
-  eval_metric: BalancedAccuracy
-  metrics:
-    acc: {}
-    prec:
-      average: "micro"
-    rec:
-      average: "micro"
-    f1:
-      average: "micro"
+  eval_metric: balanced_accuracy
+  metrics: [balanced_accuracy, accuracy, f1_weighted, cohen_kappa]
 
 distributed:
   backend: ddp

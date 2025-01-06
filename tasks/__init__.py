@@ -1,6 +1,5 @@
 
 from .base_task import PRLTask
-from .emotion_recognition_task import EmotionRecognitionTask
 from .dreamer_task import DREAMERTask
 from .bciciv2a_task import BCICIV2aTask
 from .bciciv2a_wavlet import WaveletBCICIV2aTask
@@ -13,3 +12,4 @@ from .sleepedfx_task import SleepEDFxTask
 from .bciciv2a_eegpt_task import BCICIV2ATask
 from .seedv_task import SEEDVTask
 from .eegpt_tuev_task import EEGPTTUEVTask
+from .eegpt_tuev2_task import EEGPTTUEV2Task

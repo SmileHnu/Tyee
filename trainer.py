@@ -44,8 +44,8 @@ class Trainer(object):
 
         # 指标
         self.eval_metric = get_nested_field(cfg, 'trainer.eval_metric', None)
-        metrics_dict = get_nested_field(cfg, 'trainer.metrics', None)
-        self._metrics_evaluator = MetricEvaluator(metrics_dict)
+        metrics_list = get_nested_field(cfg, 'trainer.metrics', None)
+        self._metrics_evaluator = MetricEvaluator(metrics_list)
         
         # 任务
         self.task = self._build_task()

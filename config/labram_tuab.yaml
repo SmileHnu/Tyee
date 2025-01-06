@@ -72,9 +72,12 @@ trainer:
   eval_interval: 4633
   log_interval: 20
   world_size: 1
-  eval_metric: Accuracy
-  metrics:
-    acc: {}
-    bal_acc: {}
-    pr_auc: {}
-    roc_auc: {}
+  eval_metric: accuracy
+  metrics: [accuracy, balanced_accuracy, pr_auc, roc_auc]
+
+distributed:
+  backend: nccl
+  world_size: 1
+  rank: 0
+  distributed_no_spawn: false
+  cuda_visible_devices: "1,2"  

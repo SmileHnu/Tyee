@@ -151,7 +151,7 @@ class TUEVTask(PRLTask):
         else:
             return num_max_layer - 1
 
-    def set_lr(self, model: torch.nn.Module, lr: float, layer_decay: float, weight_decay: float):
+    def set_optimizer_params(self, model: torch.nn.Module, lr: float, layer_decay: float, weight_decay: float):
         """
         根据 lr 和 layer_decay 设置模型每一层的学习率，构造对应的参数组
         :param model: 需要设置学习率的模型

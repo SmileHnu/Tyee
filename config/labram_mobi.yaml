@@ -60,7 +60,7 @@ trainer:
   save_interval: 4212
   eval_interval: 4212
   log_interval: 20
-  eval_metric: R2Score
+  eval_metric: r2
   metrics:
     pea_cor: {}
     r2: {}

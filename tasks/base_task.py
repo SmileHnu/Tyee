@@ -76,11 +76,8 @@ class PRLTask(object):
 
     def build_optimizer(self,model: torch.nn.Module):
         """ 构建优化器 """
-        # 使用 set_lr 方法构造参数组
-        if self.layer_decay != 1.0:
-            param_groups = self.set_lr(model, self.lr, self.layer_decay, self.weight_decay)
-        else:
-            param_groups = [{'params': model.parameters(), 'lr': self.lr, 'weight_decay': self.weight_decay}]
+        # 使用 set_optimizer_params 方法构造参数组
+        param_groups = self.set_optimizer_params(model, self.lr, self.layer_decay, self.weight_decay)
         # 动态导入优化器类
         try:
             optimizer_cls = lazy_import_module('torch.optim', self.optimizer_select)
@@ -89,7 +86,7 @@ class PRLTask(object):
     
         return optimizer_cls(param_groups)
     
-    def set_lr(self, model: torch.nn.Module, lr: float, layer_decay: float, weight_decay: float = 1e-5):
+    def set_optimizer_params(self, model: torch.nn.Module, lr: float, layer_decay: float, weight_decay: float = 1e-5):
         """
         根据 lr 和 layer_decay 设置模型每一层的学习率，构造对应的参数组
         :param model: 需要设置学习率的模型
@@ -97,39 +94,9 @@ class PRLTask(object):
         :param layer_decay: 学习率衰减率
         :return: 参数组列表，用于 optimizer 的创建
         """
-        param_groups = []
-        num_layers = len(list(model.children()))  # 获取模型的层数
-        for name, param in model.named_parameters():
-            if not param.requires_grad:
-                continue  # 跳过冻结的参数
-            # 获取层号
-            layer_id = self.get_layer_id(name, num_layers)
-            # 计算该层的学习率缩放比例
-            scale = layer_decay ** (num_layers - layer_id - 1)
-            # 构造参数组
-            param_groups.append({
-                'params': param, 
-                'lr': lr * scale,
-                'weight_decay': weight_decay if 'bias' not in name and 'LayerNorm.weight' not in name else 0.0
-            })
+        param_groups = [{'params': model.parameters(), 'lr': lr, 'weight_decay': weight_decay}]
         return param_groups
 
-    def get_layer_id(self, var_name, num_max_layer):
-        """
-        获取参数所属的层号
-        :param var_name: 参数名
-        :param num_max_layer: 最大层数
-        :return: 层号
-        """
-        if var_name.startswith("layer"):
-            layer_id = int(var_name.split('.')[1])
-            return layer_id
-        elif "blocks" in var_name:
-            layer_id = int(var_name.split('.')[1])
-            return layer_id
-        else:
-            return num_max_layer - 1
-    
     def build_lr_scheduler(self,optimizer):
         """ 构建学习率调度器 """
         if self.lr_scheduler_select is None:
