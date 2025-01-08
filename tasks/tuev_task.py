@@ -19,14 +19,9 @@ from torch import nn
 from pathlib import Path
 from tasks import PRLTask
 from einops import rearrange
-from timm.utils import ModelEma
 from dataset import DatasetType
-from timm.models import create_model
 from collections import OrderedDict
-from models.upstream import labram_base_patch200_200
 from utils import lazy_import_module, get_nested_field
-from timm.loss import LabelSmoothingCrossEntropy
-from models.upstream.labram.optim_factory import create_optimizer,LayerDecayValueAssigner
 
 standard_1020 = [
     'FP1', 'FPZ', 'FP2', 
@@ -76,7 +71,7 @@ class TUEVTask(PRLTask):
         self.dev_dataset = None
 
 
-        self.model = get_nested_field(cfg, 'model.upstream.select', '')
+        self.model_select = get_nested_field(cfg, 'model.upstream.select', '')
         self.finetune = get_nested_field(cfg, 'model.upstream.finetune', '')  # 获取微调的设置
         self.nb_classes = get_nested_field(cfg, 'model.upstream.nb_classes', 0)  # 获取类别数
 
@@ -180,9 +175,9 @@ class TUEVTask(PRLTask):
         return param_groups
 
     def build_model(self):
-
-        model = create_model(
-        self.model,
+        
+        model_name = lazy_import_module('models.upstream', self.model_select)
+        model = model_name(
         pretrained=False,
         num_classes=self.nb_classes,
         drop_rate=self.drop,
@@ -240,16 +235,6 @@ class TUEVTask(PRLTask):
                     checkpoint_model.pop(key)
 
             self.load_state_dict(model, checkpoint_model, prefix=self.model_prefix)
-
-        model_ema = None
-        if self.model_ema:
-            # Important to create EMA model after cuda(), DP wrapper, and AMP but before SyncBN and DDP wrapper
-            model_ema = ModelEma(
-                model,
-                decay=self.model_ema_decay,
-                device='cpu' if self.model_ema_force_cpu else '',
-                resume='')
-            print("Using EMA with decay = %.8f" % self.model_ema_decay)
 
         model_without_ddp = model
         n_parameters = sum(p.numel() for p in model.parameters() if p.requires_grad)

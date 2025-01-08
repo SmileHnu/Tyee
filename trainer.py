@@ -24,7 +24,7 @@ from torch.nn.parallel import DistributedDataParallel as DDP
 
 
 class Trainer(object):
-    def __init__(self, cfg) -> None:
+    def __init__(self, cfg, rank, world_size) -> None:
 
         self.cfg = cfg
 
@@ -46,6 +46,7 @@ class Trainer(object):
         self.eval_metric = get_nested_field(cfg, 'trainer.eval_metric', None)
         metrics_list = get_nested_field(cfg, 'trainer.metrics', None)
         self._metrics_evaluator = MetricEvaluator(metrics_list)
+        self.best_metric_value = None
         
         # 任务
         self.task = self._build_task()
@@ -56,79 +57,84 @@ class Trainer(object):
         self.tb_dir = get_nested_field(self.cfg, "common.tb_dir")
         self.checkpoint_dir = get_nested_field(self.cfg, "common.checkpoint_dir")
 
-        # 配置logging
-        self.logger = logging.getLogger(__name__)
+        # DDP配置
+        self.world_size = world_size
+        self.rank = rank
 
-        # TensorBoard日志
-        self.writer = SummaryWriter(log_dir=self.tb_dir)
-
-
+        # 实例化训练基础组件
+        self._init_components()
+        
     def _build_task(self) -> object:
         task = lazy_import_module('tasks', self.task_select)
         return task(self.cfg)
     
+    def _init_components(self):
+        # 配置logging
+        self.logger = logging.getLogger(__name__)
+        # TensorBoard日志
+        self.writer = SummaryWriter(log_dir=self.tb_dir)
+        # 加载数据集
+        self.train_dataset = self.task.get_train_dataset()
+        self.dev_dataset = self.task.get_dev_dataset()
+        self.test_dataset = self.task.get_test_dataset()
+
+        # 模型、优化器与学习率调度器
+        self.model = self.task.build_model()
+        self.optimizer = self.task.build_optimizer(self.model)
+        self.lr_scheduler = self.task.build_lr_scheduler(self.optimizer)
+
+
+        self.device = torch.device(self.rank)
+        self.model = self.model.to(self.device)
+        if self.world_size > 1:
+            self.model = DDP(self.model, device_ids=[self.rank])
+
+        # 构造采样器
+        self.train_sampler = self.task.build_sampler(self.train_dataset, self.world_size, self.rank)
+        if self.dev_dataset is not None:
+            self.dev_sampler = self.task.build_sampler(self.dev_dataset, self.world_size, self.rank)
+        else:
+            self.dev_sampler = None
+        if self.test_dataset is not None:
+            self.test_sampler = self.task.build_sampler(self.test_dataset, self.world_size, self.rank)
+        else:
+            self.test_sampler = None
+        
+
+        # 构造数据加载器
+        self.train_loader = self.task.build_dataloader(self.train_dataset, self._batch_size, sampler=self.train_sampler, shuffle=True)
+        if self.dev_dataset is not None:
+            self.dev_loader = self.task.build_dataloader(self.dev_dataset, self._batch_size, sampler=self.dev_sampler, shuffle=False)
+        else:
+            self.dev_loader = None
+        if self.test_dataset is not None:
+            self.test_loader = self.task.build_dataloader(self.test_dataset, self._batch_size, sampler=self.test_sampler, shuffle=False)
+        else:
+            self.test_loader = None
+
+        # 如果使用FP16，初始化 GradScaler
+        self.scaler = torch.amp.GradScaler(enabled=self.fp16) if self.fp16 else None
  
-    def train(self, rank, world_size):
+    def train(self):
         """
         训练模型的主函数，执行训练过程，包括训练、评估、日志记录和模型保存等。
 
         :param rank: int, 当前进程的rank，用于分布式训练中标识进程。
         :param world_size: int, 总进程数，用于分布式训练中的参数设置。
         """
-        # 加载数据集
-        train_dataset = self.task.get_train_dataset()
-        dev_dataset = self.task.get_dev_dataset()
-        test_dataset = self.task.get_test_dataset()
-
-        # 模型、优化器与学习率调度器
-        model = self.task.build_model()
-        optimizer = self.task.build_optimizer(model)
-        lr_scheduler = self.task.build_lr_scheduler(optimizer)
-
-
-        device = torch.device(rank)
-        model = model.to(device)
-        if world_size > 1:
-            model = DDP(model, device_ids=[rank])
-
-        # 构造采样器
-        train_sampler = self.task.build_sampler(train_dataset, world_size, rank)
-        if dev_dataset is not None:
-            dev_sampler = self.task.build_sampler(dev_dataset, world_size, rank)
-        else:
-            dev_sampler = None
-        if test_dataset is not None:
-            test_sampler = self.task.build_sampler(test_dataset, world_size, rank)
-        else:
-            test_sampler = None
         
 
-        # 构造数据加载器
-        train_loader = self.task.build_dataloader(train_dataset, self._batch_size, sampler=train_sampler, shuffle=True)
-        if dev_dataset is not None:
-            dev_loader = self.task.build_dataloader(dev_dataset, self._batch_size, sampler=dev_sampler, shuffle=False)
-        else:
-            dev_loader = None
-        if test_dataset is not None:
-            test_loader = self.task.build_dataloader(test_dataset, self._batch_size, sampler=test_sampler, shuffle=False)
-        else:
-            test_loader = None
-
-        # 如果使用FP16，初始化 GradScaler
-        scaler = torch.amp.GradScaler(enabled=self.fp16) if self.fp16 else None
-
-
-        iterator = self.task.get_batch_iterator(train_loader)
+        iterator = self.task.get_batch_iterator(self.train_loader)
         # 初始化累积指标
         accumulated_train_metrics = {}
 
         for step in range(1, self._total_steps + 1):
             # 更新epoch和迭代器
-            if step % len(train_loader) == 0:
-                train_sampler.set_epoch(step // len(train_loader))
-                iterator = self.task.get_batch_iterator(train_loader)
+            if step % len(self.train_loader) == 0:
+                self.train_sampler.set_epoch(step // len(self.train_loader))
+                iterator = self.task.get_batch_iterator(self.train_loader)
              # 训练步骤
-            train_result = self._train_step(iterator, model, optimizer, lr_scheduler, scaler, device, world_size)
+            train_result = self._train_step(iterator)
 
             # 累积训练指标
             for metric, value in train_result.items():
@@ -137,13 +143,13 @@ class Trainer(object):
                 accumulated_train_metrics[metric] += value
 
             # 在更新参数之前，计算梯度范数
-            grad_norm = get_grad_norm(model.parameters(), norm_type=2)  # 可以选择L2范数
+            grad_norm = get_grad_norm(self.model.parameters(), norm_type=2)  # 可以选择L2范数
 
             # 打印lr
-            if rank == 0:
+            if self.rank == 0:
                 min_lr = 10.
                 max_lr = 0.
-                for group in optimizer.param_groups:
+                for group in self.optimizer.param_groups:
                     min_lr = min(min_lr, group["lr"])
                     max_lr = max(max_lr, group["lr"])
                     weight_decay = group['weight_decay']
@@ -153,7 +159,7 @@ class Trainer(object):
                 self.writer.add_scalar(f'opt/weight_decay', weight_decay, step)
                 self.writer.add_scalar(f'opt/grad_norm', grad_norm, step)
             # 日志记录
-            if step % self._log_interval == 0 and rank == 0:
+            if step % self._log_interval == 0 and self.rank == 0:
                 # 计算平均训练指标
                 avg_train_metrics = {
                     metric: round(value.item() / self._log_interval, 4) if isinstance(value, torch.Tensor) else round(value / self._log_interval, 4)
@@ -168,60 +174,42 @@ class Trainer(object):
                 for metric, value in avg_train_metrics.items():
                     self.writer.add_scalar(f'train/{metric}', value, step)
                 
-
             # 验证集日志
             if step % self._eval_interval == 0:
                 
                 # 验证集评估
-                dev_result = self._eval_step(model, dev_loader, device, world_size)
+                if self.dev_loader is not None:
+                    dev_result = self._eval_step(self.dev_loader)
                 # 测试集评估
-                if test_loader is not None:
-                    test_result = self._eval_step(model, test_loader, device, world_size)
+                if self.test_loader is not None:
+                    test_result = self._eval_step(self.test_loader)
 
-                if rank == 0:
-                    # 打印验证日志
-                    self.logger.info(f"Dev, Step {step}, Metrics: {dev_result}")
+                if self.rank == 0:
+                    if self.dev_loader is not None:
+                        # 打印验证日志
+                        self.logger.info(f"Dev, Step {step}, Metrics: {dev_result}")
 
-                    # 写入 TensorBoard
-                    for metric, value in dev_result.items():
-                        self.writer.add_scalar(f'dev/{metric}', value, step)
+                        # 写入 TensorBoard
+                        for metric, value in dev_result.items():
+                            self.writer.add_scalar(f'dev/{metric}', value, step)
 
-                    if test_loader is not None:
-                        
+                    if self.test_loader is not None:
                         # 打印测试日志
                         self.logger.info(f"Test, Step {step}, Metrics: {test_result}")
 
                         for metric, value in test_result.items():
                             self.writer.add_scalar(f'test/{metric}', value, step)
 
-                    # 判断评估指标是否达到了最优
-                    current_metric_value = dev_result.get(self.eval_metric, None)  # 获取当前评估指标的值
+                    # 检查并保存最优模型
+                    self._check_and_save_best(dev_result)
 
-                    # 初始化最优指标值和模型保存路径
-                    if current_metric_value is not None:
-                        save_best = False
-
-                        # 如果已经有 best_metric_value，比较当前指标是否更优
-                        if hasattr(self, 'best_metric_value'):
-                            if current_metric_value > self.best_metric_value:
-                                save_best = True
-                        else:
-                            # 如果没有 best_metric_value，初始化为当前指标
-                            save_best = True
-
-                        if save_best:
-                            self.best_metric_value = current_metric_value
-                            best_model_filename = f"{self.checkpoint_dir}/checkpoint_best.pt"
-                            self._save_checkpoint(best_model_filename, model, optimizer, lr_scheduler)
-                            self.logger.info(f"Best checkpoint saved with {self.eval_metric}: {current_metric_value}")
-
-
-            if step % self._save_interval == 0 and rank == 0:
+            # 保存检查点
+            if step % self._save_interval == 0 and self.rank == 0:
                 # 构造保存路径和文件名
                 checkpoint_filename = f"{self.checkpoint_dir}/checkpoint_step_{step}.pt"
 
                 # 保存模型参数
-                self._save_checkpoint(checkpoint_filename, model, optimizer, lr_scheduler)
+                self._save_checkpoint(checkpoint_filename, self.model, self.optimizer, self.lr_scheduler)
 
                 # 删除之前的检查点文件（如果存在）
                 if hasattr(self, 'last_checkpoint') and os.path.exists(self.last_checkpoint):
@@ -233,7 +221,7 @@ class Trainer(object):
                 # 记录日志
                 self.logger.info(f"Checkpoint saved for step {step}")
     
-    def _train_step(self, iterator, model, optimizer, lr_scheduler, scaler, device, world_size):
+    def _train_step(self, iterator):
         """
         执行单个训练步骤，包括前向传播、损失计算、反向传播、参数更新，以及指标的更新与计算。
 
@@ -245,41 +233,41 @@ class Trainer(object):
         :param device: torch.device, 模型和数据的计算设备（如GPU）。
         :return: dict, 包含损失和计算出的指标的字典。
         """
-        sample = self.task.load_sample(iterator, device)
-        model.train()
-        optimizer.zero_grad()
+        sample = self.task.load_sample(iterator, self.device)
+        self.model.train()
+        self.optimizer.zero_grad()
 
         # 使用自动混合精度（autocast）
         with torch.amp.autocast('cuda', enabled=self.fp16):
-            result = self.task.train_step(model, sample)  # 执行训练步骤
+            result = self.task.train_step(self.model, sample)  # 执行训练步骤
             loss = result['loss']  # 提取损失
 
         # 如果启用了FP16，使用Scaler来缩放梯度
         if self.fp16:
-            scaler.scale(loss).backward()  # 使用缩放后的梯度反向传播
+            self.scaler.scale(loss).backward()  # 使用缩放后的梯度反向传播
             
             # 反缩放梯度
-            scaler.unscale_(optimizer)  # 反缩放梯度
+            self.scaler.unscale_(self.optimizer)  # 反缩放梯度
 
             # 裁剪梯度
             if self._max_grad_norm is not None:
-                torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=self._max_grad_norm)  # 裁剪梯度
+                torch.nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=self._max_grad_norm)  # 裁剪梯度
             
             # 更新参数
-            scaler.step(optimizer)  # 更新参数
-            scaler.update()  # 更新Scaler状态
+            self.scaler.step(self.optimizer)  # 更新参数
+            self.scaler.update()  # 更新Scaler状态
         else:
             loss.backward()  # 不使用FP16，常规反向传播
             # 裁剪梯度
             if self._max_grad_norm is not None:
-                torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=self._max_grad_norm)  # 裁剪梯度
-            optimizer.step()  # 更新参数
+                torch.nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=self._max_grad_norm)  # 裁剪梯度
+            self.optimizer.step()  # 更新参数
 
-        if lr_scheduler:
-            lr_scheduler.step()
+        if self.lr_scheduler:
+            self.lr_scheduler.step()
 
         # 如果是自监督模型，需要额外的步骤
-        self.task.momentum_update(model)
+        self.task.momentum_update(self.model)
 
         # 更新指标
         if 'output' in result:
@@ -289,12 +277,12 @@ class Trainer(object):
             metrics = None
 
         # 聚合和平均损失与指标
-        result = self._aggregate_metrics(loss, metrics, world_size, device)
+        result = self._aggregate_metrics(loss, metrics)
 
         return result
 
 
-    def _eval_step(self, model, loader, device, world_size):
+    def _eval_step(self, loader):
         """
         执行单个评估步骤，包括模型评估、损失计算以及指标计算。
 
@@ -304,17 +292,17 @@ class Trainer(object):
         :param world_size: int, 分布式训练中的总进程数，用于计算全局的平均损失。
         :return: dict, 包含总评估损失和计算出的指标。
         """
-        model.eval()
+        self.model.eval()
         with torch.no_grad():
             total, correct = 0, 0
             tot_eval_loss = 0
             for sample in self.task.get_batch_iterator(loader):
                 for k, v in sample.items():
                     if v is not None:
-                        sample[k] = v.to(device)
+                        sample[k] = v.to(self.device)
                 # 使用自动混合精度（autocast）
                 with torch.amp.autocast('cuda', enabled=self.fp16):
-                    result = self.task.valid_step(model, sample)
+                    result = self.task.valid_step(self.model, sample)
                     tot_eval_loss += result['loss'].item()  # 累加损失
                 total += 1
 
@@ -323,11 +311,11 @@ class Trainer(object):
             metrics = self._metrics_evaluator.calculate_metrics()  # 计算最终的指标
 
         # 聚合和平均损失与指标
-        result = self._aggregate_metrics(tot_eval_loss, metrics, world_size, device, total)
+        result = self._aggregate_metrics(tot_eval_loss, metrics, total)
 
         return result
 
-    def _aggregate_metrics(self, loss, metrics, world_size, device, total=None):
+    def _aggregate_metrics(self, loss, metrics, total=None):
         """
         聚合和平均损失与指标。
 
@@ -337,22 +325,22 @@ class Trainer(object):
         :param total: int, 样本总数（仅在评估步骤中使用）。
         :return: dict, 包含聚合和平均后的损失与指标的字典。
         """
-        if world_size > 1:
+        if self.world_size > 1:
             if not isinstance(loss, torch.Tensor):
-                loss = torch.tensor(loss).to(device)
+                loss = torch.tensor(loss).to(self.device)
             dist.all_reduce(loss, op=dist.ReduceOp.SUM)
-            loss /= world_size
+            loss /= self.world_size
 
             if metrics is not None:
                 for metric, value in metrics.items():
                     if isinstance(value, torch.Tensor):
                         dist.all_reduce(value, op=dist.ReduceOp.SUM)
-                        value /= world_size
+                        value /= self.world_size
                         metrics[metric] = round(value.item(), 4)
                     elif isinstance(value, (int, float)):
-                        tensor_value = torch.tensor(value).to(device)
+                        tensor_value = torch.tensor(value).to(self.device)
                         dist.all_reduce(tensor_value, op=dist.ReduceOp.SUM)
-                        metrics[metric] = round(tensor_value.item() / world_size, 4)
+                        metrics[metric] = round(tensor_value.item() / self.world_size, 4)
             else:
                 metrics = {}
 
@@ -372,6 +360,31 @@ class Trainer(object):
 
         return result
 
+    def _check_and_save_best(self, dev_result):
+        """
+        检查当前评估指标是否达到了最优，并保存最优模型。
+
+        :param dev_result: dict, 包含当前评估结果的字典。
+        """
+        current_metric_value = dev_result.get(self.eval_metric, None)  # 获取当前评估指标的值
+
+        # 初始化最优指标值和模型保存路径
+        if current_metric_value is not None:
+            save_best = False
+
+            # 如果已经有 best_metric_value，比较当前指标是否更优
+            if self.best_metric_value is not None:
+                if current_metric_value > self.best_metric_value:
+                    save_best = True
+            else:
+                # 如果没有 best_metric_value，初始化为当前指标
+                save_best = True
+
+            if save_best:
+                self.best_metric_value = current_metric_value
+                best_model_filename = f"{self.checkpoint_dir}/checkpoint_best.pt"
+                self._save_checkpoint(best_model_filename, self.model, self.optimizer, self.lr_scheduler)
+                self.logger.info(f"Best checkpoint saved with {self.eval_metric}: {current_metric_value}")
 
     def _state_dict(self, model, optimizer, lr_scheduler):
         return {

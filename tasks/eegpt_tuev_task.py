@@ -18,14 +18,10 @@ from torch import nn
 from pathlib import Path
 from tasks import PRLTask
 from einops import rearrange
-from timm.utils import ModelEma
 from dataset import DatasetType
-from timm.models import create_model
-from collections import OrderedDict
-from models.upstream import labram_base_patch200_200
 from utils import lazy_import_module, get_nested_field
-from timm.loss import LabelSmoothingCrossEntropy
-from models.upstream.labram.optim_factory import create_optimizer,LayerDecayValueAssigner
+
+
 
 standard_1020 = [
     'FP1', 'FPZ', 'FP2', 
@@ -132,18 +128,6 @@ class EEGPTTUEVTask(PRLTask):
         # transforms = [lazy_import_module('dataset.transforms', t) for t in self.transforms_select]
         return Dataset(os.path.join(root, fpath), files)
 
-    def build_lr_scheduler(self, optimizer):
-        lr_scheduler_select = get_nested_field(self.cfg, 'lr_scheduler.select', '')
-        if lr_scheduler_select == 'WarmupCosineAnnealingLR':
-            T_max = get_nested_field(self.cfg, 'lr_scheduler.T_max', 100)
-            eta_min = get_nested_field(self.cfg, 'lr_scheduler.eta_min', 0)
-            warmup_start_lr = get_nested_field(self.cfg, 'lr_scheduler.warmup_start_lr', 0)
-            warmup_steps = get_nested_field(self.cfg, 'lr_scheduler.warmup_steps', 0)
-            return WarmupCosineAnnealingLR(optimizer=optimizer, T_max=T_max, warmup_steps=warmup_steps, warmup_start_lr=warmup_start_lr, eta_min=eta_min)
-
-    def build_optimizer(self, model):
-        return self.optimizer
-
     def build_model(self):
 
         model_name = lazy_import_module('models.upstream', self.upstream_select)
@@ -183,40 +167,11 @@ class EEGPTTUEVTask(PRLTask):
             checkpoint_model = checkpoint['state_dict']
             self.load_state_dict(model, checkpoint_model, prefix=self.model_prefix)
 
-        model_ema = None
-        if self.model_ema:
-            # Important to create EMA model after cuda(), DP wrapper, and AMP but before SyncBN and DDP wrapper
-            model_ema = ModelEma(
-                model,
-                decay=self.model_ema_decay,
-                device='cpu' if self.model_ema_force_cpu else '',
-                resume='')
-            print("Using EMA with decay = %.8f" % self.model_ema_decay)
-
         model_without_ddp = model
         n_parameters = sum(p.numel() for p in model.parameters() if p.requires_grad)
 
         print("Model = %s" % str(model_without_ddp))
         print('number of params:', n_parameters)
-
-        num_layers = model_without_ddp.get_num_layers()
-        if self.args.layer_decay < 1.0:
-            assigner = LayerDecayValueAssigner(list(self.args.layer_decay ** (num_layers + 1 - i) for i in range(num_layers + 2)))
-        else:
-            assigner = None
-
-        if assigner is not None:
-            print("Assigned values = %s" % str(assigner.values))
-
-        skip_weight_decay_list = model.no_weight_decay()
-        if self.disable_weight_decay_on_rel_pos_bias:
-            for i in range(num_layers):
-                skip_weight_decay_list.add("blocks.%d.attn.relative_position_bias_table" % i)
-        self.optimizer = create_optimizer(
-            self.args, model_without_ddp, skip_list=skip_weight_decay_list,
-            get_num_layer=assigner.get_layer_id if assigner is not None else None, 
-            get_layer_scale=assigner.get_scale if assigner is not None else None)
-        
         return model
         
     def train_step(self, model: nn.Module, sample: dict[str, torch.Tensor]):

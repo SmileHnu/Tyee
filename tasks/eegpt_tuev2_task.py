@@ -24,9 +24,6 @@ class EEGPTTUEV2Task(PRLTask):
 
         self.checkpoint = get_nested_field(cfg, 'model.upstream.checkpoint', default=None)
         
-        
-        
-
     def get_train_dataset(self):
         if self.train_dataset is None:
             self.train_dataset = self.build_dataset(self.dataset_root, self.train_fpath)
@@ -112,7 +109,7 @@ class EEGPTTUEV2Task(PRLTask):
     def train_step(self, model: torch.nn.Module, sample: dict[str, torch.Tensor], *args, **kwargs):
         x = sample['x']
         target = sample['target']
-        x = x.float() / 1000
+        x = x.float() / 100
         x, pred = model(x)
         
         loss = self.loss(pred, target)
@@ -127,7 +124,7 @@ class EEGPTTUEV2Task(PRLTask):
     def valid_step(self, model: torch.nn.Module, sample: dict[str, torch.Tensor], *args, **kwargs):
         x = sample['x']
         target = sample['target']
-        x = x.float() / 1000
+        x = x.float() / 100
         x, pred = model(x)
         
         loss = self.loss(pred, target)

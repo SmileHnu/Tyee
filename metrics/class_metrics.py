@@ -17,6 +17,9 @@ from sklearn.metrics import accuracy_score, balanced_accuracy_score, average_pre
                             recall_score, f1_score, cohen_kappa_score
 from abc import ABC, abstractmethod
 
+import warnings
+warnings.filterwarnings("ignore", category=UserWarning)
+
 class ClassMetric(ABC):
     """
     指标的抽象基类，定义了 compute 接口。

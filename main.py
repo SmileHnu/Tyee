@@ -65,8 +65,8 @@ def load_cfg() -> None:
 
 def main(cfg, rank, world_size, **kwargs):
     # 实例化 Trainer
-    trainer = Trainer(cfg)
-    trainer.train(rank, world_size)
+    trainer = Trainer(cfg, rank, world_size)
+    trainer.train()
 
 if __name__ == "__main__":
     cfg = load_cfg()

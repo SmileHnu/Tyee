@@ -14,8 +14,7 @@ from functools import partial
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from timm.models.layers import drop_path, to_2tuple, trunc_normal_
-from timm.models.registry import register_model
+from torch.nn.init import trunc_normal_
 from einops import rearrange
 
 
@@ -37,7 +36,14 @@ class DropPath(nn.Module):
         self.drop_prob = drop_prob
 
     def forward(self, x):
-        return drop_path(x, self.drop_prob, self.training)
+        if self.drop_prob == 0. or not self.training:
+            return x
+        keep_prob = 1 - self.drop_prob
+        shape = (x.shape[0],) + (1,) * (x.ndim - 1)  # work with diff dim tensors, not just 2D ConvNets
+        random_tensor = x.new_empty(shape).bernoulli_(keep_prob)
+        if keep_prob > 0.0 :
+            random_tensor.div_(keep_prob)
+        return x * random_tensor
     
     def extra_repr(self) -> str:
         return 'p={}'.format(self.drop_prob)
@@ -463,7 +469,7 @@ class NeuralTransformer(nn.Module):
         return features
 
 
-@register_model
+
 def labram_base_patch200_200(pretrained=False, **kwargs):
     model = NeuralTransformer(
         patch_size=200, embed_dim=200, depth=12, num_heads=10, mlp_ratio=4, qk_norm=partial(nn.LayerNorm, eps=1e-6), # qkv_bias=True,
@@ -471,7 +477,7 @@ def labram_base_patch200_200(pretrained=False, **kwargs):
     model.default_cfg = _cfg()
     return model
 
-@register_model
+
 def labram_large_patch200_200(pretrained=False, **kwargs):
     model = NeuralTransformer(
         patch_size=200, embed_dim=400, depth=24, num_heads=16, mlp_ratio=4, out_chans=16, qk_norm=partial(nn.LayerNorm, eps=1e-6), # qkv_bias=True,
@@ -479,7 +485,7 @@ def labram_large_patch200_200(pretrained=False, **kwargs):
     model.default_cfg = _cfg()
     return model
 
-@register_model
+
 def labram_huge_patch200_200(pretrained=False, **kwargs):
     model = NeuralTransformer(
         patch_size=200, embed_dim=800, depth=48, num_heads=16, mlp_ratio=4, out_chans=32, qk_norm=partial(nn.LayerNorm, eps=1e-6), # qkv_bias=True,
