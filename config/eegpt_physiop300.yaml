@@ -43,3 +43,8 @@ trainer:
   world_size: 1
   eval_metric: balanced_accuracy
   metrics: [ accuracy, balanced_accuracy, f1_weighted, cohen_kappa]
+
+distributed:
+  backend: nccl
+  world_size: 1
+  distributed_no_spawn: false

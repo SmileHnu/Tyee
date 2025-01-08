@@ -55,13 +55,11 @@ task:
   select: TUEVTask
 
 trainer:
-  ddp_backend: gloo
   fp16: true
   total_steps: 127320
   save_interval: 4244
   eval_interval: 4244
   log_interval: 20
-  world_size: 1
   eval_metric: balanced_accuracy
   metrics: [balanced_accuracy, accuracy, f1_weighted, cohen_kappa]
     
@@ -69,6 +67,4 @@ trainer:
 distributed:
   backend: nccl
   world_size: 1
-  rank: 0
   distributed_no_spawn: false
-  cuda_visible_devices: "1,2"  

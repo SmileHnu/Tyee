@@ -69,6 +69,4 @@ trainer:
 distributed:
   backend: nccl
   world_size: 1
-  rank: 0
   distributed_no_spawn: false
-  cuda_visible_devices: "1,2"  

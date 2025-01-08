@@ -91,12 +91,6 @@ if __name__ == "__main__":
     cfg['common']['tb_dir'] = tb_dir
     cfg['common']['checkpoint_dir'] = checkpoint_dir
 
-    # 设置 CUDA_VISIBLE_DEVICES 环境变量
-    cuda_visible_devices = get_nested_field(cfg, 'distributed.cuda_visible_devices', None)
-    if cuda_visible_devices:
-        os.environ["CUDA_VISIBLE_DEVICES"] = cuda_visible_devices
-        logger.info(f"Set CUDA_VISIBLE_DEVICES to {cuda_visible_devices}")
-
     call_main(cfg, main)
 
 
