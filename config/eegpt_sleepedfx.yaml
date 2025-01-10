@@ -30,7 +30,7 @@ optimizer:
 task:
   loss:
     select: CrossEntropyLoss
-  select: SleepEDFxTask
+  select: sleepedfx_task.SleepEDFxTask
 
 trainer:
   fp16: true

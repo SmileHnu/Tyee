@@ -31,7 +31,7 @@ optimizer:
 task:
   loss:
     select: CrossEntropyLoss
-  select: KaggleERNTask
+  select: kaggleern_task.KaggleERNTask
 
 trainer:
   fp16: true

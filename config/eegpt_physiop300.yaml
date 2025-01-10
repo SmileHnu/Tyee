@@ -31,7 +31,7 @@ optimizer:
 task:
   loss:
     select: CrossEntropyLoss
-  select: PhysioP300Task
+  select: physiop300_task.PhysioP300Task
 
 trainer:
   ddp_backend: gloo

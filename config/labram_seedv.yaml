@@ -52,7 +52,7 @@ task:
   loss:
     select: LabelSmoothingCrossEntropy
     smoothing: 0.1
-  select: SEEDVTask
+  select: seedv_task.SEEDVTask
 
 trainer:
   fp16: true

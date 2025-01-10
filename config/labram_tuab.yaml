@@ -62,7 +62,7 @@ task:
   loss:
     select: BCEWithLogitsLoss
     weight:
-  select: TUABTask
+  select: tuab_task.TUABTask
 
 trainer:
   fp16: true

@@ -51,7 +51,7 @@ optimizer:
 task:
   loss:
     select: MSELoss
-  select: MoBITask
+  select: mobi_task.MoBITask
 
 
 trainer:

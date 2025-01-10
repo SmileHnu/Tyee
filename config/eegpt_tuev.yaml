@@ -50,7 +50,7 @@ task:
   loss:
     select: LabelSmoothingCrossEntropy
     smoothing: 0.1
-  select: EEGPTTUEVTask
+  select: eegpt_tuev_task.EEGPTTUEVTask
 
 trainer:
   fp16: true

@@ -69,7 +69,8 @@ class Trainer(object):
             self.logger.info(f"Model loaded from checkpoint {resume_checkpoint}")
         
     def _build_task(self) -> object:
-        task = lazy_import_module('tasks', self.task_select)
+        module_name, class_name = self.task_select.rsplit('.', 1)
+        task = lazy_import_module(f'tasks.{module_name}', class_name)
         return task(self.cfg)
     
     def _init_components(self):

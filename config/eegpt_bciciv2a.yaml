@@ -30,7 +30,7 @@ optimizer:
 task:
   loss:
     select: CrossEntropyLoss
-  select: BCICIV2ATask
+  select: bciciv2a_eegpt_task.BCICIV2ATask
 
 trainer:
   ddp_backend: gloo
