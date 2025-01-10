@@ -36,6 +36,7 @@ class Trainer(object):
 
         # 训练配置
         self._total_steps = get_nested_field(self.cfg, 'trainer.total_steps', 100)
+        self._update_interval = get_nested_field(self.cfg, 'trainer.update_interval', 1)
         self._save_interval = get_nested_field(self.cfg, 'trainer.save_interval', 10)
         self._eval_interval = get_nested_field(self.cfg, 'trainer.eval_interval', 10)
         self._log_interval = get_nested_field(self.cfg, 'trainer.log_interval', 10)
@@ -144,7 +145,7 @@ class Trainer(object):
                 self.train_sampler.set_epoch(step // len(self.train_loader))
                 iterator = self.task.get_batch_iterator(self.train_loader)
              # 训练步骤
-            train_result = self._train_step(iterator)
+            train_result = self._train_step(iterator, step)
 
             # 累积训练指标
             for metric, value in train_result.items():
@@ -231,7 +232,7 @@ class Trainer(object):
                 # 记录日志
                 self.logger.info(f"Checkpoint saved for step {step}")
     
-    def _train_step(self, iterator):
+    def _train_step(self, iterator, step):
         """
         执行单个训练步骤，包括前向传播、损失计算、反向传播、参数更新，以及指标的更新与计算。
 
@@ -245,33 +246,40 @@ class Trainer(object):
         """
         sample = self.task.load_sample(iterator, self.device)
         self.model.train()
-        self.optimizer.zero_grad()
 
         # 使用自动混合精度（autocast）
         with torch.amp.autocast('cuda', enabled=self.fp16):
             result = self.task.train_step(self.model, sample)  # 执行训练步骤
             loss = result['loss']  # 提取损失
 
-        # 如果启用了FP16，使用Scaler来缩放梯度
+        # 累积梯度
         if self.fp16:
             self.scaler.scale(loss).backward()  # 使用缩放后的梯度反向传播
-            
-            # 反缩放梯度
-            self.scaler.unscale_(self.optimizer)  # 反缩放梯度
-
-            # 裁剪梯度
-            if self._max_grad_norm is not None:
-                torch.nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=self._max_grad_norm)  # 裁剪梯度
-            
-            # 更新参数
-            self.scaler.step(self.optimizer)  # 更新参数
-            self.scaler.update()  # 更新Scaler状态
         else:
             loss.backward()  # 不使用FP16，常规反向传播
-            # 裁剪梯度
-            if self._max_grad_norm is not None:
-                torch.nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=self._max_grad_norm)  # 裁剪梯度
-            self.optimizer.step()  # 更新参数
+
+        # 每 self.update_interval 步更新一次参数
+        if step  % self._update_interval == 0:
+            if self.fp16:
+                # 反缩放梯度
+                self.scaler.unscale_(self.optimizer)  # 反缩放梯度
+
+                # 裁剪梯度
+                if self._max_grad_norm is not None:
+                    torch.nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=self._max_grad_norm)  # 裁剪梯度
+
+                # 更新参数
+                self.scaler.step(self.optimizer)  # 更新参数
+                self.scaler.update()  # 更新Scaler状态
+            else:
+                # 裁剪梯度
+                if self._max_grad_norm is not None:
+                    torch.nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=self._max_grad_norm)  # 裁剪梯度
+
+                self.optimizer.step()  # 更新参数
+
+            # 清零梯度
+            self.optimizer.zero_grad()
 
         if self.lr_scheduler:
             self.lr_scheduler.step()

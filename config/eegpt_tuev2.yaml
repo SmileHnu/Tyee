@@ -42,6 +42,7 @@ task:
 trainer:
   fp16: true
   total_steps: 127320
+  update_interval: 1
   save_interval: 4244
   eval_interval: 4244
   log_interval: 20

@@ -37,6 +37,7 @@ trainer:
   ddp_backend: gloo
   fp16: true
   total_steps: 6800
+  update_interval: 1
   save_interval: 68
   eval_interval: 68
   log_interval: 10

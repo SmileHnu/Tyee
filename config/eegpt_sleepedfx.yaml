@@ -38,6 +38,7 @@ trainer:
   # [114320 115200 116600 111440 111640 110120 115560 114560 111440 111800]
   save_interval: 1397
   eval_interval: 1397
+  update_interval: 1
   log_interval: 20
   eval_metric: balanced_accuracy
   metrics: [accuracy, balanced_accuracy, f1_weighted, cohen_kappa]
