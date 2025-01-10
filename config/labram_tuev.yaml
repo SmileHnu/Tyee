@@ -55,6 +55,9 @@ task:
   select: TUEVTask
 
 trainer:
+  resume:  # 添加断点恢复配置
+      enabled: true
+      checkpoint: /home/lingyus/code/PRL/experiments/2025-01-10/14-27-21/checkpoint/checkpoint_step_8488.pt
   fp16: true
   total_steps: 127320
   save_interval: 4244
@@ -66,5 +69,5 @@ trainer:
 
 distributed:
   backend: nccl
-  world_size: 1
+  world_size: 2
   distributed_no_spawn: false

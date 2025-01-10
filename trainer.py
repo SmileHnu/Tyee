@@ -27,31 +27,26 @@ class Trainer(object):
     def __init__(self, cfg, rank, world_size) -> None:
 
         self.cfg = cfg
-
-        # 获取任务名称
-        self.task_select = get_nested_field(cfg, 'task.select', '')
         
+        # 获取任务名称
+        self.task_select = get_nested_field(self.cfg, 'task.select', '')
+        self.task = self._build_task()
         # 自动混合精度配置
-        self.fp16 = get_nested_field(cfg, 'trainer.fp16', False)
+        self.fp16 = get_nested_field(self.cfg, 'trainer.fp16', False)
 
         # 训练配置
-        self._total_steps = get_nested_field(cfg, 'trainer.total_steps', 100)
-        self._save_interval = get_nested_field(cfg, 'trainer.save_interval', 10)
-        self._eval_interval = get_nested_field(cfg, 'trainer.eval_interval', 10)
-        self._log_interval = get_nested_field(cfg, 'trainer.log_interval', 10)
-        self._batch_size = get_nested_field(cfg, 'dataset.batch_size', 1)
-        self._max_grad_norm = get_nested_field(cfg, 'trainer.max_grad_norm', None)
+        self._total_steps = get_nested_field(self.cfg, 'trainer.total_steps', 100)
+        self._save_interval = get_nested_field(self.cfg, 'trainer.save_interval', 10)
+        self._eval_interval = get_nested_field(self.cfg, 'trainer.eval_interval', 10)
+        self._log_interval = get_nested_field(self.cfg, 'trainer.log_interval', 10)
+        self._batch_size = get_nested_field(self.cfg, 'dataset.batch_size', 1)
+        self._max_grad_norm = get_nested_field(self.cfg, 'trainer.max_grad_norm', None)
 
         # 指标
-        self.eval_metric = get_nested_field(cfg, 'trainer.eval_metric', None)
-        metrics_list = get_nested_field(cfg, 'trainer.metrics', None)
+        self.eval_metric = get_nested_field(self.cfg, 'trainer.eval_metric', None)
+        metrics_list = get_nested_field(self.cfg, 'trainer.metrics', None)
         self._metrics_evaluator = MetricEvaluator(metrics_list)
-        self.best_metric_value = None
         
-        # 任务
-        self.task = self._build_task()
-        self._metrics = get_nested_field(cfg, 'trainer.metrics', ['accuracy_score'])
-
         # 从配置中读取实验保存路径
         self.exp_dir = get_nested_field(self.cfg, "common.exp_dir")
         self.tb_dir = get_nested_field(self.cfg, "common.tb_dir")
@@ -63,6 +58,15 @@ class Trainer(object):
 
         # 实例化训练基础组件
         self._init_components()
+        
+        # 检查是否启用了模型恢复
+        self.resume_enabled = get_nested_field(self.cfg, 'trainer.resume.enabled', False)
+        if self.resume_enabled:
+            resume_checkpoint = get_nested_field(self.cfg, 'trainer.resume.checkpoint', '')
+            if not os.path.exists(resume_checkpoint):
+                raise FileExistsError(f"Resume checkpoint file {resume_checkpoint} not exists !")
+            self._load_checkpoint(resume_checkpoint)
+            self.logger.info(f"Model loaded from checkpoint {resume_checkpoint}")
         
     def _build_task(self) -> object:
         task = lazy_import_module('tasks', self.task_select)
@@ -82,6 +86,8 @@ class Trainer(object):
         self.model = self.task.build_model()
         self.optimizer = self.task.build_optimizer(self.model)
         self.lr_scheduler = self.task.build_lr_scheduler(self.optimizer)
+        self.step = 1
+        self.best_metric_value = None
 
 
         self.device = torch.device(self.rank)
@@ -125,10 +131,13 @@ class Trainer(object):
         
 
         iterator = self.task.get_batch_iterator(self.train_loader)
+        # 迭代数据集找到step对应的batch
+        for _ in range((self.step - 1) % len(self.train_loader)):
+            sample = self.task.load_sample(iterator, self.device)
         # 初始化累积指标
         accumulated_train_metrics = {}
 
-        for step in range(1, self._total_steps + 1):
+        for step in range(self.step, self._total_steps + 1):
             # 更新epoch和迭代器
             if step % len(self.train_loader) == 0:
                 self.train_sampler.set_epoch(step // len(self.train_loader))
@@ -201,7 +210,7 @@ class Trainer(object):
                             self.writer.add_scalar(f'test/{metric}', value, step)
 
                     # 检查并保存最优模型
-                    self._check_and_save_best(dev_result)
+                    self._check_and_save_best(dev_result, step)
 
             # 保存检查点
             if step % self._save_interval == 0 and self.rank == 0:
@@ -209,7 +218,7 @@ class Trainer(object):
                 checkpoint_filename = f"{self.checkpoint_dir}/checkpoint_step_{step}.pt"
 
                 # 保存模型参数
-                self._save_checkpoint(checkpoint_filename, self.model, self.optimizer, self.lr_scheduler)
+                self._save_checkpoint(checkpoint_filename, self.model, self.optimizer, self.lr_scheduler, step)
 
                 # 删除之前的检查点文件（如果存在）
                 if hasattr(self, 'last_checkpoint') and os.path.exists(self.last_checkpoint):
@@ -360,7 +369,7 @@ class Trainer(object):
 
         return result
 
-    def _check_and_save_best(self, dev_result):
+    def _check_and_save_best(self, dev_result, step):
         """
         检查当前评估指标是否达到了最优，并保存最优模型。
 
@@ -383,28 +392,32 @@ class Trainer(object):
             if save_best:
                 self.best_metric_value = current_metric_value
                 best_model_filename = f"{self.checkpoint_dir}/checkpoint_best.pt"
-                self._save_checkpoint(best_model_filename, self.model, self.optimizer, self.lr_scheduler)
+                self._save_checkpoint(best_model_filename, self.model, self.optimizer, self.lr_scheduler, step)
                 self.logger.info(f"Best checkpoint saved with {self.eval_metric}: {current_metric_value}")
 
-    def _state_dict(self, model, optimizer, lr_scheduler):
+    def _state_dict(self, model, optimizer, lr_scheduler, step):
         return {
             "args": self.cfg,
             "model": model.state_dict(),
             "optimizer": optimizer.state_dict(),
-            "lr_scheduler": lr_scheduler.state_dict()
+            "lr_scheduler": lr_scheduler.state_dict(),
+            "step": step,
+            "best_metric_value": self.best_metric_value
         }
     
-    def _save_checkpoint(self, filename, model, optimizer, lr_scheduler):
-        checkpoint = self._state_dict(model, optimizer, lr_scheduler)
+    def _save_checkpoint(self, filename, model, optimizer, lr_scheduler, step):
+        checkpoint = self._state_dict(model, optimizer, lr_scheduler, step)
         torch.save(checkpoint, filename)
         print(f"Checkpoint saved to {filename}")
 
     def _load_checkpoint(self, filename):
         ckpt_params = torch.load(filename)
-        self.args = ckpt_params["args"]
+        self.cfg = ckpt_params["args"]
         self.model.load_state_dict(ckpt_params["model"])
         self.optimizer.load_state_dict(ckpt_params["optimizer"])
         self.lr_scheduler.load_state_dict(ckpt_params["lr_scheduler"])
+        self.step = ckpt_params["step"] + 1
+        self.best_metric_value = ckpt_params["best_metric_value"]
 
     
         

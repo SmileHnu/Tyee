@@ -43,6 +43,9 @@ task:
   select: EmotionRecognitionTask
 
 trainer:
+  resume:  # 添加断点恢复配置
+      enabled: true
+      checkpoint: /home/lingyus/code/PRL/experiments/2025-01-10/14-27-21/checkpoint/checkpoint_step_8488.pt
   fp16: false
   total_steps: 1000
   save_interval: 20
