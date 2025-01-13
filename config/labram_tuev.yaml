@@ -16,10 +16,10 @@ dataset:
     select: []
 
 lr_scheduler:
-  select: CosineScheduler
+  select: WarmupCosineAnnealingLR
   T_max: 127320
   eta_min: 1e-6
-  warmup_start_lr: 1e-6
+  warmup_start_lr: 0
   warmup_steps: 12732
 
 model:
@@ -29,7 +29,7 @@ model:
   upstream:
     select: labram_base_patch200_200
     trainable: true
-    finetune: /home/lingyus/code/PRL/models/upstream/labram/checkpoints/labram-base.pth
+    finetune: /home/lingyus/code/PRL/models/upstream/labram/checkpoints/checkpoint-49.pth
     nb_classes: 6
     drop: 0.0
     drop_path: 0.1
@@ -60,7 +60,7 @@ trainer:
       checkpoint: /home/lingyus/code/PRL/experiments/2025-01-10/14-27-21/checkpoint/checkpoint_step_8488.pt
   fp16: true
   total_steps: 127320
-  update_interval: 10
+  update_interval: 1
   save_interval: 4244
   eval_interval: 4244
   log_interval: 20

@@ -156,22 +156,24 @@ class TUEVTask(PRLTask):
         """
         param_groups = []
         num_layers = model.get_num_layers()
-        layer_scales = [layer_decay ** (num_layers - i - 1) for i in range(num_layers + 2)]
-        
+        layer_scales = [layer_decay ** (num_layers + 1 - i) for i in range(num_layers + 2)]
+        skip_list = ['pos_embed', 'cls_token', 'time_embed']
         for name, param in model.named_parameters():
             if not param.requires_grad:
                 continue  # 跳过冻结的参数
             # 获取层号
-            layer_id = self.get_layer_id(name, num_layers)
+            layer_id = self.get_layer_id(name, num_layers + 2)
             
             # 计算该层的学习率缩放比例
             scale = layer_scales[layer_id]
             # 构造参数组
             param_groups.append({
                 'params': param, 
-                'lr': lr * scale,
-                'weight_decay': weight_decay if 'bias' not in name and 'LayerNorm.weight' not in name else 0.0
+                'lr_scale': scale,
+                'lr': lr,
+                'weight_decay': 0.0 if param.ndim <= 1 or name.endswith(".bias") or name in skip_list else weight_decay
             })
+            print(f"Layer {layer_id}: {name}, lr_scale={scale}, lr={lr}, weight_decay={0.0 if param.ndim <= 1 or name.endswith('.bias') or name in skip_list else weight_decay}")
         return param_groups
 
     def build_model(self):
