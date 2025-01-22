@@ -4,7 +4,7 @@ common:
   exp_dir: experiments
 
 dataset:
-  batch_size: 16
+  batch_size: 64
   dataset: TUEVDataset
   eval:
   - processed_eval
@@ -17,10 +17,10 @@ dataset:
 
 lr_scheduler:
   select: WarmupCosineAnnealingLR
-  T_max: 127320
+  T_max: 31830
   eta_min: 1e-6
   warmup_start_lr: 0
-  warmup_steps: 12732
+  warmup_steps: 3183
 
 model:
   downstream:
@@ -29,7 +29,7 @@ model:
   upstream:
     select: labram_base_patch200_200
     trainable: true
-    finetune: /home/lingyus/code/PRL/models/upstream/labram/checkpoints/checkpoint-49.pth
+    finetune: /home/lingyus/code/PRL/models/upstream/labram/checkpoints/labram-base.pth
     nb_classes: 6
     drop: 0.0
     drop_path: 0.1
@@ -59,10 +59,10 @@ trainer:
       enabled: false
       checkpoint: /home/lingyus/code/PRL/experiments/2025-01-10/14-27-21/checkpoint/checkpoint_step_8488.pt
   fp16: true
-  total_steps: 127320
-  update_interval: 1
-  save_interval: 4244
-  eval_interval: 4244
+  total_steps: 31830
+  update_interval: 8
+  save_interval: 1061
+  eval_interval: 1061
   log_interval: 20
   eval_metric: balanced_accuracy
   metrics: [balanced_accuracy, accuracy, f1_weighted, cohen_kappa]

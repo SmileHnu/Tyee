@@ -250,8 +250,8 @@ class Trainer(object):
         # 使用自动混合精度（autocast）
         with torch.amp.autocast('cuda', enabled=self.fp16):
             result = self.task.train_step(self.model, sample)  # 执行训练步骤
-            loss = result['loss']  # 提取损失
-
+            loss = result['loss'].clone()  # 提取损失
+            loss /= self._update_interval
         # 累积梯度
         if self.fp16:
             self.scaler.scale(loss).backward()  # 使用缩放后的梯度反向传播
@@ -295,7 +295,7 @@ class Trainer(object):
             metrics = None
 
         # 聚合和平均损失与指标
-        result = self._aggregate_metrics(loss, metrics)
+        result = self._aggregate_metrics(result['loss'], metrics)
 
         return result
 
