@@ -10,17 +10,17 @@ dataset:
   - processed_eval
   - processed_test
   num_workers: 2
-  path: /home/lingyus/data/TUEV/tuh_eeg_events/v2.0.1/edf/processed
+  path: /home/lingyus/data/tuh_eeg_events/v2.0.1/edf/processed
   train: processed_train
   transforms:
     select: []
 
 lr_scheduler:
   select: WarmupCosineAnnealingLR
-  T_max: 31830
+  T_max: 31980
   eta_min: 1e-6
   warmup_start_lr: 0
-  warmup_steps: 3183
+  warmup_steps: 3198
 
 model:
   downstream:
@@ -59,10 +59,10 @@ trainer:
       enabled: false
       checkpoint: /home/lingyus/code/PRL/experiments/2025-01-10/14-27-21/checkpoint/checkpoint_step_8488.pt
   fp16: true
-  total_steps: 31830
+  total_steps: 31980
   update_interval: 8
-  save_interval: 1061
-  eval_interval: 1061
+  save_interval: 1066
+  eval_interval: 1066
   log_interval: 20
   eval_metric: balanced_accuracy
   metrics: [balanced_accuracy, accuracy, f1_weighted, cohen_kappa]

@@ -21,7 +21,7 @@ from torch.utils.tensorboard import SummaryWriter
 from utils import lazy_import_module, get_nested_field, get_grad_norm
 from torch.nn.parallel import DistributedDataParallel as DDP
 
-
+INT_MAX = 2**31 - 1
 
 class Trainer(object):
     def __init__(self, cfg, rank, world_size) -> None:
@@ -35,7 +35,8 @@ class Trainer(object):
         self.fp16 = get_nested_field(self.cfg, 'trainer.fp16', False)
 
         # 训练配置
-        self._total_steps = get_nested_field(self.cfg, 'trainer.total_steps', 100)
+        self._total_steps = get_nested_field(self.cfg, 'trainer.total_steps', INT_MAX)
+        self.epoches = get_nested_field(self.cfg, 'trainer.epoches', INT_MAX)
         self._update_interval = get_nested_field(self.cfg, 'trainer.update_interval', 1)
         self._save_interval = get_nested_field(self.cfg, 'trainer.save_interval', 10)
         self._eval_interval = get_nested_field(self.cfg, 'trainer.eval_interval', 10)
@@ -59,6 +60,10 @@ class Trainer(object):
 
         # 实例化训练基础组件
         self._init_components()
+
+        # 判定训练step
+        epoch_steps = len(self.train_loader) // (self._batch_size * self.world_size)
+        self._total_steps = min(self._total_steps, self.epoches * epoch_steps)
         
         # 检查是否启用了模型恢复
         self.resume_enabled = get_nested_field(self.cfg, 'trainer.resume.enabled', False)
