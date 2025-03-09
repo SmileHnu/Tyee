@@ -131,7 +131,7 @@ class DREAMERDataset(BaseDataset):
     
     def _load_data(self, source: str, clip_length: int = 2, split: str = "train"):
         dreamer = Dreamer(source)
-        data, target = [], []
+        data, label = [], []
         num = int(len(dreamer.data) * 0.8)
         if split == "train":
             curr_data = dreamer.data[:num]
@@ -147,17 +147,17 @@ class DREAMERDataset(BaseDataset):
                     if self.drop and start + sr * clip_length > num_frames:
                         continue
                     data.append(sample[start:start+sr*clip_length])
-                    target.append(arousal[idx])
+                    label.append(arousal[idx])
         # tot = len(data)
         # shuffle_indices = list(range(tot))
         # random.shuffle(shuffle_indices)
         # if split == "train":
         #     data = [data[i] for i in shuffle_indices[:int(tot * 0.8)]]
-        #     target = [target[i] for i in shuffle_indices[:int(tot * 0.8)]]
+        #     label = [label[i] for i in shuffle_indices[:int(tot * 0.8)]]
         # else:
         #     data = [data[i] for i in shuffle_indices[int(tot * 0.8):]]
-        #     target = [target[i] for i in shuffle_indices[int(tot * 0.8):]]
-        return data, target
+        #     label = [label[i] for i in shuffle_indices[int(tot * 0.8):]]
+        return data, label
         
     def __getitem__(self, idx):
         # shape: [L, C]
@@ -168,12 +168,12 @@ class DREAMERDataset(BaseDataset):
         # AF3, F7, F3, FC5, T7, P7, O1, O2, P8, T8, FC6, F4, F8, AF4
         data = data[2].unsqueeze(0)
         if self.targets[idx] >= 3:
-            target = torch.tensor(1, dtype=torch.long)
+            label = torch.tensor(1, dtype=torch.long)
         else:
-            target = torch.tensor(0, dtype=torch.long)
+            label = torch.tensor(0, dtype=torch.long)
         with torch.no_grad():
             data = F.layer_norm(data, normalized_shape=data.shape)
-        return data, target
+        return data, label
 
     def __len__(self):
         return len(self.targets)
@@ -219,13 +219,13 @@ class DREAMERDataset(BaseDataset):
                 collated_data[i], _ = self.crop_to_max_size(data, target_size)
         return {
             "x": collated_data,
-            "target": torch.tensor(labels).long(),
+            "label": torch.tensor(labels).long(),
             "padding_mask": padding_mask
         }
 
     def crop_to_max_size(self, raw: torch.Tensor, target_size: int) -> tuple[torch.Tensor, int]:
         """
-        crop the raw physio to the target size if the raw physio size is greater than target size
+        crop the raw physio to the label size if the raw physio size is greater than label size
         :param torch.Tensor raw: the raw bio signal which is needed to crop
         :param int target_size: the crop size
         :return tuple[torch.Tensor, int]: the cropped bio signal and crop start position
@@ -233,7 +233,7 @@ class DREAMERDataset(BaseDataset):
         assert raw.dim() == 2, "crop_to_max_size only support 2-dim data"
         _, size = raw.shape
         diff = size - target_size
-        # if the data physio size if lower than target size, skip the crop ops
+        # if the data physio size if lower than label size, skip the crop ops
         if diff <= 0:
             return raw, 0
 

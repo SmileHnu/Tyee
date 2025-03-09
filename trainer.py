@@ -11,12 +11,9 @@
 """
 import os
 import torch
-import datetime
 import logging
 import torch.distributed as dist
 from utils import MetricEvaluator
-from utils import log_utils
-from torch.cuda.amp import autocast, GradScaler
 from torch.utils.tensorboard import SummaryWriter
 from utils import lazy_import_module, get_nested_field, get_grad_norm
 from torch.nn.parallel import DistributedDataParallel as DDP
@@ -36,11 +33,11 @@ class Trainer(object):
 
         # 训练配置
         self._total_steps = get_nested_field(self.cfg, 'trainer.total_steps', INT_MAX)
-        self.epoches = get_nested_field(self.cfg, 'trainer.epoches', INT_MAX)
+        self._total_epoches = get_nested_field(self.cfg, 'trainer.total_epoches', INT_MAX)
         self._update_interval = get_nested_field(self.cfg, 'trainer.update_interval', 1)
-        self._save_interval = get_nested_field(self.cfg, 'trainer.save_interval', 10)
-        self._eval_interval = get_nested_field(self.cfg, 'trainer.eval_interval', 10)
-        self._log_interval = get_nested_field(self.cfg, 'trainer.log_interval', 10)
+        self._save_interval = get_nested_field(self.cfg, 'trainer.save_interval', None)
+        self._eval_interval = get_nested_field(self.cfg, 'trainer.eval_interval', None)
+        self._log_interval = get_nested_field(self.cfg, 'trainer.log_interval', 16)
         self._batch_size = get_nested_field(self.cfg, 'dataset.batch_size', 1)
         self._max_grad_norm = get_nested_field(self.cfg, 'trainer.max_grad_norm', None)
 
@@ -51,43 +48,44 @@ class Trainer(object):
         
         # 从配置中读取实验保存路径
         self.exp_dir = get_nested_field(self.cfg, "common.exp_dir")
-        self.tb_dir = get_nested_field(self.cfg, "common.tb_dir")
-        self.checkpoint_dir = get_nested_field(self.cfg, "common.checkpoint_dir")
+        self.tb_root = get_nested_field(self.cfg, "common.tb_dir")
+        self.checkpoint_root = get_nested_field(self.cfg, "common.checkpoint_dir")
 
         # DDP配置
         self.world_size = world_size
         self.rank = rank
 
-        # 实例化训练基础组件
-        self._init_components()
+        # 执行训练
+        for fold, (train_dataset, dev_dataset, eval_dataset) in enumerate(self.task.get_datasets()):
+            # 实例化训练基础组件
+            self._init_components(fold, train_dataset, dev_dataset, eval_dataset)
 
-        # 判定训练step
-        epoch_steps = len(self.train_loader) // (self._batch_size * self.world_size)
-        self._total_steps = min(self._total_steps, self.epoches * epoch_steps)
-        
-        # 检查是否启用了模型恢复
-        self.resume_enabled = get_nested_field(self.cfg, 'trainer.resume.enabled', False)
-        if self.resume_enabled:
-            resume_checkpoint = get_nested_field(self.cfg, 'trainer.resume.checkpoint', '')
-            if not os.path.exists(resume_checkpoint):
-                raise FileExistsError(f"Resume checkpoint file {resume_checkpoint} not exists !")
-            self._load_checkpoint(resume_checkpoint)
-            self.logger.info(f"Model loaded from checkpoint {resume_checkpoint}")
+            self.logger.info(f"Start training for fold {fold + 1}")
+            # 训练
+            self.train()
         
     def _build_task(self) -> object:
         module_name, class_name = self.task_select.rsplit('.', 1)
         task = lazy_import_module(f'tasks.{module_name}', class_name)
         return task(self.cfg)
     
-    def _init_components(self):
+    def _init_components(self, fold, train_dataset, dev_dataset, test_dataset):
         # 配置logging
         self.logger = logging.getLogger(__name__)
+        # 配置checkpoint目录
+        self.checkpoint_dir = os.path.join(self.checkpoint_root, f'fold_{fold}')
+        os.makedirs(self.checkpoint_dir, exist_ok=True)
+        # 创建 TensorBoard 日志目录
+        tb_fold_dir = os.path.join(self.tb_root, f'fold_{fold}')
+        os.makedirs(tb_fold_dir, exist_ok=True)
+        
         # TensorBoard日志
-        self.writer = SummaryWriter(log_dir=self.tb_dir)
+        self.writer = SummaryWriter(log_dir=tb_fold_dir)
+
         # 加载数据集
-        self.train_dataset = self.task.get_train_dataset()
-        self.dev_dataset = self.task.get_dev_dataset()
-        self.test_dataset = self.task.get_test_dataset()
+        self.train_dataset = train_dataset
+        self.dev_dataset = dev_dataset
+        self.test_dataset = test_dataset
 
         # 模型、优化器与学习率调度器
         self.model = self.task.build_model()
@@ -127,6 +125,25 @@ class Trainer(object):
 
         # 如果使用FP16，初始化 GradScaler
         self.scaler = torch.amp.GradScaler(enabled=self.fp16) if self.fp16 else None
+
+        # 判定训练step
+        epoch_steps = len(self.train_loader) // (self._batch_size * self.world_size)
+        self._total_steps = min(self._total_steps, self._total_epoches * epoch_steps)
+
+        if self._eval_interval is None:
+            self._eval_interval = epoch_steps
+        
+        if self._save_interval is None:
+            self._save_interval = epoch_steps
+        
+        # 检查是否启用了模型恢复
+        self.resume_enabled = get_nested_field(self.cfg, 'trainer.resume.enabled', False)
+        if self.resume_enabled:
+            resume_checkpoint = get_nested_field(self.cfg, 'trainer.resume.checkpoint', '')
+            if not os.path.exists(resume_checkpoint):
+                raise FileExistsError(f"Resume checkpoint file {resume_checkpoint} not exists !")
+            self._load_checkpoint(resume_checkpoint)
+            self.logger.info(f"Model loaded from checkpoint {resume_checkpoint}")
  
     def train(self):
         """

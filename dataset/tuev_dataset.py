@@ -2,44 +2,204 @@
 # -*- encoding: utf-8 -*-
 """
 @Author  : shulingyu
-@License : (C) Copyright 2024, Hunan University
+@License : (C) Copyright 2025, Hunan University
 @Contact : shulingyu@hnu.edu.cn
 @Software: Visual Studio Code
 @File    : tuev_dataset.py
-@Time    : 2024/12/01 20:54:44
+@Time    : 2025/02/26 16:03:52
 @Desc    : 
 """
 
 import os
+import mne
 import torch
-import pickle
-from scipy.signal import resample
+import numpy as np
+from dataset import BaseDataset
+from typing import Any, Callable, Union
+from dataset.constants.standard_channels import EEG_CHANNELS_ORDER
 
-class TUEVDataset(torch.utils.data.Dataset):
-    def __init__(self, root, files, sampling_rate=200):
-        self.root = root
-        self.files = files
-        self.default_rate = 200
-        self.sampling_rate = sampling_rate
 
-    def __len__(self):
-        return len(self.files)
+
+class TUEVDataset(BaseDataset):
+    def __init__(self,
+                 root_path: str = './EEG_raw',
+                 chunk_size: int = 800,
+                 overlap: int = 0,
+                 num_channel: int = 62,
+                 online_transform: Union[None, Callable] = None,
+                 offline_transform: Union[None, Callable] = None,
+                 label_transform: Union[None, Callable] = None,
+                 before_trial: Union[None, Callable] = None,
+                 after_trial: Union[Callable, None] = None,
+                 after_session: Union[Callable, None] = None,
+                 after_subject: Union[Callable, None] = None,
+                 io_path: Union[None, str] = None,
+                 io_size: int = 1048576,
+                 io_mode: str = 'lmdb',
+                 num_worker: int = 0,
+                 verbose: bool = True,
+                 ):
+        # if io_path is None:
+        #     io_path = get_random_dir_path(dir_prefix='datasets')
+
+        # pass all arguments to super class
+        params = {
+            'root_path': root_path,
+            'chunk_size': chunk_size,
+            'overlap': overlap,
+            'num_channel': num_channel,
+            'online_transform': online_transform,
+            'offline_transform': offline_transform,
+            'label_transform': label_transform,
+            'before_trial': before_trial,
+            'after_trial': after_trial,
+            'after_session': after_session,
+            'after_subject': after_subject,
+            'io_path': io_path,
+            'io_size': io_size,
+            'io_mode': io_mode,
+            'num_worker': num_worker,
+            'verbose': verbose
+        }
+        super().__init__(**params)
+        # save all arguments to __dict__
+        self.__dict__.update(params)
+    def set_records(self, root_path: str = None, **kwargs):
+        assert os.path.exists(
+            root_path
+        ), f'root_path ({root_path}) does not exist. Please download the dataset and set the root_path to the downloaded path.'
+
+        file_list = []
+        for dirpath, _, filenames in os.walk(root_path):
+            for file in filenames:
+                if file.endswith('.edf'):
+                    file_list.append(os.path.join(dirpath, file))
+        
+        file_list = sorted(file_list)
+        return file_list
+
+    @staticmethod
+    def read_record(record: str, **kwargs):
+        # print(f'Processing record: {record}')
+        Rawdata = mne.io.read_raw_edf(record, preload=True)
+        channel_names = Rawdata.ch_names
+        new_channel_names = [name.split(' ')[-1].split('-')[0] for name in channel_names]
+
+        mapping = {old_name: new_name for old_name, new_name in zip(channel_names, new_channel_names)}
+        Rawdata.rename_channels(mapping)
+
+        drop_channels = [ch for ch in Rawdata.ch_names if ch not in EEG_CHANNELS_ORDER]
+        Rawdata.drop_channels(drop_channels)
+        # print(f'Channel names: {Rawdata.ch_names}')
+        channel_names = Rawdata.ch_names
+        # _, times = Rawdata[:]
+        # print(times)
+        # 封装
+        # Rawdata.filter(l_freq=0.1, h_freq=75.0)
+        # Rawdata.notch_filter(50.0)
+        # Rawdata.resample(200, n_jobs=5)
+        
+        info = Rawdata.info
+        sampling_rate = info['sfreq']
+        
+        eeg_channels = info['ch_names']
+        _, times = Rawdata[:]
+        # print(times)
+        signals = Rawdata.get_data(units='uV')
+        RecFile = record[0:-3] + "rec"
+        eventData = np.genfromtxt(RecFile, delimiter=",")
+        Rawdata.close()
+        # 转置
+        # signals = signals.T
+        result = {
+            'eeg': signals,
+            'eeg_times': times,
+            'eventData': eventData,
+            'eeg_sampling_rate': sampling_rate,
+            'eeg_channels': eeg_channels,
+        }
+        return result
+        
+    @staticmethod
+    def process_record(record, 
+                       signal_types,
+                       result,
+                       offline_transform,
+                       **kwargs):
+        file_name = os.path.splitext(os.path.basename(record))[0]
+        
+        if not offline_transform is None:
+            try:
+                for signal_type in signal_types:
+                    if signal_type in offline_transform:
+                        result = offline_transform[signal_type](signal_type, result)
+            except (KeyError, ValueError) as e:
+                print(f'Error in processing record {file_name}: {e}')
+                return None
+        
+        fs = result['eeg_sampling_rate']
+        
+        eeg_channels = result['eeg_channels']
+        eventData = result['eventData']
+        eeg = result['eeg']
+        
+        times = result['eeg_times']
+        print(times)
+        [numEvents, z] = eventData.shape
+        [numChan, numPoints] = eeg.shape
+        features = np.zeros([numEvents, numChan, int(fs) * 5])
+        offending_channel = np.zeros([numEvents, 1])
+        labels = np.zeros([numEvents, 1])
+        offset = eeg.shape[1]
+        eeg = np.concatenate([eeg, eeg, eeg], axis=1)
+        for i in range(numEvents):
+            chan = int(eventData[i, 0])
+            start = np.where((times) >= eventData[i, 1])[0][0]
+            end = np.where((times) >= eventData[i, 2])[0][0]
+            features[i, :] = eeg[:, offset + start - 2 * int(fs) : offset + end + 2 * int(fs)]
+            offending_channel[i, :] = int(chan)
+            labels[i, :] = int(eventData[i, 3])
+        
+        for idx, (eeg, offending_channel, label) in enumerate(zip(features, offending_channel, labels)):
+            clip_id = f'{idx}_{file_name}'
+            label = int(label[0] - 1)
+            yield {
+                'eeg': eeg,
+                'key': clip_id,
+                'info': {
+                    'signal_types': ['eeg'],
+                    'clip_id': clip_id,
+                    'eeg_sampling_rate': fs,
+                    # 'offending_channel': offending_channel,
+                    'eeg_channels': eeg_channels,
+                    'label': label
+                }
+            }
 
     def __getitem__(self, index):
-        sample = pickle.load(open(os.path.join(self.root, self.files[index]), "rb"))
-        X = sample["signal"]
-        if self.sampling_rate != self.default_rate:
-            X = resample(X, 5 * self.sampling_rate, axis=-1)
-        Y = int(sample["label"][0] - 1)
-        X = torch.FloatTensor(X)
-        return X, Y
-    
-    def collate_fn(self, batch):
-        inputs, labels = zip(*batch)
+        info = self.read_info(index)
+        
+        signal_index = str(info['clip_id'])
+        signal_record = str(info['record_id'])
 
-        # 将输入序列按维度拼接
-        collated_data = torch.stack(inputs, dim=0)
-        return {
-            "x": collated_data,
-            "target": torch.tensor(labels).long()
-        }
+        result = {}
+        for signal_type in self.signal_types:
+            result[signal_type] = self.read_signal(signal_record, signal_index, signal_type)
+
+            channel_key = f'{signal_type.lower()}_channels'
+            if channel_key in info:
+                result[channel_key] = info[channel_key]
+
+        result['label'] = info['label']
+        if self.label_transform is not None:
+            result['label'] = self.label_transform(result['label'])
+        if self.online_transform is not None:
+            for signal_type in self.signal_types:
+                if signal_type in self.online_transform:
+                    result = self.online_transform[signal_type](signal_type, result)
+        return result
+
+    
+# root_path = '/home/lingyus/data/TUEV/edf/train/aaaaaaar/'
+# io_path = "/home/lingyus/data/TUEV/edf/processed_data"
+# dataset = TUEVDataset(root_path=root_path, io_path='./processed_data', io_mode='lmdb', num_worker=4)

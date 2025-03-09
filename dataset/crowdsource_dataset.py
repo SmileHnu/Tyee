@@ -42,14 +42,14 @@ class EEG2RepCrowdsourceDataset(BaseDataset):
         raw = np.load(source, allow_pickle=True)
         if split == "train":
             data = raw.item()["train_data"]
-            target = raw.item()["train_label"]
+            label = raw.item()["train_label"]
         elif split == "dev":
             data = raw.item()["dev_data"]
-            target = raw.item()["dev_label"]
+            label = raw.item()["dev_label"]
         else:
             data = raw.item()["test_data"]
-            target = raw.item()["test_label"]
-        return data, target
+            label = raw.item()["test_label"]
+        return data, label
         
     def __getitem__(self, idx):
         # shape: [L, C]
@@ -109,13 +109,13 @@ class EEG2RepCrowdsourceDataset(BaseDataset):
                 collated_data[i], _ = self.crop_to_max_size(data, target_size)
         return {
             "x": collated_data,
-            "target": torch.tensor(labels).long(),
+            "label": torch.tensor(labels).long(),
             "padding_mask": padding_mask
         }
 
     def crop_to_max_size(self, raw: torch.Tensor, target_size: int) -> tuple[torch.Tensor, int]:
         """
-        crop the raw physio to the target size if the raw physio size is greater than target size
+        crop the raw physio to the label size if the raw physio size is greater than label size
         :param torch.Tensor raw: the raw bio signal which is needed to crop
         :param int target_size: the crop size
         :return tuple[torch.Tensor, int]: the cropped bio signal and crop start position
@@ -123,7 +123,7 @@ class EEG2RepCrowdsourceDataset(BaseDataset):
         assert raw.dim() == 2, "crop_to_max_size only support 2-dim data"
         _, size = raw.shape
         diff = size - target_size
-        # if the data physio size if lower than target size, skip the crop ops
+        # if the data physio size if lower than label size, skip the crop ops
         if diff <= 0:
             return raw, 0
 

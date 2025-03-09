@@ -56,7 +56,7 @@ class MetricEvaluator:
         """
         保存每个 batch 的预测结果，需要转移到CPU上。
 
-        :param result: dict, 包含一个 batch 的预测结果，可以包含多个字段，如 'target', 'output' 等。
+        :param result: dict, 包含一个 batch 的预测结果，可以包含多个字段，如 'label', 'output' 等。
         """
         # 将每个 batch 的结果转移到 CPU 上并转换为 numpy 数组
         for key, value in result.items():

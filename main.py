@@ -66,18 +66,17 @@ def load_cfg() -> None:
 def main(cfg, rank, world_size, **kwargs):
     # 实例化 Trainer
     trainer = Trainer(cfg, rank, world_size)
-    trainer.train()
 
 if __name__ == "__main__":
     cfg = load_cfg()
 
     #  获取实验保存路径
     root = get_nested_field(cfg, "common.root", "./experiments/")
-    exp_dir = f"{root}/{datetime.datetime.now().strftime('%Y-%m-%d/%H-%M-%S')}"
     task_select = get_nested_field(cfg, "task.select", "default_task")
-
+    exp_dir = f"{root}/{datetime.datetime.now().strftime('%Y-%m-%d/%H-%M-%S')}-{task_select}"
+    
     # 创建实验目录结构
-    tb_dir, checkpoint_dir = log_utils.create_experiment_directories(exp_dir, task_select)
+    tb_dir, checkpoint_dir = log_utils.create_experiment_directories(exp_dir)
 
     # 配置logging
     log_utils.init_logging(exp_dir)

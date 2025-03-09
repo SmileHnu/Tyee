@@ -108,29 +108,29 @@ class EEGPTTUEV2Task(PRLTask):
             return num_max_layer - 1
     def train_step(self, model: torch.nn.Module, sample: dict[str, torch.Tensor], *args, **kwargs):
         x = sample['x']
-        target = sample['target']
+        label = sample['label']
         x = x.float() / 100
         x, pred = model(x)
         
-        loss = self.loss(pred, target)
+        loss = self.loss(pred, label)
         
         return{
             'loss': loss,
             'output': pred,
-            'target': target
+            'label': label
         }
 
     @torch.no_grad()
     def valid_step(self, model: torch.nn.Module, sample: dict[str, torch.Tensor], *args, **kwargs):
         x = sample['x']
-        target = sample['target']
+        label = sample['label']
         x = x.float() / 100
         x, pred = model(x)
         
-        loss = self.loss(pred, target)
+        loss = self.loss(pred, label)
         
         return{
             'loss': loss,
             'output': pred,
-            'target': target
+            'label': label
         }

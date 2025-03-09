@@ -45,13 +45,13 @@ def save_config(cfg, exp_dir):
     with open(config_file, "w", encoding='utf-8') as f:
         yaml.dump(cfg, f, default_flow_style=False, allow_unicode=True)
 
-def create_experiment_directories(exp_dir, task_select):
+def create_experiment_directories(exp_dir):
     """创建实验目录结构，包括保存log, config, checkpoint, 和 TensorBoard文件夹。"""
     # 创建实验根目录
     os.makedirs(exp_dir, exist_ok=True)
 
     # 创建TensorBoard文件夹
-    tb_dir = os.path.join(exp_dir, f"{task_select}_tb")
+    tb_dir = os.path.join(exp_dir, f"tb")
     os.makedirs(tb_dir, exist_ok=True)
 
     # 创建Checkpoint文件夹

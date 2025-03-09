@@ -24,6 +24,6 @@ class RandomDataset(BaseDataset):
 # if __name__ == "__main__":
     
 #     dataset = RandomDataset()
-#     data, target = dataset[0]
+#     data, label = dataset[0]
 #     print(type(data))
 #     pass

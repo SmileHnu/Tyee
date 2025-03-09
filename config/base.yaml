@@ -5,15 +5,45 @@ common:
 
 dataset:
   batch_size: 32
-  dataset: CarDataset
-  eval:
-  - car_dev.txt
-  - car_test.txt
+  dataset: BaseDataset
   num_workers: 2
-  path: data
-  train: car_1000.txt
-  transforms:
-    select: []
+  root_path:
+    train:
+    dev:
+    test:
+  io_path:
+    train:
+    dev:
+    test:
+  io_mode: # 'lmdb', 'pickle', 'memory'
+  split: 
+    method: none
+    # other prams
+
+    # method: none
+
+    # method: train_test_split
+    # test_size: 0.2
+    # random_state: 42
+
+    # method: kfold
+    # n_splits: 5
+    # shuffle: true
+  offline_transform:
+    eeg:
+      pick_channels:
+        channels:
+      oreder_channels:
+        channels:
+      filter:
+        l_freq: 0.5
+        h_freq: 75
+      notch_filter:
+        freqs: [50]
+      resample:
+        sfreq: 200
+  online_transform:
+  label_transform:
 
 lr_scheduler:
   gamma: 0.1
@@ -48,6 +78,7 @@ trainer:
       checkpoint: /home/lingyus/code/PRL/experiments/2025-01-10/14-27-21/checkpoint/checkpoint_step_8488.pt
   fp16: false
   total_steps: 1000
+  total_epoches:
   update_interval: 1
   save_interval: 20
   eval_interval: 20

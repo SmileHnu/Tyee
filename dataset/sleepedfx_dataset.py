@@ -63,5 +63,5 @@ class SleepEDFxDataset(BaseDataset):
         collated_labels = torch.tensor(labels).long()
         return {
             "x": collated_data,
-            "target": collated_labels
+            "label": collated_labels
         }

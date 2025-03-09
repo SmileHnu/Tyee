@@ -40,5 +40,5 @@ class SEEDVDataset(torch.utils.data.Dataset):
         collated_data = torch.stack(inputs, dim=0)
         return {
             "x": collated_data,
-            "target": torch.tensor(labels).long()
+            "label": torch.tensor(labels).long()
         }

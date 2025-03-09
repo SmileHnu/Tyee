@@ -24,7 +24,7 @@ from sklearn.metrics import (
 def process_result(result: dict, is_classification: bool = True):
     """
     处理输入的 result 字典：将 Tensor 数据转换为 NumPy 数组，并根据任务类型处理输出。
-    :param result: 字典，包含 'target' 和 'output'
+    :param result: 字典，包含 'label' 和 'output'
     :param is_classification: 布尔值，判断当前任务是否为分类任务（默认是分类任务）
     :return: 处理后的字典
     """
@@ -55,7 +55,7 @@ def process_result(result: dict, is_classification: bool = True):
 
 def merge_results(accumulated_results):
     """
-    合并累积的 target 和 output 数据
+    合并累积的 label 和 output 数据
     """
     all_targets = np.concatenate([res[0] for res in accumulated_results], axis=0)
     all_outputs = np.concatenate([res[1] for res in accumulated_results], axis=0)
@@ -89,10 +89,10 @@ class Metric(ABC):
 class Accuracy(Metric):
     def update(self, result: dict):
         result = process_result(result)
-        target = result.get("target")
+        label = result.get("label")
         output = result.get("output")
-        if target is not None and output is not None:
-            self._accumulated_results.append((target, output))
+        if label is not None and output is not None:
+            self._accumulated_results.append((label, output))
 
     def compute(self):
         all_targets, all_outputs = merge_results(self._accumulated_results)
@@ -102,10 +102,10 @@ class Accuracy(Metric):
 class BalancedAccuracy(Metric):
     def update(self, result: dict):
         result = process_result(result)
-        target = result.get("target")
+        label = result.get("label")
         output = result.get("output")
-        if target is not None and output is not None:
-            self._accumulated_results.append((target, output))
+        if label is not None and output is not None:
+            self._accumulated_results.append((label, output))
 
     def compute(self):
         all_targets, all_outputs = merge_results(self._accumulated_results)
@@ -115,10 +115,10 @@ class BalancedAccuracy(Metric):
 class PR_AUC(Metric):
     def update(self, result: dict):
         result = process_result(result)
-        target = result.get("target")
+        label = result.get("label")
         output = result.get("output_raw")
-        if target is not None and output is not None:
-            self._accumulated_results.append((target, output))
+        if label is not None and output is not None:
+            self._accumulated_results.append((label, output))
 
     def compute(self):
         all_targets, all_outputs = merge_results(self._accumulated_results)
@@ -131,10 +131,10 @@ class PR_AUC(Metric):
 class ROC_AUC(Metric):
     def update(self, result: dict):
         result = process_result(result)
-        target = result.get("target")
+        label = result.get("label")
         output = result.get("output_raw")
-        if target is not None and output is not None:
-            self._accumulated_results.append((target, output))
+        if label is not None and output is not None:
+            self._accumulated_results.append((label, output))
 
     def compute(self):
         all_targets, all_outputs = merge_results(self._accumulated_results)
@@ -146,10 +146,10 @@ class ROC_AUC(Metric):
 class Precision(Metric):
     def update(self, result: dict):
         result = process_result(result)
-        target = result.get("target")
+        label = result.get("label")
         output = result.get("output")
-        if target is not None and output is not None:
-            self._accumulated_results.append((target, output))
+        if label is not None and output is not None:
+            self._accumulated_results.append((label, output))
 
     def compute(self):
         all_targets, all_outputs = merge_results(self._accumulated_results)
@@ -159,10 +159,10 @@ class Precision(Metric):
 class Recall(Metric):
     def update(self, result: dict):
         result = process_result(result)
-        target = result.get("target")
+        label = result.get("label")
         output = result.get("output")
-        if target is not None and output is not None:
-            self._accumulated_results.append((target, output))
+        if label is not None and output is not None:
+            self._accumulated_results.append((label, output))
 
     def compute(self):
         all_targets, all_outputs = merge_results(self._accumulated_results)
@@ -172,10 +172,10 @@ class Recall(Metric):
 class F1Score(Metric):
     def update(self, result: dict):
         result = process_result(result)
-        target = result.get("target")
+        label = result.get("label")
         output = result.get("output")
-        if target is not None and output is not None:
-            self._accumulated_results.append((target, output))
+        if label is not None and output is not None:
+            self._accumulated_results.append((label, output))
 
     def compute(self):
         all_targets, all_outputs = merge_results(self._accumulated_results)
@@ -188,14 +188,14 @@ class CohenKappa(Metric):
     def update(self, result: dict):
         """
         更新 Cohen's Kappa 指标的计算数据
-        :param result: 字典，包含 'target' 和 'output'
+        :param result: 字典，包含 'label' 和 'output'
         """
         result = process_result(result)
-        target = result.get('target')
+        label = result.get('label')
         output = result.get('output')
 
-        if target is not None and output is not None:
-            self._accumulated_results.append((target, output))
+        if label is not None and output is not None:
+            self._accumulated_results.append((label, output))
 
     def compute(self):
         """
@@ -213,14 +213,14 @@ class PearsonCorrelation(Metric):
     def update(self, result: dict):
         """
         更新Pearson相关系数指标的计算数据
-        :param result: 字典，包含 'target' 和 'output'
+        :param result: 字典，包含 'label' 和 'output'
         """
         result = process_result(result, is_classification=False)
-        target = result.get('target')
+        label = result.get('label')
         output = result.get('output')
 
-        if target is not None and output is not None:
-            self._accumulated_results.append((target, output))
+        if label is not None and output is not None:
+            self._accumulated_results.append((label, output))
 
     def compute(self):
         """
@@ -238,14 +238,14 @@ class R2Score(Metric):
     def update(self, result: dict):
         """
         更新R²得分指标的计算数据
-        :param result: 字典，包含 'target' 和 'output'
+        :param result: 字典，包含 'label' 和 'output'
         """
         result = process_result(result, is_classification=False)
-        target = result.get('target')
+        label = result.get('label')
         output = result.get('output')
 
-        if target is not None and output is not None:
-            self._accumulated_results.append((target, output))
+        if label is not None and output is not None:
+            self._accumulated_results.append((label, output))
 
     def compute(self):
         """
@@ -263,14 +263,14 @@ class RMSE(Metric):
     def update(self, result: dict):
         """
         更新RMSE指标的计算数据
-        :param result: 字典，包含 'target' 和 'output'
+        :param result: 字典，包含 'label' 和 'output'
         """
         result = process_result(result, is_classification=False)
-        target = result.get('target')
+        label = result.get('label')
         output = result.get('output')
 
-        if target is not None and output is not None:
-            self._accumulated_results.append((target, output))
+        if label is not None and output is not None:
+            self._accumulated_results.append((label, output))
 
     def compute(self):
         """

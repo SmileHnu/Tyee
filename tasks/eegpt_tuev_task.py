@@ -176,33 +176,33 @@ class EEGPTTUEVTask(PRLTask):
         
     def train_step(self, model: nn.Module, sample: dict[str, torch.Tensor]):
         x = sample["x"]
-        target = sample["target"]
+        label = sample["label"]
         x = x.float() / 1000
         x = rearrange(x, 'B N (A T) -> B N A T', T=200)
         pred = model(x)
-        loss = self.loss(pred, target)
+        loss = self.loss(pred, label)
         return {
              "loss": loss,
             "output": pred,
-            "target": target
+            "label": label
         }
 
     @torch.no_grad()
     def valid_step(self, model, sample: dict[str, torch.Tensor]):
         x = sample["x"]
-        target = sample["target"]
+        label = sample["label"]
         x = x.float() / 1000
         x = rearrange(x, 'B N (A T) -> B N A T', T=200)
         # 将输入数据转换为 Half 类型
         if x.dtype != torch.float16:
             x = x.half()
         pred = model(x)
-        loss = self.loss(pred, target)
+        loss = self.loss(pred, label)
 
         return {
             "loss": loss,
             "output": pred,
-            "target": target
+            "label": label
         }
     
     def get_input_chans(self, ch_names):

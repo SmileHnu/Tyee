@@ -19,7 +19,6 @@ from torch import nn
 from pathlib import Path
 from tasks import PRLTask
 from einops import rearrange
-from dataset import DatasetType
 from collections import OrderedDict
 from utils import lazy_import_module, get_nested_field
 
@@ -108,30 +107,6 @@ class TUEVTask(PRLTask):
                     'EEG F8-REF', 'EEG T3-REF', 'EEG T4-REF', 'EEG T5-REF', 'EEG T6-REF', 'EEG A1-REF', 'EEG A2-REF', 'EEG FZ-REF', 'EEG CZ-REF', 'EEG PZ-REF', 'EEG T1-REF', 'EEG T2-REF']
         ch_names = [name.split(' ')[-1].split('-')[0] for name in ch_names]
         self.input_chans = self.get_input_chans(ch_names)
-
-    def get_train_dataset(self):
-        if self.train_dataset is None:
-            self.train_dataset = self.build_dataset(self.dataset_root, self.train_fpath)
-        return self.train_dataset
-
-    def get_dev_dataset(self):
-        if self.dev_dataset is None:
-            self.dev_dataset = self.build_dataset(self.dataset_root, self.eval_fpath[0])
-        return self.dev_dataset
-    
-    def get_test_dataset(self):
-        if self.test_dataset is None:
-            self.test_dataset = self.build_dataset(self.dataset_root, self.eval_fpath[1])
-        return self.test_dataset
-
-    def build_dataset(self, root: str, fpath: str = "train"):
-        """ 构建数据集 """
-        seed = 4523
-        np.random.seed(seed)
-        files = os.listdir(os.path.join(root, fpath))
-        Dataset = lazy_import_module('dataset', self.dataset)
-        # transforms = [lazy_import_module('dataset.transforms', t) for t in self.transforms_select]
-        return Dataset(os.path.join(root, fpath), files)
 
     def get_layer_id(self, var_name, num_max_layer):
         if var_name in ("cls_token", "mask_token", "pos_embed"):
@@ -247,31 +222,32 @@ class TUEVTask(PRLTask):
         return model
         
     def train_step(self, model: nn.Module, sample: dict[str, torch.Tensor]):
-        x = sample["x"]
-        target = sample["target"]
-        x = x.float() / 100
-        x = rearrange(x, 'B N (A T) -> B N A T', T=200)
-        pred = model(x, self.input_chans)
-        loss = self.loss(pred, target)
+        
+        eeg = sample["eeg"]
+        label = sample["label"]
+        eeg = eeg.float() / 100
+        eeg = rearrange(eeg, 'B N (A T) -> B N A T', T=200)
+        pred = model(eeg, self.input_chans)
+        loss = self.loss(pred, label)
         return {
              "loss": loss,
             "output": pred,
-            "target": target
+            "label": label
         }
 
     @torch.no_grad()
     def valid_step(self, model, sample: dict[str, torch.Tensor]):
-        x = sample["x"]
-        target = sample["target"]
-        x = x.float() / 100
-        x = rearrange(x, 'B N (A T) -> B N A T', T=200)
-        pred = model(x, self.input_chans)
-        loss = self.loss(pred, target)
+        eeg = sample["eeg"]
+        label = sample["label"]
+        eeg = eeg.float() / 100
+        eeg = rearrange(eeg, 'B N (A T) -> B N A T', T=200)
+        pred = model(eeg, self.input_chans)
+        loss = self.loss(pred, label)
 
         return {
             "loss": loss,
             "output": pred,
-            "target": target
+            "label": label
         }
     
     def get_input_chans(self, ch_names):

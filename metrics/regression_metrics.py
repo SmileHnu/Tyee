@@ -21,19 +21,19 @@ class RegressionMetric(ABC):
     def process_result(self, results: list):
         """
         处理输入的结果列表：将 Tensor 数据转换为 NumPy 数组，并根据任务类型处理输出。
-        :param results: 列表，每个元素是一个字典，包含 'loss'、'target' 和 'output' 等元素。
-        :return: 元组，包含处理后的 target 和 output 列表。
+        :param results: 列表，每个元素是一个字典，包含 'loss'、'label' 和 'output' 等元素。
+        :return: 元组，包含处理后的 label 和 output 列表。
         """
         all_targets = []
         all_outputs = []
 
         for result in results:
-            target = result.get('target')
+            label = result.get('label')
             output = result.get('output')
-            target = target.flatten()
+            label = label.flatten()
             output = output.flatten()
-            if target is not None and output is not None:
-                all_targets.append(target)
+            if label is not None and output is not None:
+                all_targets.append(label)
                 all_outputs.append(output)
         all_outputs = torch.cat(all_outputs, dim=0).numpy()
         all_targets = torch.cat(all_targets, dim=0).numpy()
@@ -42,7 +42,7 @@ class RegressionMetric(ABC):
     def compute(self, results: list):
         """
         计算指标。
-        :param results: 列表，每个元素是一个字典，包含 'loss'、'target' 和 'output' 等元素。
+        :param results: 列表，每个元素是一个字典，包含 'loss'、'label' 和 'output' 等元素。
         :return: 字典，包含指标名称和值。
         """
         raise NotImplementedError

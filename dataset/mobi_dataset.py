@@ -43,5 +43,5 @@ class MoBIDataset(torch.utils.data.Dataset):
         collated_labels = torch.stack(labels, dim=0)
         return {
             "x": collated_data,
-            "target": collated_labels
+            "label": collated_labels
         }

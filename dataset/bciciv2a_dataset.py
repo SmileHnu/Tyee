@@ -171,7 +171,7 @@ class BCICIV2ADataset(BaseDataset):
         
         return {
             "x": collated_data,
-            "target": collated_labels,
+            "label": collated_labels,
             
         }
 

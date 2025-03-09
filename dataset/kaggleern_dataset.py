@@ -94,7 +94,7 @@ class KaggleERNDataset(BaseDataset):
         collated_data = torch.stack(inputs, dim=0)
         return {
             "x": collated_data,
-            "target": torch.tensor(labels).long()
+            "label": torch.tensor(labels).long()
         }
 
 def read_csv_epochs(filename, tmin, tlen, use_channels_names=use_channels_names, data_max=None, data_min=None):

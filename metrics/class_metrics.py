@@ -38,14 +38,14 @@ class ClassMetric(ABC):
     def process_result(self, results: list):
         """
         处理输入的结果列表：将 Tensor 数据转换为 NumPy 数组，并根据任务类型处理输出。
-        :param results: 列表，每个元素是一个字典，包含 'loss'、'target' 和 'output' 等元素。
-        :return: 元组，包含处理后的 target 和 output 列表。
+        :param results: 列表，每个元素是一个字典，包含 'loss'、'label' 和 'output' 等元素。
+        :return: 元组，包含处理后的 label 和 output 列表。
         """
         all_targets = []
         all_outputs = []
 
         for result in results:
-            target = result.get('target')
+            label = result.get('label')
             output = result.get('output')
             if output.ndim == 2 and output.shape[1] > 1:  # 多分类问题
                 output = np.argmax(output, axis=-1)
@@ -53,8 +53,8 @@ class ClassMetric(ABC):
                 output = (output > 0.5).astype(int)
             elif output.ndim == 1:  # 二分类问题（输出是一维数组，通常是概率值）
                 output = (output > 0.5).astype(int)
-            if target is not None and output is not None:
-                all_targets.append(target)
+            if label is not None and output is not None:
+                all_targets.append(label)
                 all_outputs.append(output)
         
         all_outputs = torch.cat(all_outputs, dim=0).numpy()

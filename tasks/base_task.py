@@ -11,7 +11,10 @@
 """
 import os
 import torch
+import numpy as np
 from torch.utils.data import Dataset
+from dataset.transform import Compose
+from dataset.split import DatasetSplitter
 from utils import lazy_import_module, get_nested_field
 from torch.utils.data import Dataset, Sampler, DataLoader, DistributedSampler
 
@@ -21,11 +24,21 @@ class PRLTask(object):
         self.cfg = cfg
         
         # 数据集路径和变换
-        self.dataset_root = get_nested_field(cfg, 'dataset.path', '')
-        self.train_fpath = get_nested_field(cfg, 'dataset.train', '')
-        self.eval_fpath = get_nested_field(cfg, 'dataset.eval', [])
-        self.transforms_select = get_nested_field(cfg, 'dataset.transforms.select', [])
+        self.root_path = get_nested_field(cfg, 'dataset.root_path', '')
+        self.io_path = get_nested_field(cfg, 'dataset.io_path', '')
+        self.io_mode = get_nested_field(cfg, 'dataset.io_mode', 'lmdb')
+
         self.dataset = get_nested_field(cfg, 'dataset.dataset', '')
+        self.num_workers = get_nested_field(cfg, 'dataset.num_workers', 4)
+        
+        offline_transform_cfg = get_nested_field(cfg, 'dataset.offline_transform', None)
+        self.offline_transform = self.build_transforms(offline_transform_cfg)
+        online_transform_cfg = get_nested_field(cfg, 'dataset.online_transform', None)
+        self.online_transform = self.build_transforms(online_transform_cfg)
+        label_transform_cfg = get_nested_field(cfg, 'dataset.label_transform', None)
+        self.label_transform = self.build_transforms(label_transform_cfg, is_label_transform=True)
+
+        self.split_params = get_nested_field(cfg, 'dataset.split', {})
 
         # 模型配置
         self.downstream_classes = get_nested_field(cfg, 'model.downstream.classes', 1)
@@ -52,12 +65,70 @@ class PRLTask(object):
         self.test_dataset = None
         self.loss = self.build_loss()
 
-    
-    def build_dataset(self, filename: str):
-        """ 构建数据集 """
+    def build_transforms(self, transform_cfg: dict, is_label_transform: bool = False):
+        """
+        构建数据变换的方法。
+
+        参数:
+            transform_cfg (dict): 变换配置字典。
+            is_label_transform (bool): 是否为标签变换。
+
+        返回:
+            dict: 包含 Compose 对象的字典。
+        """
+        transforms = {}
+        if transform_cfg is not None:
+            if is_label_transform:
+                transform_objs = []
+                for transform_name, params in transform_cfg.items():
+                    transform_cls = lazy_import_module('dataset.transform', transform_name)
+                    transform_objs.append(transform_cls(**params))
+                return Compose(transform_objs)
+            else:
+                for key, transform_list in transform_cfg.items():
+                    transform_objs = []
+                    for transform_name, params in transform_list.items():
+                        transform_cls = lazy_import_module('dataset.transform', transform_name)
+                        transform_objs.append(transform_cls(**params))
+                    transforms[key] = Compose(transform_objs)
+                return transforms
+        return None
+
+    def build_dataset(self, root_path: str, io_path: str) -> Dataset:
+        """
+        构建数据集的方法。
+
+        参数:
+            root_path (str): 数据集的原数据路径。
+            io_path (str): 数据集的统一数据存放路径。
+
+        返回:
+            Dataset: 构建好的数据集对象。
+        """
+        if root_path is None and io_path is None:
+            return None
+
         Dataset = lazy_import_module('dataset', self.dataset)
-        transforms = [lazy_import_module('dataset.transforms', t) for t in self.transforms_select]
-        return Dataset(os.path.join(self.dataset_root, filename), transforms)
+        return Dataset(root_path=root_path, 
+                       io_path=io_path, 
+                       io_mode=self.io_mode, 
+                       num_worker=self.num_workers, 
+                       offline_transform=self.offline_transform,
+                       online_transform=self.online_transform,
+                       label_transform=self.label_transform)
+    
+    def build_datasets(self):
+        """
+        构建训练集、验证集和测试集的方法。
+
+        返回:
+            Tuple[Dataset, Dataset, Dataset]: 训练集、验证集和测试集。
+        """
+        train_dataset = self.build_dataset(self.root_path.get('train', None), self.io_path.get('train', None))
+        dev_dataset = self.build_dataset(self.root_path.get('dev', None), self.io_path.get('dev', None))
+        test_dataset = self.build_dataset(self.root_path.get('test', None), self.io_path.get('test', None))
+
+        return train_dataset, dev_dataset, test_dataset
 
     def build_model(self):
         """ 构建模型 """
@@ -110,24 +181,45 @@ class PRLTask(object):
         scheduler_params = {k: v for k, v in self.lr_scheduler_params.items() if k not in ['select']}
         return scheduler_cls(optimizer, **scheduler_params)
     
-    def get_train_dataset(self):
-        """ 获得训练集的方法 """
-        if self.train_dataset is None:
-            self.train_dataset = self.build_dataset(self.train_fpath)
-        return self.train_dataset
+    def get_datasets(self,):
+        """ 获取数据集 """
+        self.train_dataset, self.dev_dataset, self.test_dataset = self.build_datasets()
 
-    def get_dev_dataset(self):
-        """ 获得验证集的方法 """
-        if self.dev_dataset is None:
-            self.dev_dataset = self.build_dataset(self.eval_fpath[0])
-        return self.dev_dataset
+        self.splitter = DatasetSplitter(train_dataset=self.train_dataset, dev_dataset=self.dev_dataset, test_dataset=self.test_dataset)
+
+        splits = self.splitter.split(**self.split_params)
+
+        return splits
     
-    def get_test_dataset(self):
-        """ 获得测试集的方法 """
-        if self.test_dataset is None:
-            self.test_dataset = self.build_dataset(self.eval_fpath[1])
-        return self.test_dataset
-    
+    def collate_fn(self, batch):
+        # 假设 batch 是一个包含字典的列表
+        batch_signals = {key: [] for key in batch[0]}
+        
+        for item in batch:
+            for key, value in item.items():
+                batch_signals[key].append(value)
+        
+        # 将信号数据和标签分别拼接成一个批次
+        for key in batch_signals:
+            # print(key)
+            # print(batch_signals[key])
+            if isinstance(batch_signals[key][0], torch.Tensor):
+                # print(1)
+                batch_signals[key] = torch.stack(batch_signals[key])
+            elif isinstance(batch_signals[key][0], np.ndarray):
+                # print(2)
+                batch_signals[key] = torch.tensor(np.stack(batch_signals[key]))
+            elif isinstance(batch_signals[key][0], (int, float)) or isinstance(batch_signals[key][0], list):
+                # print(3)
+                # print(batch_signals[key].dtype)
+                # 如果是数值列表，将其转换为张量
+                batch_signals[key] = torch.tensor(batch_signals[key])
+                # print(batch_signals[key].dtype)
+            else:
+                # print(4)
+                batch_signals[key] = batch_signals[key]
+        
+        return batch_signals
     def get_batch_iterator(self, dataloader: DataLoader):
         """
         创建一个每次获取 batch_size 数据的迭代器。
@@ -205,13 +297,13 @@ class PRLTask(object):
         # 如果sampler是None，保持数据原有顺序构造加载器
         if sampler is None:
             try:
-                data_loader = DataLoader(dataset, batch_size=batch_size, shuffle=shuffle, collate_fn=dataset.collate_fn)
+                data_loader = DataLoader(dataset, batch_size=batch_size, shuffle=shuffle, collate_fn=self.collate_fn)
             except Exception as e:
                 raise RuntimeError(f"Failed to create DataLoader: {e}")
 
         else:
             try:
-                data_loader = DataLoader(dataset, batch_size=batch_size, sampler=sampler, collate_fn=dataset.collate_fn)
+                data_loader = DataLoader(dataset, batch_size=batch_size, sampler=sampler, collate_fn=self.collate_fn)
             except Exception as e:
                 raise RuntimeError(f"Failed to create DataLoader: {e}")
         
@@ -222,7 +314,8 @@ class PRLTask(object):
             
         for k, v in sample.items():
             if v is not None:
-                sample[k] = v.to(device)
+                if isinstance(v, torch.Tensor):
+                    sample[k] = v.to(device)
         
         return sample
 

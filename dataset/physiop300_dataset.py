@@ -47,5 +47,5 @@ class PhysioP300Dataset(BaseDataset):
         collated_labels = torch.tensor(labels).long()
         return {
             "x": collated_data,
-            "target": collated_labels
+            "label": collated_labels
         }

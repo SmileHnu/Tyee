@@ -61,10 +61,10 @@ class DREAMERTask(PRLTask):
         
     def train_step(self, model: nn.Module, sample: dict[str, torch.Tensor]):
         x = sample["x"]
-        target = sample["target"]
+        label = sample["label"]
         padding_mask = sample["padding_mask"]
         pred = model(x, padding_mask)
-        loss = self.loss(pred, target)
+        loss = self.loss(pred, label)
         return {
             'loss':loss
         }
@@ -72,13 +72,13 @@ class DREAMERTask(PRLTask):
     @torch.no_grad()
     def valid_step(self, model, sample: dict[str, torch.Tensor]):
         x = sample["x"]
-        target = sample["target"]
+        label = sample["label"]
         padding_mask = sample["padding_mask"]
         pred = model(x, padding_mask)
-        loss = self.loss(pred, target)
+        loss = self.loss(pred, label)
 
         return {
             "loss": loss,
             "output": pred,
-            "target": target
+            "label": label
         }
