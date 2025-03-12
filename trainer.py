@@ -33,7 +33,7 @@ class Trainer(object):
 
         # 训练配置
         self._total_steps = get_nested_field(self.cfg, 'trainer.total_steps', INT_MAX)
-        self._total_epoches = get_nested_field(self.cfg, 'trainer.total_epoches', INT_MAX)
+        self._total_epochs = get_nested_field(self.cfg, 'trainer.total_epochs', INT_MAX)
         self._update_interval = get_nested_field(self.cfg, 'trainer.update_interval', 1)
         self._save_interval = get_nested_field(self.cfg, 'trainer.save_interval', None)
         self._eval_interval = get_nested_field(self.cfg, 'trainer.eval_interval', None)
@@ -87,19 +87,6 @@ class Trainer(object):
         self.dev_dataset = dev_dataset
         self.test_dataset = test_dataset
 
-        # 模型、优化器与学习率调度器
-        self.model = self.task.build_model()
-        self.optimizer = self.task.build_optimizer(self.model)
-        self.lr_scheduler = self.task.build_lr_scheduler(self.optimizer)
-        self.step = 1
-        self.best_metric_value = None
-
-
-        self.device = torch.device(self.rank)
-        self.model = self.model.to(self.device)
-        if self.world_size > 1:
-            self.model = DDP(self.model, device_ids=[self.rank])
-
         # 构造采样器
         self.train_sampler = self.task.build_sampler(self.train_dataset, self.world_size, self.rank)
         if self.dev_dataset is not None:
@@ -123,19 +110,32 @@ class Trainer(object):
         else:
             self.test_loader = None
 
+        # 判定训练step
+        niter_per_epoch = len(self.train_dataset) // (self._batch_size * self.world_size)
+        self._total_steps = min(self._total_steps, self._total_epochs * niter_per_epoch)
+
+        if self._eval_interval is None:
+            self._eval_interval = niter_per_epoch
+        
+        if self._save_interval is None:
+            self._save_interval = niter_per_epoch
+
+        # 模型、优化器与学习率调度器
+        self.model = self.task.build_model()
+        self.optimizer = self.task.build_optimizer(self.model)
+        self.lr_scheduler = self.task.build_lr_scheduler(self.optimizer, niter_per_epoch)
+        self.step = 1
+        self.best_metric_value = None
+
+
+        self.device = torch.device(self.rank)
+        self.model = self.model.to(self.device)
+        if self.world_size > 1:
+            self.model = DDP(self.model, device_ids=[self.rank])
+        
         # 如果使用FP16，初始化 GradScaler
         self.scaler = torch.amp.GradScaler(enabled=self.fp16) if self.fp16 else None
 
-        # 判定训练step
-        epoch_steps = len(self.train_loader) // (self._batch_size * self.world_size)
-        self._total_steps = min(self._total_steps, self._total_epoches * epoch_steps)
-
-        if self._eval_interval is None:
-            self._eval_interval = epoch_steps
-        
-        if self._save_interval is None:
-            self._save_interval = epoch_steps
-        
         # 检查是否启用了模型恢复
         self.resume_enabled = get_nested_field(self.cfg, 'trainer.resume.enabled', False)
         if self.resume_enabled:
@@ -336,10 +336,9 @@ class Trainer(object):
         with torch.no_grad():
             total, correct = 0, 0
             tot_eval_loss = 0
-            for sample in self.task.get_batch_iterator(loader):
-                for k, v in sample.items():
-                    if v is not None:
-                        sample[k] = v.to(self.device)
+            iterator = self.task.get_batch_iterator(loader)
+            for _ in range(len(loader)):
+                sample = self.task.load_sample(iterator, self.device)
                 # 使用自动混合精度（autocast）
                 with torch.amp.autocast('cuda', enabled=self.fp16):
                     result = self.task.valid_step(self.model, sample)
@@ -354,7 +353,6 @@ class Trainer(object):
         result = self._aggregate_metrics(tot_eval_loss, metrics, total)
 
         return result
-
     def _aggregate_metrics(self, loss, metrics, total=None):
         """
         聚合和平均损失与指标。

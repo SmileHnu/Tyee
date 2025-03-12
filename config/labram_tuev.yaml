@@ -1,5 +1,5 @@
 common:
-  seed: 3412
+  seed: 4523
   verbose: true
   exp_dir: experiments
 
@@ -17,8 +17,8 @@ dataset:
     test: "/home/lingyus/data/TUEV/edf/processed_eval"
   io_mode: pickle
   split: 
-    method: train_test_split
-    seed: 3412
+    method: tuev
+    seed: 0
     dev: 0.2
   offline_transform:
     eeg:
@@ -27,10 +27,10 @@ dataset:
       OrderChannels:
         order: ['FP1', 'FP2', 'F3', 'F4', 'C3', 'C4', 'P3', 'P4', 'O1', 'O2', 'F7', 'F8', 'T3', 'T4', 'T5', 'T6', 'A1', 'A2', 'FZ', 'CZ', 'PZ', 'T1', 'T2']
       Filter:
-        l_freq: 0.5
+        l_freq: 0.1
         h_freq: 75
       NotchFilter:
-        freqs: [50]
+        freqs: [50.0]
       Resample:
         desired_sampling_rate: 200.0
   online_transform:
@@ -41,11 +41,11 @@ dataset:
 
 
 lr_scheduler:
-  select: WarmupCosineAnnealingLR
-  T_max: 31980
+  select: WarmupCosineScheduler
+  total_epochs: 30
   eta_min: 1e-6
   warmup_start_lr: 0
-  warmup_steps: 3198
+  warmup_epochs: 3
 
 model:
   downstream:
@@ -84,11 +84,11 @@ trainer:
       enabled: false
       checkpoint: /home/lingyus/code/PRL/experiments/2025-01-10/14-27-21/checkpoint/checkpoint_step_8488.pt
   fp16: true
-  total_steps: 31980
-  # total_epoches: 30
+  # total_steps: 31980
+  total_epochs: 30
   update_interval: 8
-  save_interval: 1066
-  eval_interval: 1066
+  # save_interval: 1066
+  # eval_interval: 1066
   log_interval: 20
   eval_metric: balanced_accuracy
   metrics: [balanced_accuracy, accuracy, f1_weighted, cohen_kappa]

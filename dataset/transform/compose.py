@@ -18,7 +18,7 @@ class Compose(BaseTransform):
         super().__init__()
         self.transforms = transforms
 
-    def transform(self, siganl_type, result):
+    def transform(self, result):
         for t in self.transforms:
-            result = t.transform(siganl_type, result)
+            result = t.transform(result)
         return result

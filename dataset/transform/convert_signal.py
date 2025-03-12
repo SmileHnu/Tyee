@@ -39,23 +39,19 @@ class UniToBiTransform(BaseTransform):
     def __init__(self):
         super().__init__()
 
-    def transform(self, signal_type: str, result: Dict[str, Any], target_bipolar_channels: List[str]) -> Dict[str, Any]:
+    def transform(self, result: Dict[str, Any], target_bipolar_channels: List[str]) -> Dict[str, Any]:
         """
         将单极信号转换为双极信号，通过对目标双极通道列表中的相邻通道做差值计算。
         
         参数:
-        - signal_type: 要转换的信号类型。
         - result: 包含信号数据的字典。
         - target_bipolar_channels: 目标双极通道列表，格式为 ["channel1-channel2", ...]。
         
         返回:
         - 更新后的信号数据字典。
         """
-        if signal_type not in result or f'{signal_type}_channels' not in result:
-            raise ValueError(f"在结果字典中未找到信号类型 {signal_type} 或其通道列表。")
-        
-        signal_data = result[signal_type]
-        channel_list = result[f'{signal_type}_channels']
+        signal_data = result['signals']
+        channel_list = result['channels']
         
         new_signal_data = {}
         new_channel_list = []
@@ -71,7 +67,7 @@ class UniToBiTransform(BaseTransform):
                 raise ValueError(f"在信号数据中未找到通道 {channel1} 和/或 {channel2}。")
         
         # 更新通道列表和信号数据
-        result[f'{signal_type}_channels'] = new_channel_list
-        result[signal_type] = new_signal_data
+        result['channels'] = new_channel_list
+        result['signals'] = new_signal_data
         
         return result

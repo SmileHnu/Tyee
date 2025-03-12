@@ -168,7 +168,7 @@ class PRLTask(object):
         param_groups = [{'params': model.parameters(), 'lr': lr, 'weight_decay': weight_decay}]
         return param_groups
 
-    def build_lr_scheduler(self,optimizer):
+    def build_lr_scheduler(self, optimizer, niter_per_epoch):
         """ 构建学习率调度器 """
         if self.lr_scheduler_select is None:
             return None
@@ -179,7 +179,7 @@ class PRLTask(object):
         
         # 从配置中获取调度器参数
         scheduler_params = {k: v for k, v in self.lr_scheduler_params.items() if k not in ['select']}
-        return scheduler_cls(optimizer, **scheduler_params)
+        return scheduler_cls(optimizer, niter_per_epoch, **scheduler_params)
     
     def get_datasets(self,):
         """ 获取数据集 """
@@ -199,27 +199,24 @@ class PRLTask(object):
             for key, value in item.items():
                 batch_signals[key].append(value)
         
-        # 将信号数据和标签分别拼接成一个批次
-        for key in batch_signals:
-            # print(key)
-            # print(batch_signals[key])
-            if isinstance(batch_signals[key][0], torch.Tensor):
-                # print(1)
-                batch_signals[key] = torch.stack(batch_signals[key])
-            elif isinstance(batch_signals[key][0], np.ndarray):
-                # print(2)
-                batch_signals[key] = torch.tensor(np.stack(batch_signals[key]))
-            elif isinstance(batch_signals[key][0], (int, float)) or isinstance(batch_signals[key][0], list):
-                # print(3)
-                # print(batch_signals[key].dtype)
-                # 如果是数值列表，将其转换为张量
-                batch_signals[key] = torch.tensor(batch_signals[key])
-                # print(batch_signals[key].dtype)
+        # 递归处理嵌套字典
+        def recursive_collate(data):
+            if isinstance(data[0], dict):
+                collated_data = {key: recursive_collate([d[key] for d in data]) for key in data[0]}
+            elif isinstance(data[0], torch.Tensor):
+                collated_data = torch.stack(data)
+            elif isinstance(data[0], np.ndarray):
+                collated_data = torch.tensor(np.stack(data))
+            elif isinstance(data[0], (int, float)) or isinstance(data[0], list):
+                collated_data = torch.tensor(data)
             else:
-                # print(4)
-                batch_signals[key] = batch_signals[key]
-        
-        return batch_signals
+                collated_data = data
+            return collated_data
+
+        for key in batch_signals:
+            batch_signals[key] = recursive_collate(batch_signals[key])
+    
+        return batch_signals        
     def get_batch_iterator(self, dataloader: DataLoader):
         """
         创建一个每次获取 batch_size 数据的迭代器。
@@ -311,11 +308,16 @@ class PRLTask(object):
     
     def load_sample(self, iterator, device):
         sample = next(iterator)
-            
-        for k, v in sample.items():
-            if v is not None:
-                if isinstance(v, torch.Tensor):
-                    sample[k] = v.to(device)
+        
+        def recursive_to_device(data, device):
+            if isinstance(data, dict):
+                return {k: recursive_to_device(v, device) for k, v in data.items()}
+            elif isinstance(data, torch.Tensor):
+                return data.to(device)
+            else:
+                return data
+        
+        sample = recursive_to_device(sample, device)
         
         return sample
 

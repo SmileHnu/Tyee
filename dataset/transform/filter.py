@@ -34,10 +34,10 @@ class NeurokitFilter(BaseTransform):
         self.powerline = powerline
         self.show = show
     
-    def transform(self, signal_type: str, result: Dict[str, Any]) -> Dict[str, Any]:
+    def transform(self, result: Dict[str, Any]) -> Dict[str, Any]:
         
-        result[signal_type] = signal_filter(result[signal_type], 
-                                       result[f'{signal_type}_sampling_rate'], 
+        result['signals'] = signal_filter(result['signals'], 
+                                       result['sampling_rate'], 
                                        self.lowcut, 
                                        self.highcut, 
                                        self.method, 
@@ -49,8 +49,8 @@ class NeurokitFilter(BaseTransform):
 
 class Filter(BaseTransform):
     def __init__(self, 
-                 l_freq=None, 
-                 h_freq=None, 
+                 l_freq, 
+                 h_freq, 
                  filter_length="auto", 
                  l_trans_bandwidth="auto", 
                  h_trans_bandwidth="auto", 
@@ -73,23 +73,20 @@ class Filter(BaseTransform):
         self.fir_design = fir_design
         self.pad = pad
 
-    def transform(self, signal_type: str, result: Dict[str, Any]) -> Dict[str, Any]:
+    def transform(self, result: Dict[str, Any]) -> Dict[str, Any]:
         # print('执行了Filter')
         """
         对信号进行滤波。
         
         参数:
-        - signal_type: 要转换的信号类型。
         - result: 包含信号数据的字典。
         
         返回:
         - 更新后的信号数据字典。
         """
-        if signal_type not in result or f'{signal_type}_sampling_rate' not in result:
-            raise ValueError(f"在结果字典中未找到信号类型 {signal_type} 或其采样率。")
         
-        signal_data = result[signal_type]
-        sfreq = result[f'{signal_type}_sampling_rate']
+        signal_data = result['signals']
+        sfreq = result['sampling_rate']
         
         filtered_signal = mne.filter.filter_data(
             data=signal_data,
@@ -106,8 +103,8 @@ class Filter(BaseTransform):
             fir_design=self.fir_design,
             pad=self.pad
         )
-        
-        result[signal_type] = filtered_signal
+        # print(filtered_signal)
+        result['signals'] = filtered_signal
         return result
     
 class NotchFilter(BaseTransform):
@@ -138,24 +135,20 @@ class NotchFilter(BaseTransform):
         self.fir_design = fir_design
         self.pad = pad
 
-    def transform(self, signal_type: str, result: Dict[str, Any]) -> Dict[str, Any]:
+    def transform(self, result: Dict[str, Any]) -> Dict[str, Any]:
         # print('执行了NotchFilter')
         """
         对信号进行陷波滤波。
         
         参数:
-        - signal_type: 要转换的信号类型。
         - result: 包含信号数据的字典。
         
         返回:
         - 更新后的信号数据字典。
         """
-        if signal_type not in result or f'{signal_type}_sampling_rate' not in result:
-            raise ValueError(f"在结果字典中未找到信号类型 {signal_type} 或其采样率。")
-        
-        signal_data = result[signal_type]
-        sfreq = result[f'{signal_type}_sampling_rate']
-        
+        signal_data = result['signals']
+        sfreq = result['sampling_rate']
+
         filtered_signal = mne.filter.notch_filter(
             x=signal_data,
             Fs=sfreq,
@@ -172,6 +165,6 @@ class NotchFilter(BaseTransform):
             fir_design=self.fir_design,
             pad=self.pad
         )
-        
-        result[signal_type] = filtered_signal
+        # print(filtered_signal)
+        result['signals'] = filtered_signal
         return result

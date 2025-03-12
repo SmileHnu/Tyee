@@ -111,12 +111,15 @@ class TUEVDataset(BaseDataset):
         Rawdata.close()
         # 转置
         # signals = signals.T
+        eeg = {
+            'signals': signals,
+            'times': times,
+            'sampling_rate': sampling_rate,
+            'channels': eeg_channels,
+        }
         result = {
-            'eeg': signals,
-            'eeg_times': times,
+            'eeg': eeg,
             'eventData': eventData,
-            'eeg_sampling_rate': sampling_rate,
-            'eeg_channels': eeg_channels,
         }
         return result
         
@@ -127,51 +130,60 @@ class TUEVDataset(BaseDataset):
                        offline_transform,
                        **kwargs):
         file_name = os.path.splitext(os.path.basename(record))[0]
-        
+        # print(result['eeg']['signals'])
         if not offline_transform is None:
             try:
                 for signal_type in signal_types:
                     if signal_type in offline_transform:
-                        result = offline_transform[signal_type](signal_type, result)
+                        result[signal_type] = offline_transform[signal_type](result[signal_type])
             except (KeyError, ValueError) as e:
                 print(f'Error in processing record {file_name}: {e}')
                 return None
         
-        fs = result['eeg_sampling_rate']
+        fs = result['eeg']['sampling_rate']
         
-        eeg_channels = result['eeg_channels']
+        eeg_channels = result['eeg']['channels']
         eventData = result['eventData']
-        eeg = result['eeg']
-        
-        times = result['eeg_times']
-        print(times)
+        eeg_signals = result['eeg']['signals']
+        # print(f'signals:{eeg_signals}')
+        times = result['eeg']['times']
+        # print(f'times:{times}')
+        # 删除 times
+        if 'times' in result['eeg']:
+            del result['eeg']['times']
+        # print(times)
         [numEvents, z] = eventData.shape
-        [numChan, numPoints] = eeg.shape
+        [numChan, numPoints] = eeg_signals.shape
         features = np.zeros([numEvents, numChan, int(fs) * 5])
         offending_channel = np.zeros([numEvents, 1])
         labels = np.zeros([numEvents, 1])
-        offset = eeg.shape[1]
-        eeg = np.concatenate([eeg, eeg, eeg], axis=1)
+        offset = eeg_signals.shape[1]
+        eeg_signals = np.concatenate([eeg_signals, eeg_signals, eeg_signals], axis=1)
+        # print(eeg_signals)
+        # print(eventData)
         for i in range(numEvents):
             chan = int(eventData[i, 0])
             start = np.where((times) >= eventData[i, 1])[0][0]
             end = np.where((times) >= eventData[i, 2])[0][0]
-            features[i, :] = eeg[:, offset + start - 2 * int(fs) : offset + end + 2 * int(fs)]
+            # print(start, end)
+            features[i, :] = eeg_signals[:, offset + start - 2 * int(fs) : offset + end + 2 * int(fs)]
             offending_channel[i, :] = int(chan)
             labels[i, :] = int(eventData[i, 3])
-        
-        for idx, (eeg, offending_channel, label) in enumerate(zip(features, offending_channel, labels)):
+        # print(features)
+        for idx, (eeg_signal, offending_channel, label) in enumerate(zip(features, offending_channel, labels)):
             clip_id = f'{idx}_{file_name}'
+            subject_id = file_name.split('_')[0]
             label = int(label[0] - 1)
+            # print(eeg_signal)
+            result['eeg']['signals'] = eeg_signal
+
             yield {
-                'eeg': eeg,
+                'eeg': result['eeg'],
                 'key': clip_id,
                 'info': {
                     'signal_types': ['eeg'],
                     'clip_id': clip_id,
-                    'eeg_sampling_rate': fs,
-                    # 'offending_channel': offending_channel,
-                    'eeg_channels': eeg_channels,
+                    'subject_id': subject_id,
                     'label': label
                 }
             }
@@ -186,17 +198,16 @@ class TUEVDataset(BaseDataset):
         for signal_type in self.signal_types:
             result[signal_type] = self.read_signal(signal_record, signal_index, signal_type)
 
-            channel_key = f'{signal_type.lower()}_channels'
-            if channel_key in info:
-                result[channel_key] = info[channel_key]
-
         result['label'] = info['label']
         if self.label_transform is not None:
             result['label'] = self.label_transform(result['label'])
         if self.online_transform is not None:
             for signal_type in self.signal_types:
                 if signal_type in self.online_transform:
-                    result = self.online_transform[signal_type](signal_type, result)
+                    result[signal_type] = self.online_transform[signal_type](result[signal_type])
+                if 'ToIndexChannels' not in [transform.__class__.__name__ for transform in self.online_transform[signal_type].transforms]:
+                    if 'channels' in result[signal_type]:
+                        del result[signal_type]['channels']
         return result
 
     

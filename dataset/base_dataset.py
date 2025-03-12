@@ -121,8 +121,7 @@ class BaseDataset(Dataset):
             self.init_io(
                 io_path=self.io_path,
                 io_size=self.io_size,
-                io_mode=self.io_mode,
-                signal_types=self.signal_types)  # 传递信号类型
+                io_mode=self.io_mode)  
 
             if self.after_trial is not None or self.after_session is not None or self.after_subject is not None:
                 # catch the exception
@@ -141,12 +140,11 @@ class BaseDataset(Dataset):
             self.init_io(
                 io_path=self.io_path,
                 io_size=self.io_size,
-                io_mode=self.io_mode,
-                signal_types=self.signal_types)  # 传递信号类型
+                io_mode=self.io_mode)
         
        
 
-    def init_io(self, io_path: str, io_size: int, io_mode: str, signal_types: list):
+    def init_io(self, io_path: str, io_size: int, io_mode: str):
         # get all records
         records = os.listdir(io_path)
         # filter the records with the prefix 'record_'
@@ -293,9 +291,6 @@ class BaseDataset(Dataset):
         for signal_type in self.signal_types:
             result[signal_type] = self.read_signal(signal_record, signal_index, signal_type)
 
-            channel_key = f'{signal_type.lower()}_channels'
-            if channel_key in info:
-                result[channel_key] = info[channel_key]
         result['label'] = info['label']
         return result
 
