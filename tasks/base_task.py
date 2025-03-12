@@ -294,13 +294,21 @@ class PRLTask(object):
         # 如果sampler是None，保持数据原有顺序构造加载器
         if sampler is None:
             try:
-                data_loader = DataLoader(dataset, batch_size=batch_size, shuffle=shuffle, collate_fn=self.collate_fn)
+                data_loader = DataLoader(dataset, 
+                                         batch_size=batch_size, 
+                                         shuffle=shuffle, 
+                                         num_workers=self.num_workers, 
+                                         collate_fn=self.collate_fn)
             except Exception as e:
                 raise RuntimeError(f"Failed to create DataLoader: {e}")
 
         else:
             try:
-                data_loader = DataLoader(dataset, batch_size=batch_size, sampler=sampler, collate_fn=self.collate_fn)
+                data_loader = DataLoader(dataset, 
+                                         batch_size=batch_size, 
+                                         sampler=sampler,
+                                         num_workers=self.num_workers, 
+                                         collate_fn=self.collate_fn)
             except Exception as e:
                 raise RuntimeError(f"Failed to create DataLoader: {e}")
         
