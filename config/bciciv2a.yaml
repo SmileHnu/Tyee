@@ -1,0 +1,101 @@
+common:
+  seed: 2021
+  verbose: true
+  exp_dir: experiments
+
+dataset:
+  batch_size: 72
+  dataset: BCICIV2ADataset
+  num_workers: 4
+  root_path:
+    # train: '/home/lingyus/data/BCICIV2a/processed'
+    dev:
+    # test: '/home/lingyus/data/tuh_eeg_events/v2.0.1/edf/eval/'
+  io_path:
+    train: "/home/lingyus/data/BCICIV2a/1/train/processed"
+    dev: "/home/lingyus/data/BCICIV2a/1/eval/processed"
+    test: 
+  io_mode: pickle
+  split: 
+    method: none
+    split_by: clip_id
+    seed: 4523
+    dev: 0.2
+  other:
+    chunk_size: 1000,
+    offset: 500,
+ 
+  online_transform:
+    eeg:
+      Normalize:
+        method: zscore
+        mean: -0.004217920410355097
+        std: 5.3160046572911135
+        
+
+
+
+# lr_scheduler:
+#   select: WarmupCosineScheduler
+#   total_epochs: 50
+#   eta_min: 1e-6
+#   warmup_start_lr: 0
+#   warmup_epochs: 5
+
+model:
+
+  # select: Conformer
+  # n_outputs: 4
+  # n_chans: 22
+  # n_times: 1000
+
+  # select: VanillaTransformer
+  # num_classes: 4
+  # num_electrodes: 22
+  # chunk_size: 1000
+  # t_patch_size: 50
+
+  # select: ArjunViT
+  # num_electrodes: 22
+  # chunk_size: 1000
+  # t_patch_size: 250
+  # num_classes: 4
+
+  select: EEGNet
+  n_chans: 22
+  chunk_size: 1000
+  num_classes: 4
+  
+
+
+optimizer:
+  lr:  0.0002
+  select: Adam
+  # weight_decay: 0.05             # 权重衰减 (L2正则化)
+  # layer_decay: 0.65                # 层级学习率衰减
+
+task:
+  loss:
+    select: CrossEntropyLoss
+    # smoothing: 0.1
+  select: bciciv2a_task.BCICIV2aTask
+
+trainer:
+  resume:  # 添加断点恢复配置
+      enabled: false
+      checkpoint: /home/lingyus/code/PRL/experiments/2025-01-10/14-27-21/checkpoint/checkpoint_step_8488.pt
+  fp16: true
+  # total_steps: 31980
+  total_epochs: 2000
+  update_interval: 1
+  save_interval: 40
+  eval_interval: 40
+  log_interval: 20
+  eval_metric: accuracy
+  metrics: [accuracy, cohen_kappa]
+    
+
+distributed:
+  backend: nccl
+  world_size: 1
+  distributed_no_spawn: false

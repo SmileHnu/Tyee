@@ -22,6 +22,12 @@ from .class_metrics import (
     F1_Macro as f1_macro,
     F1_Micro as f1_micro,
     F1_Weighted as f1_weighted,
+    Precision_Macro as precision_macro,
+    Precision_Micro as precision_micro,
+    Precision_Weighted as precision_weighted,
+    Recall_Macro as recall_macro,
+    Recall_Micro as recall_micro,
+    Recall_Weighted as recall_weighted,
     jaccard_Macro as jaccard_macro,
     jaccard_Micro as jaccard_micro,
     jaccard_Weighted as jaccard_weighted    

@@ -5,11 +5,13 @@ from .base_dataset import BaseDataset
 # from .stew_dataset import EEG2RepSTEWDataset
 # from .crowdsource_dataset import EEG2RepCrowdsourceDataset
 # from .bciciv_2a import BCICIV2aDataset
-# from .tuab_dataset import TUABDataset
+from .tuab_dataset import TUABDataset
 # from .mobi_dataset import MoBIDataset
 from .tuev_dataset import TUEVDataset
-# from .kaggleern_dataset import KaggleERNDataset
-# from .bciciv2a_dataset import BCICIV2ADataset
+from .kaggleern_dataset import KaggleERNDataset
+from .bciciv2a_dataset import BCICIV2ADataset
 # from .physiop300_dataset import PhysioP300Dataset
-# from .sleepedfx_dataset import SleepEDFxDataset
-# from .seedv_dataset import SEEDVDataset
+from .sleepedfx_dataset import SleepEDFxDataset
+from .seedv_dataset import SEEDVDataset
+from .mit_bih_dataset import MITBIHDataset
+from .ninapro_db5_dataset import NinaproDB5Dataset

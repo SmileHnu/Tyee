@@ -6,73 +6,91 @@ common:
 dataset:
   batch_size: 64
   dataset: TUABDataset
-  eval:
-  - val
-  - test
-  num_workers: 2
-  path: /home/lingyus/data/tuh_eeg_abnormal/v3.0.1/edf/processed
-  train: train
-  transforms:
-    select: []
+  num_workers: 4
+  root_path:
+    train: '/home/lingyus/data/tuh_eeg_abnormal/v3.0.1/edf/train'
+    dev:
+    test: '/home/lingyus/data/tuh_eeg_abnormal/v3.0.1/edf/eval'
+  io_path:
+    train: "/home/lingyus/data/tuh_eeg_abnormal/v3.0.1/edf/processed_train"
+    dev:
+    test: "/home/lingyus/data/tuh_eeg_abnormal/v3.0.1/edf/processed_eval"
+  io_mode: lmdb
+  split: 
+    method: hold_out
+    seed: 0
+    split_by: subject_id
+    dev: 0.2
+  offline_transform:
+    eeg:
+      PickChannels:
+        channels: ['FP1', 'FP2', 'F3', 'F4', 'C3', 'C4', 'P3', 'P4', 'O1', 'O2', 'F7', 'F8', 'T3', 'T4', 'T5', 'T6', 'A1', 'A2', 'FZ', 'CZ', 'PZ', 'T1', 'T2']
+      OrderChannels:
+        order: ['FP1', 'FP2', 'F3', 'F4', 'C3', 'C4', 'P3', 'P4', 'O1', 'O2', 'F7', 'F8', 'T3', 'T4', 'T5', 'T6', 'A1', 'A2', 'FZ', 'CZ', 'PZ', 'T1', 'T2']
+      Filter:
+        l_freq: 0.1
+        h_freq: 75
+      NotchFilter:
+        freqs: [50.0]
+      Resample:
+        desired_sampling_rate: 200.0
+        n_jobs: 5
+  online_transform:
+    eeg:
+      ToIndexChannels:
+        channels: EEG_CHANNELS_ORDER
+  
+
 
 lr_scheduler:
-  select: WarmupCosineAnnealingLR
-  T_max: 138990
-  eta_min: 0
+  select: WarmupCosineScheduler
+  total_epochs: 30
+  eta_min: 1e-6
   warmup_start_lr: 0
-  warmup_steps: 13899
+  warmup_epochs: 3
 
 model:
-  downstream:
-    classes: 4
-    select: mlp
-  upstream:
-    select: labram_base_patch200_200
-    trainable: true
-    finetune: /home/lingyus/code/PRL/models/upstream/labram/checkpoints/labram-base.pth
-    nb_classes: 1
-    drop: 0.0
-    drop_path: 0.1
-    attn_drop_rate: 0.0
-    drop_block_rate: null
-    use_mean_pooling: true
-    init_scale: 0.001
-    rel_pos_bias: false
-    abs_pos_emb: true
-    layer_scale_init_value: 0.1
-    qkv_bias: false
+  select: labram_base_patch200_200
+  trainable: true
+  finetune: /home/lingyus/code/PRL/models/upstream/labram/checkpoints/labram-base.pth
+  nb_classes: 2
+  drop: 0.0
+  drop_path: 0.1
+  attn_drop_rate: 0.0
+  drop_block_rate: null
+  use_mean_pooling: true
+  init_scale: 0.001
+  rel_pos_bias: false
+  abs_pos_emb: true
+  layer_scale_init_value: 0.1
+  qkv_bias: false
 
 optimizer:
   lr: 5e-4
   select: AdamW
-  opt: adamw                    # 优化器类型
-  opt_eps: 1e-8                  # 优化器的 epsilon 参数
-  opt_betas: null                # 优化器的 beta 参数 (如使用 Adam 时的 beta1, beta2)
-  clip_grad: null                # 梯度裁剪值 (可选)
-  momentum: 0.9                  # 动量 (如果优化器支持)
   weight_decay: 0.05             # 权重衰减 (L2正则化)
-  weight_decay_end: null         # 权重衰减结束值 (可选)
-
-  lr: 5e-4                         # 初始学习率
   layer_decay: 0.65                # 层级学习率衰减
-  warmup_lr: 1e-6                  # 预热学习率
-  min_lr: 1e-6                     # 最小学习率
 
 task:
   loss:
-    select: BCEWithLogitsLoss
-    weight:
+    select: LabelSmoothingCrossEntropy
+    smoothing: 0.1
   select: tuab_task.TUABTask
 
 trainer:
+  resume:  # 添加断点恢复配置
+      enabled: false
+      checkpoint: /home/lingyus/code/PRL/experiments/2025-01-10/14-27-21/checkpoint/checkpoint_step_8488.pt
   fp16: true
-  total_steps: 138990
-  update_interval: 1
-  save_interval: 4633
-  eval_interval: 4633
+  # total_steps: 31980
+  total_epochs: 30
+  update_interval: 8
+  # save_interval: 1066
+  # eval_interval: 1066
   log_interval: 20
-  eval_metric: accuracy
-  metrics: [accuracy, balanced_accuracy, pr_auc, roc_auc]
+  eval_metric: balanced_accuracy
+  metrics: [balanced_accuracy, accuracy, pr_auc, roc_auc]
+    
 
 distributed:
   backend: nccl

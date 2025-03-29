@@ -21,7 +21,6 @@ from einops import rearrange
 from collections import OrderedDict
 from utils import lazy_import_module, get_nested_field
 
-
 standard_1020 = [
     'FP1', 'FPZ', 'FP2', 
     'AF9', 'AF7', 'AF5', 'AF3', 'AF1', 'AFZ', 'AF2', 'AF4', 'AF6', 'AF8', 'AF10', \
@@ -70,69 +69,43 @@ class TUABTask(PRLTask):
         self.dev_dataset = None
 
 
-        self.model_select = get_nested_field(cfg, 'model.upstream.select', '')
-        self.finetune = get_nested_field(cfg, 'model.upstream.finetune', '')  # 获取微调的设置
-        self.nb_classes = get_nested_field(cfg, 'model.upstream.nb_classes', 0)  # 获取类别数
+        self.model_select = get_nested_field(cfg, 'model.select', '')
+        self.finetune = get_nested_field(cfg, 'model.finetune', '')  # 获取微调的设置
+        self.nb_classes = get_nested_field(cfg, 'model.nb_classes', 0)  # 获取类别数
 
-        self.qkv_bias = get_nested_field(cfg, 'model.upstream.qkv_bias', False)  # 获取是否使用 qkv_bias
-        self.rel_pos_bias = get_nested_field(cfg, 'model.upstream.rel_pos_bias', False)  # 获取是否使用相对位置偏置
-        self.abs_pos_emb = get_nested_field(cfg, 'model.upstream.abs_pos_emb', True)  # 获取是否使用绝对位置嵌入
-        self.layer_scale_init_value = get_nested_field(cfg, 'model.upstream.layer_scale_init_value', 0.1)  # 获取初始化的层比例值
+        self.qkv_bias = get_nested_field(cfg, 'model.qkv_bias', False)  # 获取是否使用 qkv_bias
+        self.rel_pos_bias = get_nested_field(cfg, 'model.rel_pos_bias', False)  # 获取是否使用相对位置偏置
+        self.abs_pos_emb = get_nested_field(cfg, 'model.abs_pos_emb', True)  # 获取是否使用绝对位置嵌入
+        self.layer_scale_init_value = get_nested_field(cfg, 'model.layer_scale_init_value', 0.1)  # 获取初始化的层比例值
 
-        self.input_size = get_nested_field(cfg, 'model.upstream.input_size', 200)  # 获取输入大小（默认为200）
-        self.drop = get_nested_field(cfg, 'model.upstream.drop', 0.0)  # 获取丢弃率
-        self.attn_drop_rate = get_nested_field(cfg, 'model.upstream.attn_drop_rate', 0.0)  # 获取注意力丢弃率
-        self.drop_path = get_nested_field(cfg, 'model.upstream.drop_path', 0.1)  # 获取drop path率
+        self.input_size = get_nested_field(cfg, 'model.input_size', 200)  # 获取输入大小（默认为200）
+        self.drop = get_nested_field(cfg, 'model.drop', 0.0)  # 获取丢弃率
+        self.attn_drop_rate = get_nested_field(cfg, 'model.attn_drop_rate', 0.0)  # 获取注意力丢弃率
+        self.drop_path = get_nested_field(cfg, 'model.drop_path', 0.1)  # 获取drop path率
 
-        self.disable_eval_during_finetuning = get_nested_field(cfg, 'model.upstream.disable_eval_during_finetuning', False)  # 是否禁用微调期间的评估
+        self.disable_eval_during_finetuning = get_nested_field(cfg, 'model.disable_eval_during_finetuning', False)  # 是否禁用微调期间的评估
 
-        self.model_ema = get_nested_field(cfg, 'model.upstream.model_ema', False)  # 是否使用模型EMA
-        self.model_ema_decay = get_nested_field(cfg, 'model.upstream.model_ema_decay', 0.9999)  # EMA衰减系数
-        self.model_ema_force_cpu = get_nested_field(cfg, 'model.upstream.model_ema_force_cpu', False)  # 是否强制使用CPU
+        self.model_ema = get_nested_field(cfg, 'model.model_ema', False)  # 是否使用模型EMA
+        self.model_ema_decay = get_nested_field(cfg, 'model.model_ema_decay', 0.9999)  # EMA衰减系数
+        self.model_ema_force_cpu = get_nested_field(cfg, 'model.model_ema_force_cpu', False)  # 是否强制使用CPU
 
         self.args= Args(cfg)
 
-        # 获取 finetuning 相关的配置参数，所有字段都放在 'model.upstream' 下
-        self.finetune = get_nested_field(cfg, 'model.upstream.finetune', '')  # 获取微调的路径
-        self.model_key = get_nested_field(cfg, 'model.upstream.model_key', 'model|module')  # 获取模型关键字
-        self.model_prefix = get_nested_field(cfg, 'model.upstream.model_prefix', '')  # 获取模型前缀
-        self.model_filter_name = get_nested_field(cfg, 'model.upstream.model_filter_name', 'gzp')  # 获取模型过滤名称
-        self.init_scale = get_nested_field(cfg, 'model.upstream.init_scale', 0.001)  # 获取初始化的比例
-        self.use_mean_pooling = get_nested_field(cfg, 'model.upstream.use_mean_pooling', True)  # 获取是否使用平均池化
-        self.use_cls = get_nested_field(cfg, 'model.upstream.use_cls', False)  # 获取是否使用cls token
-        self.disable_weight_decay_on_rel_pos_bias = get_nested_field(cfg, 'model.upstream.disable_weight_decay_on_rel_pos_bias', False)  # 获取是否禁用相对位置偏置的权重衰减
+        # 获取 finetuning 相关的配置参数，所有字段都放在 'model' 下
+        self.finetune = get_nested_field(cfg, 'model.finetune', '')  # 获取微调的路径
+        self.model_key = get_nested_field(cfg, 'model.model_key', 'model|module')  # 获取模型关键字
+        self.model_prefix = get_nested_field(cfg, 'model.model_prefix', '')  # 获取模型前缀
+        self.model_filter_name = get_nested_field(cfg, 'model.model_filter_name', 'gzp')  # 获取模型过滤名称
+        self.init_scale = get_nested_field(cfg, 'model.init_scale', 0.001)  # 获取初始化的比例
+        self.use_mean_pooling = get_nested_field(cfg, 'model.use_mean_pooling', True)  # 获取是否使用平均池化
+        self.use_cls = get_nested_field(cfg, 'model.use_cls', False)  # 获取是否使用cls token
+        self.disable_weight_decay_on_rel_pos_bias = get_nested_field(cfg, 'model.disable_weight_decay_on_rel_pos_bias', False)  # 获取是否禁用相对位置偏置的权重衰减
 
 
-        ch_names = ['EEG FP1', 'EEG FP2-REF', 'EEG F3-REF', 'EEG F4-REF', 'EEG C3-REF', 'EEG C4-REF', 'EEG P3-REF', 'EEG P4-REF', 'EEG O1-REF', 'EEG O2-REF', 'EEG F7-REF', \
+        ch_names = ['EEG FP1-REF', 'EEG FP2-REF', 'EEG F3-REF', 'EEG F4-REF', 'EEG C3-REF', 'EEG C4-REF', 'EEG P3-REF', 'EEG P4-REF', 'EEG O1-REF', 'EEG O2-REF', 'EEG F7-REF', \
                     'EEG F8-REF', 'EEG T3-REF', 'EEG T4-REF', 'EEG T5-REF', 'EEG T6-REF', 'EEG A1-REF', 'EEG A2-REF', 'EEG FZ-REF', 'EEG CZ-REF', 'EEG PZ-REF', 'EEG T1-REF', 'EEG T2-REF']
         ch_names = [name.split(' ')[-1].split('-')[0] for name in ch_names]
         self.input_chans = self.get_input_chans(ch_names)
-
-    def get_train_dataset(self):
-        if self.train_dataset is None:
-            self.train_dataset = self.build_dataset(self.dataset_root, self.train_fpath)
-        return self.train_dataset
-
-    def get_dev_dataset(self):
-        if self.dev_dataset is None:
-            self.dev_dataset = self.build_dataset(self.dataset_root, self.eval_fpath[0])
-        return self.dev_dataset
-    
-    def get_test_dataset(self):
-        if self.test_dataset is None:
-            self.test_dataset = self.build_dataset(self.dataset_root, self.eval_fpath[1])
-        return self.test_dataset
-
-    def build_dataset(self, root: str, fpath: str = "train"):
-        """ 构建数据集 """
-        seed = 12345
-        np.random.seed(seed)
-        files = os.listdir(os.path.join(root, fpath))
-        if fpath == "train":
-            np.random.shuffle(files)
-        Dataset = lazy_import_module('dataset', self.dataset)
-        # transforms = [lazy_import_module('dataset.transforms', t) for t in self.transforms_select]
-        return Dataset(os.path.join(root, fpath), files)
 
     def get_layer_id(self, var_name, num_max_layer):
         if var_name in ("cls_token", "mask_token", "pos_embed"):
@@ -178,8 +151,8 @@ class TUABTask(PRLTask):
         return param_groups
 
     def build_model(self):
-
-        model_name = lazy_import_module('models.upstream', self.model_select)
+        
+        model_name = lazy_import_module('models', self.model_select)
         model = model_name(
         pretrained=False,
         num_classes=self.nb_classes,
@@ -248,12 +221,14 @@ class TUABTask(PRLTask):
         return model
         
     def train_step(self, model: nn.Module, sample: dict[str, torch.Tensor]):
-        x = sample["x"]
+        
+        eeg = sample["eeg"]['signals']
         label = sample["label"]
-        x = x.float() / 100
-        x = rearrange(x, 'B N (A T) -> B N A T', T=200)
-        label = label.float().unsqueeze(-1)
-        pred = model(x, self.input_chans)
+        # input_chans = sample['eeg']['channels']
+        eeg = eeg.float() / 100
+        eeg = rearrange(eeg, 'B N (A T) -> B N A T', T=200)
+        
+        pred = model(eeg, self.input_chans)
         loss = self.loss(pred, label)
         return {
              "loss": loss,
@@ -263,12 +238,12 @@ class TUABTask(PRLTask):
 
     @torch.no_grad()
     def valid_step(self, model, sample: dict[str, torch.Tensor]):
-        x = sample["x"]
+        eeg = sample["eeg"]['signals']
         label = sample["label"]
-        x = x.float() / 100
-        x = rearrange(x, 'B N (A T) -> B N A T', T=200)
-        label = label.float().unsqueeze(-1)
-        pred = model(x, self.input_chans)
+        # input_chans = sample['eeg']['channels']
+        eeg = eeg.float() / 100
+        eeg = rearrange(eeg, 'B N (A T) -> B N A T', T=200)
+        pred = model(eeg, self.input_chans)
         loss = self.loss(pred, label)
 
         return {
@@ -330,47 +305,3 @@ class TUABTask(PRLTask):
                 model.__class__.__name__, ignore_missing_keys))
         if len(error_msgs) > 0:
             print('\n'.join(error_msgs))
-
-class WarmupCosineAnnealingLR(torch.optim.lr_scheduler._LRScheduler):
-    def __init__(self, optimizer, T_max, warmup_steps, warmup_start_lr=0, eta_min=0, last_epoch=-1):
-        """
-        初始化 Warmup 和 CosineAnnealing 的学习率调度器，使用 lr_scale 而不是 layer_decay 来调整学习率。
-
-        :param optimizer: 优化器
-        :param T_max: CosineAnnealing 的最大步数
-        :param warmup_steps: 预热阶段的步数
-        :param warmup_start_lr: 预热阶段的初始学习率
-        :param eta_min: 余弦退火阶段的最小学习率
-        :param last_epoch: 上一次更新的步数，默认为-1
-        """
-        self.warmup_steps = warmup_steps  # 预热的步数
-        self.T_max = T_max  # CosineAnnealing 的总步数
-        self.eta_min = eta_min  # 最小学习率
-        self.warmup_start_lr = warmup_start_lr  # 预热的起始学习率
-        super(WarmupCosineAnnealingLR, self).__init__(optimizer, last_epoch)
-
-    def get_lr(self):
-        # 获取当前步数
-        step = self.last_epoch
-        base_lr = self.base_lrs[0]  # 假设所有层使用相同的基本学习率
-
-        # 线性 warmup 阶段
-        if step < self.warmup_steps:
-            lr = self.warmup_start_lr + (base_lr - self.warmup_start_lr) * step / self.warmup_steps
-        else:
-            # CosineAnnealing 阶段
-            step_after_warmup = step - self.warmup_steps
-            lr = self.eta_min + 0.5 * (base_lr - self.eta_min) * (1 + math.cos(math.pi * step_after_warmup / (self.T_max - self.warmup_steps)))
-
-        # 获取每层的 lr_scale
-        layer_lr_list = []
-        for param_group in self.optimizer.param_groups:
-            
-            # 计算该层的学习率，使用 lr_scale 来调整
-            lr_scale = param_group.get('lr_scale', 1.0)  # 默认 lr_scale 为 1.0
-            adjusted_lr = lr * lr_scale  # 使用 lr_scale 调整学习率
-            # 更新该层的学习率
-            layer_lr_list.append(adjusted_lr)
-
-        # 返回每个参数组的最终学习率
-        return layer_lr_list

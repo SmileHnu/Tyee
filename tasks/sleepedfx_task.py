@@ -18,8 +18,6 @@ class SleepEDFxTask(PRLTask):
     def __init__(self, cfg):
         super().__init__(cfg)
 
-        self.checkpoint = get_nested_field(cfg, 'model.upstream.checkpoint', default=None)
-        
         self.all_subjects = [0, 2, 4, 5, 6, 7,
                               8, 9, 11, 12, 13, 14,
                               15, 16, 17, 18, 19, 21,
@@ -31,40 +29,31 @@ class SleepEDFxTask(PRLTask):
                               59, 61, 62, 63, 64, 65, 
                               66, 71, 72, 73, 74, 75, 
                               76, 77, 81, 82]
+        self.train_dataset = None
+        self.dev_dataset = None
+        self.test_dataset = None
+        self.model_select = get_nested_field(cfg, 'model.select', '')
+        self.model_params = get_nested_field(cfg, 'model', {})
 
-        self.dev_subjects = get_nested_field(cfg, 'dataset.dev_subjects', None)
-        self.train_subjects = [subject for subject in self.all_subjects if subject not in self.dev_subjects]
-        print(f"Train subjects: {self.train_subjects}")
-        print(f"Dev subjects: {self.dev_subjects}")
-
-    def build_dataset(self, path, subjects=None):
-        Dataset = lazy_import_module('dataset', self.dataset)
-        return Dataset(path, subjects)
-
-    def get_train_dataset(self):
-        if self.train_dataset is None:
-            self.train_dataset = self.build_dataset(self.dataset_root, subjects=self.train_subjects)
-        return self.train_dataset
-    
-    def get_dev_dataset(self):
-        if self.dev_dataset is None:
-            self.dev_dataset = self.build_dataset(self.dataset_root, subjects=self.dev_subjects)
-        return self.dev_dataset
-
-    def get_test_dataset(self):
-        return None
 
     def build_model(self):
-        model = lazy_import_module('models.upstream', self.upstream_select)
-        return model(load_path = self.checkpoint)
+        model_name = lazy_import_module('models', self.upstream_select)
+        model = model_name(**self.model_params)
+        # print(model)
+        return model
     
-    def build_optimizer(self, model: torch.nn.Module):
-        return model.optimizer
-
     def train_step(self, model: torch.nn.Module, sample: dict[str, torch.Tensor], *args, **kwargs):
-        x = sample['x']
+        eeg = sample['eeg']['signals']
+        eog = sample['eog']['signals']
+        emg = sample['emg']['signals']
+        rsp = sample['rsp']['signals']
+        # 将信号沿着通道维度拼接起来
+        x = torch.cat((eeg, eog, emg, rsp), dim=1)
+        # x = eeg
+        x = x.float()
+        # print(x.shape)
         label = sample['label']
-        x, pred = model(x)
+        pred = model(x)
         loss = self.loss(pred, label)
         return{
             'loss': loss,
@@ -74,9 +63,17 @@ class SleepEDFxTask(PRLTask):
 
     @torch.no_grad()
     def valid_step(self, model: torch.nn.Module, sample: dict[str, torch.Tensor], *args, **kwargs):
-        x = sample['x']
+        eeg = sample['eeg']['signals']
+        eog = sample['eog']['signals']
+        emg = sample['emg']['signals']
+        rsp = sample['rsp']['signals']
+        # 将信号沿着通道维度拼接起来
+        x = torch.cat((eeg, eog, emg, rsp), dim=1)
+        # x = eeg
+        x = x.float()
+        # print(x.shape)
         label = sample['label']
-        x, pred = model(x)
+        pred = model(x)
         loss = self.loss(pred, label)
         return{
             'loss': loss,

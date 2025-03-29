@@ -125,6 +125,7 @@ class BaseDataset(Dataset):
 
             if self.after_trial is not None or self.after_session is not None or self.after_subject is not None:
                 # catch the exception
+                print("update_record")
                 try:
                     self.update_record(after_trial=after_trial,
                                        after_session=after_session,
@@ -236,13 +237,13 @@ class BaseDataset(Dataset):
         if self.is_lazy():
             # Create temporary PhysioSignalIO instance
             signal_io = PhysioSignalIO(
-                self.signal_paths[record][signal_type],
+                self.signal_paths[record],
                 io_size=self.io_size,
                 io_mode=self.io_mode
             )
             signal_io.write_signal(signal=signal, signal_type=signal_type, key=key)
         else:
-            signal_io = self.signal_io_router[record][signal_type]
+            signal_io = self.signal_io_router[record]
             signal_io.write_signal(signal=signal, signal_type=signal_type, key=key)
 
     def read_info(self, index: int) -> Dict:
@@ -258,16 +259,6 @@ class BaseDataset(Dataset):
             dict: 元信息。
         '''
         info = self.info.iloc[index].to_dict()
-        
-        # 处理字符串形式的列表
-        for key, value in info.items():
-            if isinstance(value, str):
-                try:
-                    # 尝试将字符串转换为实际的列表
-                    info[key] = ast.literal_eval(value)
-                except (ValueError, SyntaxError):
-                    pass  # 如果转换失败，保留原始字符串
-
         return info
 
     def exist(self, io_path: str) -> bool:
@@ -476,7 +467,7 @@ class BaseDataset(Dataset):
         else:
             subject_df = [(None, self.info)]
         if after_subject is None:
-            def after_subject(x): return x
+            after_subject = {signal_type: lambda x: x for signal_type in self.signal_types}
 
         for _, subject_info in subject_df:
             subject_record_list = []
@@ -488,7 +479,7 @@ class BaseDataset(Dataset):
             else:
                 session_df = [(None, subject_info)]
             if after_session is None:
-                def after_session(x): return x
+                after_session = {signal_type: lambda x: x for signal_type in self.signal_types}
 
             for _, session_info in session_df:
                 if 'trial_id' in session_info.columns:
@@ -500,7 +491,7 @@ class BaseDataset(Dataset):
                             "No trial_id column found in info, after_trial hook is ignored."
                         )
                 if after_trial is None:
-                    def after_trial(x): return x
+                    after_trial = {signal_type: lambda x: x for signal_type in self.signal_types}
 
                 session_samples = {signal_type: [] for signal_type in self.signal_types}
                 for _, trial_info in trial_df:
@@ -520,16 +511,16 @@ class BaseDataset(Dataset):
 
                     for signal_type in self.signal_types:
                         trial_samples[signal_type] = self.hook_data_interface(
-                            after_trial, trial_samples[signal_type])
+                            after_trial[signal_type], trial_samples[signal_type])
                         session_samples[signal_type] += trial_samples[signal_type]
 
                 for signal_type in self.signal_types:
                     session_samples[signal_type] = self.hook_data_interface(
-                        after_session, session_samples[signal_type])
+                        after_session[signal_type], session_samples[signal_type])
                     subject_samples[signal_type] += session_samples[signal_type]
 
             for signal_type in self.signal_types:
-                subject_samples[signal_type] = self.hook_data_interface(after_subject,
+                subject_samples[signal_type] = self.hook_data_interface(after_subject[signal_type],
                                                                         subject_samples[signal_type])
 
             for i in range(len(subject_samples[self.signal_types[0]])):
@@ -542,26 +533,41 @@ class BaseDataset(Dataset):
         pbar.close()
 
     @staticmethod
-    def hook_data_interface(hook: Callable, data: Any):
-        # like [np.random.randn(32, 128), np.random.randn(32, 128)]
-        if isinstance(data[0], np.ndarray):
-            data = np.stack(data, axis=0)
-        elif isinstance(data[0], torch.Tensor):
-            data = torch.stack(data, axis=0)
-        # else list
+    def hook_data_interface(hook: Callable, data: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        # 初始化一个空字典，用于存储堆叠后的数据
+        stacked_data = {key: [] for key in data[0].keys()}
 
-        # shape like (2, 32, 128)
-        data = hook(data)
+        # 遍历每个字典，将数据堆叠到一起
+        for item in data:
+            for key, value in item.items():
+                stacked_data[key].append(value)
 
-        # back to list like [np.random.randn(32, 128), np.random.randn(32, 128)]
-        if isinstance(data, np.ndarray):
-            data = np.split(data, data.shape[0], axis=0)
-            data = [np.squeeze(d, axis=0) for d in data]
-        elif isinstance(data, torch.Tensor):
-            data = torch.split(data, data.shape[0], dim=0)
-            data = [torch.squeeze(d, axis=0) for d in data]
-        # else list
-        return data
+        # 将列表转换为张量
+        for key, value in stacked_data.items():
+            if isinstance(value[0], np.ndarray):
+                stacked_data[key] = np.stack(value, axis=0)
+            elif isinstance(value[0], torch.Tensor):
+                stacked_data[key] = torch.stack(value, axis=0)
+
+        
+        processed_data = hook(stacked_data)
+
+        # 将处理后的张量转换回列表形式
+        result = []
+        for i in range(len(data)):
+            item = {}
+            for key, value in processed_data.items():
+                if isinstance(value, np.ndarray):
+                    value = np.split(value, value.shape[0], axis=0)
+                    item[key] = [np.squeeze(v, axis=0) for v in value]
+                elif isinstance(value, torch.Tensor):
+                    value = np.split(value, value.shape[0], dim=0)
+                    item[key] = [np.squeeze(v, axis=0) for v in value]
+                else:
+                    item[key] = value[i]
+            result.append(item)
+
+        return result
 
     @property
     def repr_body(self) -> Dict:

@@ -9,18 +9,30 @@
 @Time    : 2025/03/03 14:47:47
 @Desc    : 
 """
-
+import mne
 import numpy as np
 from dataset.transform import BaseTransform
 from mne.filter import resample
-
+mne.set_log_level('WARNING')
 class Resample(BaseTransform):
     def __init__(self,
                 desired_sampling_rate=None,
-                method="fft"):
+                axis=-1,
+                window="auto",
+                n_jobs=None,
+                pad="auto",
+                npad='auto',
+                method="fft",
+                verbose=None,):
         super().__init__()
         self.desired_sampling_rate = desired_sampling_rate
+        self.axis = axis
         self.method = method
+        self.window = window
+        self.npad = npad
+        self.n_jobs = n_jobs
+        self.pad = pad
+        self.verbose = verbose
     
     def transform(self, result):
         # 获取信号和采样率
@@ -28,7 +40,16 @@ class Resample(BaseTransform):
         sampling_rate = result['sampling_rate']
         
         # 使用 mne 的 resample 函数进行重采样
-        result['signals'] = resample(signal, up=self.desired_sampling_rate, down=sampling_rate, npad='auto', method=self.method)
+        result['signals'] = resample(signal, 
+                                     up=self.desired_sampling_rate, 
+                                     down=sampling_rate, 
+                                     axis=self.axis,
+                                     window=self.window,
+                                     n_jobs=self.n_jobs,
+                                     pad=self.pad,
+                                     npad=self.npad,
+                                     method=self.method,
+                                     verbose=self.verbose)
         
         # 更新时间戳
         if 'times' in result:

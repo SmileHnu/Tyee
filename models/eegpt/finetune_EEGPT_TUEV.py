@@ -37,10 +37,10 @@ class LitEEGPTCausal(nn.Module):
         target_encoder = EEGTransformer(
             img_size=[self.chans_num, 1000],
             patch_size=32*2,
-            embed_num=1,
-            embed_dim=64,
-            depth=2,
-            num_heads=4,
+            embed_num=4,
+            embed_dim=512,
+            depth=8,
+            num_heads=8,
             mlp_ratio=4.0,
             drop_rate=0.0,
             attn_drop_rate=0.0,
@@ -62,7 +62,7 @@ class LitEEGPTCausal(nn.Module):
                 
         self.target_encoder.load_state_dict(target_encoder_stat)
         self.chan_conv       = Conv1dWithConstraint(len(ch_names), self.chans_num, 1, max_norm=1)
-        self.linear_probe1   =   LinearWithConstraint(64, 16, max_norm=1)
+        self.linear_probe1   =   LinearWithConstraint(2048, 16, max_norm=1)
         self.linear_probe2   =   LinearWithConstraint(240, 6, max_norm=0.25)
         
         self.drop           = torch.nn.Dropout(p=0.50)

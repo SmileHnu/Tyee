@@ -1,0 +1,91 @@
+common:
+  seed: 0
+  verbose: true
+  exp_dir: experiments
+
+dataset:
+  batch_size: 32
+  dataset: SEEDVDataset
+  num_workers: 4
+  root_path:
+    train: '/home/lingyus/data/SEED-V/EEG_raw'
+    dev:
+    test: 
+  io_path:
+    train: "/home/lingyus/data/EEG_raw_processed"
+    dev:
+    test: 
+  io_mode: pickle
+  split: 
+    method: seedv
+    split_by: session_id
+    seed: 0
+    # dev_size: 0.5
+    # test_size: 0.33
+  offline_transform:
+    eeg:
+      # PickChannels:
+      #   channels: ['FP1', 'FP2', 'F3', 'F4', 'C3', 'C4', 'P3', 'P4', 'O1', 'O2', 'F7', 'F8', 'T3', 'T4', 'T5', 'T6', 'A1', 'A2', 'FZ', 'CZ', 'PZ', 'T1', 'T2']
+      # OrderChannels:
+      #   order: ['FP1', 'FP2', 'F3', 'F4', 'C3', 'C4', 'P3', 'P4', 'O1', 'O2', 'F7', 'F8', 'T3', 'T4', 'T5', 'T6', 'A1', 'A2', 'FZ', 'CZ', 'PZ', 'T1', 'T2']
+      Filter:
+        l_freq: 0.1
+        h_freq: 75
+      NotchFilter:
+        freqs: [50.0]
+      Resample:
+        desired_sampling_rate: 200.0
+  # online_transform:
+    # eeg:
+    #   ToIndexChannels:
+    #     channels: ['FP1', 'FP2', 'F3', 'F4', 'C3', 'C4', 'P3', 'P4', 'O1', 'O2', 'F7', 'F8', 'T3', 'T4', 'T5', 'T6', 'A1', 'A2', 'FZ', 'CZ', 'PZ', 'T1', 'T2']
+  
+
+
+lr_scheduler:
+  select: WarmupCosineScheduler
+  total_epochs: 50
+  eta_min: 1e-6
+  warmup_start_lr: 0
+  warmup_epochs: 5
+
+model:
+  select: Conformer
+  n_outputs: 5
+  n_chans: 62
+  n_times: 2000
+  drop_prob: 0.0
+  att_depth: 8
+  att_drop_prob: 0.0
+
+optimizer:
+  lr:  5e-3
+  select: AdamW
+  weight_decay: 0.05             # 权重衰减 (L2正则化)
+  # layer_decay: 0.65                # 层级学习率衰减
+
+task:
+  loss:
+    select: CrossEntropyLoss
+    # smoothing: 0.1
+  select: seedv_task.SEEDVTask
+
+trainer:
+  resume:  # 添加断点恢复配置
+      enabled: false
+      checkpoint: /home/lingyus/code/PRL/experiments/2025-01-10/14-27-21/checkpoint/checkpoint_step_8488.pt
+  fp16: true
+  # total_steps: 31980
+  total_epochs: 50
+  update_interval: 4
+  # save_interval: 1066
+  # eval_interval: 1066
+  log_interval: 20
+  eval_metric: accuracy
+  metrics: [accuracy, balanced_accuracy, cohen_kappa, f1_weighted]
+    
+
+distributed:
+  backend: nccl
+  world_size: 1
+  distributed_no_spawn: false

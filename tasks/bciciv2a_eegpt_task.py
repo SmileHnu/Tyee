@@ -49,7 +49,7 @@ class BCICIV2ATask(PRLTask):
         return model.optimizer
 
     def train_step(self, model: torch.nn.Module, sample: dict[str, torch.Tensor], *args, **kwargs):
-        x = sample['x']
+        x = sample['eeg']['signals']
         label = sample['label']
         x, pred = model(x)
         
@@ -63,7 +63,7 @@ class BCICIV2ATask(PRLTask):
 
     @torch.no_grad()
     def valid_step(self, model: torch.nn.Module, sample: dict[str, torch.Tensor], *args, **kwargs):
-        x = sample['x']
+        x = sample['eeg']['signals']
         label = sample['label']
         x, pred = model(x)
         

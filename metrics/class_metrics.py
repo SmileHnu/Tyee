@@ -188,7 +188,49 @@ class F1_Weighted(ClassMetric):
     def compute(self, results: list):
         all_targets, all_outputs = self.process_result(results)
         return f1_score(all_targets, all_outputs, average='weighted')
+    
+class Precision_Macro(ClassMetric):
+    def __init__(self):
+        self.name = 'precision_macro'
+    def compute(self, results: list):
+        all_targets, all_outputs = self.process_result(results)
+        return precision_score(all_targets, all_outputs, average='macro')
 
+class Precision_Micro(ClassMetric):
+    def __init__(self):
+        self.name = 'precision_micro'
+    def compute(self, results: list):
+        all_targets, all_outputs = self.process_result(results)
+        return precision_score(all_targets, all_outputs, average='micro')
+    
+class Precision_Weighted(ClassMetric):
+    def __init__(self):
+        self.name = 'precision_weighted'
+    def compute(self, results: list):
+        all_targets, all_outputs = self.process_result(results)
+        return precision_score(all_targets, all_outputs, average='weighted')
+
+class Recall_Macro(ClassMetric):
+    def __init__(self):
+        self.name = 'recall_macro'
+    def compute(self, results: list):
+        all_targets, all_outputs = self.process_result(results)
+        return recall_score(all_targets, all_outputs, average='macro')
+
+class Recall_Micro(ClassMetric):
+    def __init__(self):
+        self.name = 'recall_micro'
+    def compute(self, results: list):
+        all_targets, all_outputs = self.process_result(results)
+        return recall_score(all_targets, all_outputs, average='micro')
+
+class Recall_Weighted(ClassMetric):
+    def __init__(self):
+        self.name = 'recall_weighted'
+    def compute(self, results: list):
+        all_targets, all_outputs = self.process_result(results)
+        return recall_score(all_targets, all_outputs, average='weighted')
+    
 class jaccard_Macro(ClassMetric):
     def __init__(self):
         self.name = 'jaccard_macro'

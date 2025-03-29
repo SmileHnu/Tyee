@@ -18,58 +18,28 @@ from utils import lazy_import_module, get_nested_field
 
 
 class BCICIV2aTask(PRLTask):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
+    def __init__(self, cfg):
+        super().__init__(cfg)
         self.train_dataset = None
         self.dev_dataset = None
         self.test_dataset = None
-        self.num_feat_dim = get_nested_field(self.cfg, "model.downstream.num_feat_dim")
-        self.ckpt = get_nested_field(self.cfg, "model.upstream.ckpt")
-        self.hook_layer_strs = get_nested_field(self.cfg, "model.upstream.expert.hooks.module_path", ["self.expert_model.model.encoder.final_fused_layer"])
-        self.hook_transform = get_nested_field(self.cfg, "model.upstream.expert.hooks.transform", "lambda input, output: output")
-
+        self.model_select = get_nested_field(cfg, 'model.select', '')
+        self.model_params = get_nested_field(cfg, 'model', {})
+        # print(self.model_params)
     
-    def get_train_dataset(self):
-        if self.train_dataset is None:
-            self.train_dataset = self.build_dataset(self.train_fpath, split="train")
-        return self.train_dataset
-
-    def get_dev_dataset(self):
-        if self.dev_dataset is None:
-            self.dev_dataset = self.build_dataset(self.train_fpath, split='test')
-        return self.dev_dataset
-    
-    def get_test_dataset(self):
-        if self.test_dataset is None:
-            self.test_dataset = self.build_dataset(self.train_fpath, split='test')
-        return self.test_dataset
-
-    def build_dataset(self, filename: str, clip_length: int = 4, split: str = "train"):
-        """ 构建数据集 """
-        Dataset = lazy_import_module('dataset', self.dataset)
-        # transforms = [lazy_import_module('dataset.transforms', t) for t in self.transforms_select]
-        return Dataset(
-            Path(self.dataset_root),
-            clip_length=clip_length,
-            split=split,
-            # **Dataset.build_transforms(self.cfg["dataset"])
-        )
-
     def build_model(self):
-        UpstreamCls = lazy_import_module('models.upstream', self.upstream_select)
-        DownstreamCls = lazy_import_module('models.downstream', self.downstream_select)
-        upstream = UpstreamCls(self.ckpt, self.hook_layer_strs, self.hook_transform)
-        print(upstream)
-        downstream = DownstreamCls(self.downstream_classes, self.num_feat_dim)
-        print(downstream)
-        return WrappedMode(upstream, downstream)
+        model_name = lazy_import_module('models', self.model_select)
+        model = model_name(**self.model_params)
+        return model
         
     def train_step(self, model: nn.Module, sample: dict[str, torch.Tensor]):
-        x = sample["x"]
+        x = sample["eeg"]["signals"].float()
         # print(x.shape)
         label = sample["label"]
-        padding_mask = sample["padding_mask"]
-        pred = model(x, padding_mask)
+        # x = x.unsqueeze(1)
+        pred = model(x)
+        # print(pred.shape)
+        # print(label.shape)
         loss = self.loss(pred, label)
         return {
             "output": pred,
@@ -79,14 +49,15 @@ class BCICIV2aTask(PRLTask):
 
     @torch.no_grad()
     def valid_step(self, model, sample: dict[str, torch.Tensor]):
-        x = sample["x"]
+        x = sample["eeg"]["signals"].float()
+        # print(x.shape)
         label = sample["label"]
-        padding_mask = sample["padding_mask"]
-        pred = model(x, padding_mask)
+        # x = x.unsqueeze(1)
+        pred = model(x)
         loss = self.loss(pred, label)
 
         return {
-            "loss": loss,
             "output": pred,
-            "label": label
+            "label": label,
+            "loss": loss
         }

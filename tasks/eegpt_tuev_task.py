@@ -18,7 +18,6 @@ from torch import nn
 from pathlib import Path
 from tasks import PRLTask
 from einops import rearrange
-from dataset import DatasetType
 from utils import lazy_import_module, get_nested_field
 
 
@@ -71,66 +70,42 @@ class EEGPTTUEVTask(PRLTask):
         self.dev_dataset = None
 
 
-        self.model = get_nested_field(cfg, 'model.upstream.select', '')
-        self.finetune = get_nested_field(cfg, 'model.upstream.finetune', '')  # 获取微调的设置
-        self.nb_classes = get_nested_field(cfg, 'model.upstream.nb_classes', 0)  # 获取类别数
+        self.model = get_nested_field(cfg, 'model.select', '')
+        self.finetune = get_nested_field(cfg, 'model.finetune', '')  # 获取微调的设置
+        self.nb_classes = get_nested_field(cfg, 'model.nb_classes', 0)  # 获取类别数
 
-        self.qkv_bias = get_nested_field(cfg, 'model.upstream.qkv_bias', False)  # 获取是否使用 qkv_bias
-        self.rel_pos_bias = get_nested_field(cfg, 'model.upstream.rel_pos_bias', False)  # 获取是否使用相对位置偏置
-        self.abs_pos_emb = get_nested_field(cfg, 'model.upstream.abs_pos_emb', True)  # 获取是否使用绝对位置嵌入
-        self.layer_scale_init_value = get_nested_field(cfg, 'model.upstream.layer_scale_init_value', 0.1)  # 获取初始化的层比例值
+        self.qkv_bias = get_nested_field(cfg, 'model.qkv_bias', False)  # 获取是否使用 qkv_bias
+        self.rel_pos_bias = get_nested_field(cfg, 'model.rel_pos_bias', False)  # 获取是否使用相对位置偏置
+        self.abs_pos_emb = get_nested_field(cfg, 'model.abs_pos_emb', True)  # 获取是否使用绝对位置嵌入
+        self.layer_scale_init_value = get_nested_field(cfg, 'model.layer_scale_init_value', 0.1)  # 获取初始化的层比例值
 
-        self.input_size = get_nested_field(cfg, 'model.upstream.input_size', 200)  # 获取输入大小（默认为200）
-        self.drop = get_nested_field(cfg, 'model.upstream.drop', 0.0)  # 获取丢弃率
-        self.attn_drop_rate = get_nested_field(cfg, 'model.upstream.attn_drop_rate', 0.0)  # 获取注意力丢弃率
-        self.drop_path = get_nested_field(cfg, 'model.upstream.drop_path', 0.1)  # 获取drop path率
+        self.input_size = get_nested_field(cfg, 'model.input_size', 200)  # 获取输入大小（默认为200）
+        self.drop = get_nested_field(cfg, 'model.drop', 0.0)  # 获取丢弃率
+        self.attn_drop_rate = get_nested_field(cfg, 'model.attn_drop_rate', 0.0)  # 获取注意力丢弃率
+        self.drop_path = get_nested_field(cfg, 'model.drop_path', 0.1)  # 获取drop path率
 
-        self.disable_eval_during_finetuning = get_nested_field(cfg, 'model.upstream.disable_eval_during_finetuning', False)  # 是否禁用微调期间的评估
+        self.disable_eval_during_finetuning = get_nested_field(cfg, 'model.disable_eval_during_finetuning', False)  # 是否禁用微调期间的评估
 
-        self.model_ema = get_nested_field(cfg, 'model.upstream.model_ema', False)  # 是否使用模型EMA
-        self.model_ema_decay = get_nested_field(cfg, 'model.upstream.model_ema_decay', 0.9999)  # EMA衰减系数
-        self.model_ema_force_cpu = get_nested_field(cfg, 'model.upstream.model_ema_force_cpu', False)  # 是否强制使用CPU
+        self.model_ema = get_nested_field(cfg, 'model.model_ema', False)  # 是否使用模型EMA
+        self.model_ema_decay = get_nested_field(cfg, 'model.model_ema_decay', 0.9999)  # EMA衰减系数
+        self.model_ema_force_cpu = get_nested_field(cfg, 'model.model_ema_force_cpu', False)  # 是否强制使用CPU
 
         self.args= Args(cfg)
 
-        # 获取 finetuning 相关的配置参数，所有字段都放在 'model.upstream' 下
-        self.finetune = get_nested_field(cfg, 'model.upstream.finetune', '')  # 获取微调的路径
-        self.model_key = get_nested_field(cfg, 'model.upstream.model_key', 'model|module')  # 获取模型关键字
-        self.model_prefix = get_nested_field(cfg, 'model.upstream.model_prefix', '')  # 获取模型前缀
-        self.model_filter_name = get_nested_field(cfg, 'model.upstream.model_filter_name', 'gzp')  # 获取模型过滤名称
-        self.init_scale = get_nested_field(cfg, 'model.upstream.init_scale', 0.001)  # 获取初始化的比例
-        self.use_mean_pooling = get_nested_field(cfg, 'model.upstream.use_mean_pooling', True)  # 获取是否使用平均池化
-        self.use_cls = get_nested_field(cfg, 'model.upstream.use_cls', False)  # 获取是否使用cls token
-        self.disable_weight_decay_on_rel_pos_bias = get_nested_field(cfg, 'model.upstream.disable_weight_decay_on_rel_pos_bias', False)  # 获取是否禁用相对位置偏置的权重衰减
+        # 获取 finetuning 相关的配置参数，所有字段都放在 'model' 下
+        self.finetune = get_nested_field(cfg, 'model.finetune', '')  # 获取微调的路径
+        self.model_key = get_nested_field(cfg, 'model.model_key', 'model|module')  # 获取模型关键字
+        self.model_prefix = get_nested_field(cfg, 'model.model_prefix', '')  # 获取模型前缀
+        self.model_filter_name = get_nested_field(cfg, 'model.model_filter_name', 'gzp')  # 获取模型过滤名称
+        self.init_scale = get_nested_field(cfg, 'model.init_scale', 0.001)  # 获取初始化的比例
+        self.use_mean_pooling = get_nested_field(cfg, 'model.use_mean_pooling', True)  # 获取是否使用平均池化
+        self.use_cls = get_nested_field(cfg, 'model.use_cls', False)  # 获取是否使用cls token
+        self.disable_weight_decay_on_rel_pos_bias = get_nested_field(cfg, 'model.disable_weight_decay_on_rel_pos_bias', False)  # 获取是否禁用相对位置偏置的权重衰减
 
-
-    def get_train_dataset(self):
-        if self.train_dataset is None:
-            self.train_dataset = self.build_dataset(self.dataset_root, self.train_fpath)
-        return self.train_dataset
-
-    def get_dev_dataset(self):
-        if self.dev_dataset is None:
-            self.dev_dataset = self.build_dataset(self.dataset_root, self.eval_fpath[0])
-        return self.dev_dataset
-    
-    def get_test_dataset(self):
-        if self.test_dataset is None:
-            self.test_dataset = self.build_dataset(self.dataset_root, self.eval_fpath[1])
-        return self.test_dataset
-
-    def build_dataset(self, root: str, fpath: str = "train"):
-        """ 构建数据集 """
-        seed = 4523
-        np.random.seed(seed)
-        files = os.listdir(os.path.join(root, fpath))
-        Dataset = lazy_import_module('dataset', self.dataset)
-        # transforms = [lazy_import_module('dataset.transforms', t) for t in self.transforms_select]
-        return Dataset(os.path.join(root, fpath), files)
 
     def build_model(self):
 
-        model_name = lazy_import_module('models.upstream', self.upstream_select)
+        model_name = lazy_import_module('models', self.upstream_select)
         use_channels_names = [      
              'FP1','FPZ', 'FP2',
         'F7', 'F3', 'FZ', 'F4', 'F8',
@@ -175,9 +150,9 @@ class EEGPTTUEVTask(PRLTask):
         return model
         
     def train_step(self, model: nn.Module, sample: dict[str, torch.Tensor]):
-        x = sample["x"]
+        x = sample["eeg"]['signals']
         label = sample["label"]
-        x = x.float() / 1000
+        x = x.float() / 100
         x = rearrange(x, 'B N (A T) -> B N A T', T=200)
         pred = model(x)
         loss = self.loss(pred, label)
@@ -189,9 +164,9 @@ class EEGPTTUEVTask(PRLTask):
 
     @torch.no_grad()
     def valid_step(self, model, sample: dict[str, torch.Tensor]):
-        x = sample["x"]
+        x = sample["eeg"]['signals']
         label = sample["label"]
-        x = x.float() / 1000
+        x = x.float() / 100
         x = rearrange(x, 'B N (A T) -> B N A T', T=200)
         # 将输入数据转换为 Half 类型
         if x.dtype != torch.float16:

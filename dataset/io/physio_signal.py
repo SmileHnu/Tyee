@@ -455,7 +455,7 @@ class PicklePhysioSignalIO(_PhysioSignalIO):
         signal_path = os.path.join(signal_folder, key)
 
         if not os.path.exists(signal_path):
-            raise RuntimeError(f"Unable to find the {signal_type} signal with key {key}!")
+            raise RuntimeError(f"Unable to find the {signal_type} signal with key {key} in {self.io_path}!")
 
         with open(signal_path, 'rb') as f:
             signal = pickle.load(f)

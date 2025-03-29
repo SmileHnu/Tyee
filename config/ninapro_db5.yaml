@@ -1,0 +1,103 @@
+common:
+  seed: 2025
+  verbose: true
+  exp_dir: experiments
+
+dataset:
+  batch_size: 128
+  dataset: NinaproDB5Dataset
+  num_workers: 4
+  root_path:
+    train: '/home/lingyus/data/NinaproDB5'
+    dev:
+    # test: 
+  io_path:
+    train: "/home/lingyus/data/NinaproDB5/processed_40"
+    dev: 
+    test: 
+  io_mode: pickle
+  split: 
+    method: ninapro
+    split_by: stimulus_id
+    stratified: false
+    shuffle: true
+    seed: 7
+    # test_size: 0
+    # dev_size: 0.33333
+    n_splits: 5
+  other:
+    chunk_size: 40
+    overlap: 32
+
+  offline_transform:
+    emg:
+      Filter:
+        method: iir
+        l_freq: 1
+        iir_params:
+          order: 3
+          ftype: butter
+      Normalize:
+        method: min_max
+
+ 
+
+
+lr_scheduler:
+  select: WarmupCosineScheduler
+  total_epochs: 400
+  eta_min: 1e-6
+  warmup_start_lr: 0
+  warmup_epochs: 5
+
+model:
+  select: Conformer
+  n_outputs: 52
+  n_chans: 8
+  n_times: 40
+  filter_time_length: 8
+  n_filters_time: 64
+  drop_prob: 0.3
+  pool_time_length: 5
+  pool_time_stride: 2
+  att_depth: 4
+  att_heads: 8
+  att_drop_prob: 0.2
+
+  # select: EEGNet
+  # n_chans: 16
+  # chunk_size: 40
+  # num_classes: 52
+    
+
+optimizer:
+  lr:  0.001
+  select: Adam
+  # weight_decay: 0.05             # 权重衰减 (L2正则化)
+  # layer_decay: 0.65                # 层级学习率衰减
+
+task:
+  loss:
+    select: CrossEntropyLoss
+    # smoothing: 0.1
+  select: ninapro_db5_task.NinaproDB5Task
+
+trainer:
+  resume:  # 添加断点恢复配置
+      enabled: false
+      checkpoint: /home/lingyus/code/PRL/experiments/2025-01-10/14-27-21/checkpoint/checkpoint_step_8488.pt
+  fp16: true
+  # total_steps: 31980
+  total_epochs: 400
+  update_interval: 1
+  # save_interval: 1066
+  # eval_interval: 1066
+  log_interval: 20
+  eval_metric: accuracy
+  metrics: [accuracy, precision_macro, f1_macro, recall_macro]
+    
+
+distributed:
+  backend: nccl
+  world_size: 1
+  distributed_no_spawn: false

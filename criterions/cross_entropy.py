@@ -41,3 +41,18 @@ class SoftTargetCrossEntropy(nn.Module):
     def forward(self, x: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
         loss = torch.sum(-target * F.log_softmax(x, dim=-1), dim=-1)
         return loss.mean()
+
+class FocalLoss(nn.Module):
+    def __init__(self, gamma=2, alpha=None):
+        super(FocalLoss, self).__init__()
+        self.gamma = gamma
+        self.alpha = alpha
+
+    def forward(self, logits, targets):
+        ce_loss = nn.CrossEntropyLoss(reduction='none')(logits, targets)
+        pt = torch.exp(-ce_loss)
+        loss = (1 - pt) ** self.gamma * ce_loss
+        if self.alpha is not None:
+            alpha_factor = self.alpha.gather(0, targets)
+            loss *= alpha_factor
+        return loss.mean()

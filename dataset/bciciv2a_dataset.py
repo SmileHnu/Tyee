@@ -10,211 +10,196 @@
 @Desc    : 
 """
 import os
+import mne
 import torch
-import scipy
-import scipy.io as sio
 import numpy as np
-from torch.utils.data import Dataset
-from sklearn.model_selection import train_test_split
-from dataset.base_dataset import BaseDataset, DatasetType
+import scipy.io as scio
+from dataset import BaseDataset
+from typing import Any, Callable, Union, Dict
 
 class BCICIV2ADataset(BaseDataset):
-    def __init__(self, sub, data_path, few_shot_number=1, is_few_EA=False, target_sample=-1, use_avg=True, use_channels=None, split=DatasetType.UNKNOWN):
-        super().__init__(split=split)
-        self.sub = sub
-        self.data_path = data_path
-        self.few_shot_number = few_shot_number
-        self.is_few_EA = is_few_EA
-        self.target_sample = target_sample
-        self.use_avg = use_avg
-        self.use_channels = use_channels
-        self.data, self.labels, self.subject_ids = self._load_data()
-
-    def _load_data(self):
-        target_session_1_path = os.path.join(self.data_path, f'sub{self.sub}_train/Data.mat')
-        target_session_2_path = os.path.join(self.data_path, f'sub{self.sub}_test/Data.mat')
-
-        session_1_data = sio.loadmat(target_session_1_path)
-        session_2_data = sio.loadmat(target_session_2_path)
-        R = None
-        if self.is_few_EA:
-            session_1_x = EA(session_1_data['x_data'], R)
-        else:
-            session_1_x = session_1_data['x_data']
-
-        if self.is_few_EA:
-            session_2_x = EA(session_2_data['x_data'], R)
-        else:
-            session_2_x = session_2_data['x_data']
-
-        test_x_1 = torch.FloatTensor(session_1_x)
-        test_y_1 = torch.LongTensor(session_1_data['y_data']).reshape(-1)
-
-        test_x_2 = torch.FloatTensor(session_2_x)
-        test_y_2 = torch.LongTensor(session_2_data['y_data']).reshape(-1)
-
-        if self.target_sample > 0:
-            test_x_1 = temporal_interpolation(test_x_1, self.target_sample, use_avg=self.use_avg)
-            test_x_2 = temporal_interpolation(test_x_2, self.target_sample, use_avg=self.use_avg)
-
-        if self.use_channels is not None:
-            test_input = torch.cat([test_x_1, test_x_2], dim=0)[:, self.use_channels, :]
-        else:
-            test_input = torch.cat([test_x_1, test_x_2], dim=0)
-
-        test_labels = torch.cat([test_y_1, test_y_2], dim=0)
-
-        source_train_x = []
-        source_train_y = []
-        source_train_s = []
-
-        source_valid_x = []
-        source_valid_y = []
-        source_valid_s = []
-        subject_id = 0
-        for i in range(1, 10):
-            if i == self.sub:
-                continue
-            train_path = os.path.join(self.data_path, f'sub{i}_train/Data.mat')
-            train_data = sio.loadmat(train_path)
-
-            test_path = os.path.join(self.data_path, f'sub{i}_test/Data.mat')
-            test_data = sio.loadmat(test_path)
-            if self.is_few_EA:
-                session_1_x = EA(train_data['x_data'], R)
-            else:
-                session_1_x = train_data['x_data']
-
-            session_1_y = train_data['y_data'].reshape(-1)
-
-            train_x, valid_x, train_y, valid_y = train_test_split(session_1_x, session_1_y, test_size=0.1, stratify=session_1_y)
-
-            source_train_x.extend(train_x)
-            source_train_y.extend(train_y)
-            source_train_s.append(torch.ones((len(train_y),)) * subject_id)
-
-            source_valid_x.extend(valid_x)
-            source_valid_y.extend(valid_y)
-            source_valid_s.append(torch.ones((len(valid_y),)) * subject_id)
-
-            if self.is_few_EA:
-                session_2_x = EA(test_data['x_data'], R)
-            else:
-                session_2_x = test_data['x_data']
-
-            session_2_y = test_data['y_data'].reshape(-1)
-
-            train_x, valid_x, train_y, valid_y = train_test_split(session_2_x, session_2_y, test_size=0.1, stratify=session_2_y)
-
-            source_train_x.extend(train_x)
-            source_train_y.extend(train_y)
-            source_train_s.append(torch.ones((len(train_y),)) * subject_id)
-
-            source_valid_x.extend(valid_x)
-            source_valid_y.extend(valid_y)
-            source_valid_s.append(torch.ones((len(valid_y),)) * subject_id)
-            subject_id += 1
-
-        source_train_x = torch.FloatTensor(np.array(source_train_x))
-        source_train_y = torch.LongTensor(np.array(source_train_y))
-        source_train_s = torch.cat(source_train_s, dim=0)
-
-        source_valid_x = torch.FloatTensor(np.array(source_valid_x))
-        source_valid_y = torch.LongTensor(np.array(source_valid_y))
-        source_valid_s = torch.cat(source_valid_s, dim=0)
-
-        if self.target_sample > 0:
-            source_train_x = temporal_interpolation(source_train_x, self.target_sample, use_avg=self.use_avg)
-            source_valid_x = temporal_interpolation(source_valid_x, self.target_sample, use_avg=self.use_avg)
-
-        if self.use_channels is not None:
-            train_data = source_train_x[:, self.use_channels, :]
-            valid_data = source_valid_x[:, self.use_channels, :]
-        else:
-            train_data = source_train_x
-            valid_data = source_valid_x
-
-        train_labels = source_train_y
-        valid_labels = source_valid_y
-
-        return (train_data, valid_data, test_input), (train_labels, valid_labels, test_labels), (source_train_s, source_valid_s)
-
-    def __getitem__(self, idx):
-        if self.split == DatasetType.TRAIN:
-            data, labels, subject_ids = self.data[0], self.labels[0], self.subject_ids[0]
-        elif self.split == DatasetType.DEV:
-            data, labels, subject_ids = self.data[1], self.labels[1], self.subject_ids[1]
-        elif self.split == DatasetType.TEST:
-            data, labels = self.data[2], self.labels[2]
-        else:
-            # 报错
-            raise ValueError("Invalid dataset split")
-        return data[idx], labels[idx]
-
-    def __len__(self):
-        if self.split == DatasetType.TRAIN:
-            return len(self.labels[0])
-        elif self.split == DatasetType.DEV:
-            return len(self.labels[1])
-        elif self.split == DatasetType.TEST:
-            return len(self.labels[2])
-        else:
-            # 报错
-            raise ValueError("Invalid dataset split")
-    
-    def collate_fn(self, batch):
-        inputs, labels = zip(*batch)
-
-        # 将输入序列按维度拼接
-        collated_data = torch.stack(inputs, dim=0)
-        collated_labels = torch.stack(labels).long()
-        
-        return {
-            "x": collated_data,
-            "label": collated_labels,
-            
+    def __init__(self,
+                 root_path: str = './BCICIV_2a_mat',
+                 offset: int = 0,
+                 chunk_size: int = 7 * 250,
+                 overlap: int = 0,
+                 num_channel: int = 22,
+                 skip_trial_with_artifacts: bool = False,
+                 online_transform: Union[None, Callable] = None,
+                 offline_transform: Union[None, Callable] = None,
+                 label_transform: Union[None, Callable] = None,
+                 before_trial: Union[None, Callable] = None,
+                 after_trial: Union[Callable, None] = None,
+                 after_session: Union[Callable, None] = None,
+                 after_subject: Union[Callable, None] = None,
+                 io_path: Union[None, str] = None,
+                 io_size: int = 1048576,
+                 io_mode: str = 'lmdb',
+                 num_worker: int = 0,
+                 verbose: bool = True):
+        params = {
+            'root_path': root_path,
+            'offset': offset,
+            'chunk_size': chunk_size,
+            'overlap': overlap,
+            'num_channel': num_channel,
+            'skip_trial_with_artifacts': skip_trial_with_artifacts,
+            'online_transform': online_transform,
+            'offline_transform': offline_transform,
+            'label_transform': label_transform,
+            'before_trial': before_trial,
+            'after_trial': after_trial,
+            'after_session': after_session,
+            'after_subject': after_subject,
+            'io_path': io_path,
+            'io_size': io_size,
+            'io_mode': io_mode,
+            'num_worker': num_worker,
+            'verbose': verbose
         }
+        super().__init__(**params)
+        # save all arguments to __dict__
+        self.__dict__.update(params)
 
+    def set_records(self, root_path: str = './BCICIV_2a_mat', **kwargs):
+        assert os.path.exists(
+            root_path
+        ), f'root_path ({root_path}) does not exist. Please download the dataset and set the root_path to the downloaded path.'
 
-def temporal_interpolation(x, desired_sequence_length, mode='nearest', use_avg=True):
-    # print(x.shape)
-    # squeeze and unsqueeze because these are done before batching
-    if use_avg:
-        x = x - torch.mean(x, dim=-2, keepdim=True)
-    if len(x.shape) == 2:
-        return torch.nn.functional.interpolate(x.unsqueeze(0), desired_sequence_length, mode=mode).squeeze(0)
-    # Supports batch dimension
-    elif len(x.shape) == 3:
-        return torch.nn.functional.interpolate(x, desired_sequence_length, mode=mode)
-    else:
-        raise ValueError("TemporalInterpolation only support sequence of single dim channels with optional batch")
+        file_list = os.listdir(root_path)
+        file_list = [
+            os.path.join(root_path, file) for file in file_list
+            if file.endswith('.mat')
+        ]
 
-
-# 欧氏空间的对齐方式 其中x：NxCxS
-def EA(x,new_R = None):
-    # print(x.shape)
-    '''
-    The Eulidean space alignment approach for EEG data.
-
-    Arg:
-        x:The input data,shape of NxCxS
-        new_R：The reference matrix.
-    Return:
-        The aligned data.
-    '''
+        return file_list
     
-    xt = np.transpose(x,axes=(0,2,1))
-    # print('xt shape:',xt.shape)
-    E = np.matmul(x,xt)
-    # print(E.shape)
-    R = np.mean(E, axis=0)
-    # print('R shape:',R.shape)
+    @staticmethod
+    def read_record(record: str, **kwargs) -> Dict:
+        a_data = scio.loadmat(record)['data']
 
-    R_mat = scipy.linalg.fractional_matrix_power(R,-0.5)
-    new_x = np.einsum('n c s,r c -> n r s',x,R_mat)
-    if new_R is None:
-        return new_x
-
-    new_x = np.einsum('n c s,r c -> n r s',new_x,scipy.linalg.fractional_matrix_power(new_R,0.5))
+        result = {
+            'a_data': a_data,
+        }
+        return result
     
-    return new_x
+    @staticmethod
+    def process_record(record: str,
+                       result: Dict,
+                       signal_types: list,
+                       offset: int = 0,
+                       chunk_size: int = 7 * 250,
+                       overlap: int = 0,
+                       num_channel: int = 22,
+                       skip_trial_with_artifacts: bool = False,
+                       before_trial: Union[None, Callable] = None,
+                       offline_transform: Union[None, Callable] = None,
+                       **kwargs):
+
+        if chunk_size <= 0:
+            dynamic_chunk_size = 7 * 250
+        else:
+            dynamic_chunk_size = int(chunk_size)
+
+        # get file name without extension
+        file_name = os.path.splitext(os.path.basename(record))[0]
+        # the last letter of the file name is the session, the rest is the subject
+        subject = file_name[:-1]
+        session = file_name[-1]
+        write_pointer = 0
+        a_data = result['a_data'].copy()
+        for run_id in range(0, a_data.size):
+            # a_data: (1, 9) struct, 1-3: 25 channel EOG test (eyes open, eyes closed, movement), 4-9: 6 runs
+
+            a_data1 = a_data[0, run_id]
+            a_data2 = [a_data1[0, 0]]
+            a_data3 = a_data2[0]
+            a_X = a_data3[0]
+            a_trial = a_data3[1]
+            a_y = a_data3[2]
+            a_artifacts = a_data3[5]
+            a_X = np.transpose(a_X)  # to channel number, data point number
+            
+            # for EOG test, a_trial is []
+            for trial_id in range(0, a_trial.size):
+                trial_meta_info = {
+                    'subject_id': subject,
+                    'session': f'{subject}_{session}',
+                    'run_id': f'{subject}_{session}_{run_id}',
+                    'trial_id': f'{subject}_{session}_{run_id}_{trial_id}',
+                }
+
+                if (a_artifacts[trial_id] != 0 and skip_trial_with_artifacts):
+                    continue
+
+                start_at = int(a_trial[trial_id] + offset)
+                end_at = start_at + dynamic_chunk_size
+                step = dynamic_chunk_size - overlap
+
+                if trial_id < a_trial.size - 1:
+                    trial_end_at = int(a_trial[trial_id + 1])
+                else:
+                    trial_end_at = a_X.shape[1]
+
+                while end_at <= trial_end_at:
+                    clip_id = f'{write_pointer}_{file_name}'
+
+                    record_info = {
+                        'signal_types': ['eeg'],
+                        'start_at': start_at,
+                        'end_at': end_at,
+                        'clip_id': clip_id
+                    }
+                    record_info.update(trial_meta_info)
+
+                    t_eeg = a_X[:num_channel, start_at:end_at]
+                    result['eeg'] = {
+                        'signals': t_eeg,
+                        'sampling_rate': 250,
+                        }
+                    if not offline_transform is None:
+                        try:
+                            for signal_type in signal_types:
+                                if signal_type in offline_transform:
+                                    result[signal_type] = offline_transform[signal_type](result[signal_type])
+                        except (KeyError, ValueError) as e:
+                            print(f'Error in processing record {file_name}: {e}')
+                            return None
+                    
+                    
+                    record_info['label'] = int(a_y[trial_id])
+                    eeg = {
+                        'signals': result['eeg']['signals'] ,
+                        'sampling_rate': result['eeg']['sampling_rate'],
+                    }
+                    yield {'eeg': eeg, 
+                           'key': clip_id, 
+                           'info': record_info}
+                   
+
+                    write_pointer += 1
+
+                    start_at = start_at + step
+                    end_at = start_at + dynamic_chunk_size
+    
+    def __getitem__(self, index):
+        info = self.read_info(index)
+        
+        signal_index = str(info['clip_id'])
+        signal_record = str(info['record_id'])
+
+        result = {}
+        for signal_type in self.signal_types:
+            result[signal_type] = self.read_signal(signal_record, signal_index, signal_type)
+
+        result['label'] = info['label']-1
+        if self.label_transform is not None:
+            result['label'] = self.label_transform(result['label'])
+        if self.online_transform is not None:
+            for signal_type in self.signal_types:
+                if signal_type in self.online_transform:
+                    result[signal_type] = self.online_transform[signal_type](result[signal_type])
+                if 'ToIndexChannels' not in [transform.__class__.__name__ for transform in self.online_transform[signal_type].transforms]:
+                    if 'channels' in result[signal_type]:
+                        del result[signal_type]['channels']
+        return result

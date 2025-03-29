@@ -1,31 +1,57 @@
 common:
-  seed: 7
+  seed: 0
   verbose: true
   exp_dir: experiments
 
 dataset:
-  batch_size: 16
+  batch_size: 64
   dataset: TUEVDataset
-  eval:
-  - processed_eval
-  - processed_test
-  num_workers: 2
-  path: /home/lingyus/data/TUEV/tuh_eeg_events/v2.0.1/edf/processed
-  train: processed_train
-  transforms:
-    select: []
+  num_workers: 4
+  root_path:
+    train: '/home/lingyus/data/tuh_eeg_events/v2.0.1/edf/train/'
+    dev:
+    test: '/home/lingyus/data/tuh_eeg_events/v2.0.1/edf/eval/'
+  io_path:
+    train: "/home/lingyus/data/tuh_eeg_events/v2.0.1/edf/processed_train"
+    dev:
+    test: "/home/lingyus/data/tuh_eeg_events/v2.0.1/edf/processed_eval"
+  io_mode: pickle
+  split: 
+    method: hold_out
+    split_by: subject_id
+    seed: 4523
+    dev: 0.2
+  offline_transform:
+    eeg:
+      PickChannels:
+        channels: ['FP1', 'FP2', 'F3', 'F4', 'C3', 'C4', 'P3', 'P4', 'O1', 'O2', 'F7', 'F8', 'T3', 'T4', 'T5', 'T6', 'A1', 'A2', 'FZ', 'CZ', 'PZ', 'T1', 'T2']
+      OrderChannels:
+        order: ['FP1', 'FP2', 'F3', 'F4', 'C3', 'C4', 'P3', 'P4', 'O1', 'O2', 'F7', 'F8', 'T3', 'T4', 'T5', 'T6', 'A1', 'A2', 'FZ', 'CZ', 'PZ', 'T1', 'T2']
+      Filter:
+        l_freq: 0.1
+        h_freq: 75
+      NotchFilter:
+        freqs: [50.0]
+      Resample:
+        desired_sampling_rate: 200.0
+  online_transform:
+    eeg:
+      ToIndexChannels:
+        channels: ['FP1', 'FP2', 'F3', 'F4', 'C3', 'C4', 'P3', 'P4', 'O1', 'O2', 'F7', 'F8', 'T3', 'T4', 'T5', 'T6', 'A1', 'A2', 'FZ', 'CZ', 'PZ', 'T1', 'T2']
+  
+
   
 
 lr_scheduler:
-  select: WarmupCosineAnnealingLR
-  T_max: 127320
+  select: WarmupCosineScheduler
+  total_epochs: 30
   eta_min: 1e-6
   warmup_start_lr: 0
-  warmup_steps: 12732
+  warmup_epochs: 3
 model:
   upstream:
     select: EEGPT_TUEV2
-    checkpoint: /home/lingyus/code/PRL/models/upstream/eegpt/checkpoint/epoch=199-step=646600.ckpt
+    checkpoint: /home/lingyus/code/PRL/models/upstream/eegpt/checkpoint/eegpt_mcae_58chs_4s_large4E.ckpt
 optimizer:
   lr: 5e-4
   select: AdamW
@@ -35,21 +61,26 @@ optimizer:
 
 task:
   loss:
-    select: LabelSmoothingCrossEntropy
-    smoothing: 0.1
+    select: CrossEntropyLoss
+    # smoothing: 0.1
   select: eegpt_tuev2_task.EEGPTTUEV2Task
 
 trainer:
+  resume:  # 添加断点恢复配置
+      enabled: false
+      checkpoint: /home/lingyus/code/PRL/experiments/2025-01-10/14-27-21/checkpoint/checkpoint_step_8488.pt
   fp16: true
-  total_steps: 127320
-  update_interval: 1
-  save_interval: 4244
-  eval_interval: 4244
+  # total_steps: 31980
+  total_epochs: 30
+  update_interval: 8
+  # save_interval: 1066
+  # eval_interval: 1066
   log_interval: 20
   eval_metric: balanced_accuracy
   metrics: [balanced_accuracy, accuracy, f1_weighted, cohen_kappa]
     
+
 distributed:
   backend: nccl
-  world_size: 2
+  world_size: 1
   distributed_no_spawn: false

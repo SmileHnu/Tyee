@@ -4,11 +4,44 @@ common:
   exp_dir: experiments
 
 dataset:
-  batch_size: 64
-  dataset: BCICIV2ADataset
-  num_workers: 0
-  path: /mnt/ssd/lingyus/BCICIV2a/BCIC_2a_row
-  test_subject: 9
+  batch_size: 32
+  dataset: SEEDVDataset
+  num_workers: 4
+  root_path:
+    train: '/home/lingyus/data/SEED-V/EEG_raw'
+    dev:
+    test: 
+  io_path:
+    train: "/home/lingyus/data/SEED-V/EEG_raw_processed"
+    dev:
+    test: 
+  io_mode: pickle
+  other_params:
+    chunk_size: 1000
+  split: 
+    method: seedv
+    split_by: session_id
+    seed: 0
+    # dev_size: 0.5
+    # test_size: 0.33
+  offline_transform:
+    eeg:
+      # PickChannels:
+      #   channels: ['FP1', 'FP2', 'F3', 'F4', 'C3', 'C4', 'P3', 'P4', 'O1', 'O2', 'F7', 'F8', 'T3', 'T4', 'T5', 'T6', 'A1', 'A2', 'FZ', 'CZ', 'PZ', 'T1', 'T2']
+      # OrderChannels:
+      #   order: ['FP1', 'FP2', 'F3', 'F4', 'C3', 'C4', 'P3', 'P4', 'O1', 'O2', 'F7', 'F8', 'T3', 'T4', 'T5', 'T6', 'A1', 'A2', 'FZ', 'CZ', 'PZ', 'T1', 'T2']
+      Filter:
+        l_freq: 0
+        h_freq: 38
+      # NotchFilter:
+      #   freqs: [50.0]
+      Resample:
+        desired_sampling_rate: 200.0
+  # online_transform:
+    # eeg:
+    #   ToIndexChannels:
+    #     channels: ['FP1', 'FP2', 'F3', 'F4', 'C3', 'C4', 'P3', 'P4', 'O1', 'O2', 'F7', 'F8', 'T3', 'T4', 'T5', 'T6', 'A1', 'A2', 'FZ', 'CZ', 'PZ', 'T1', 'T2']
+  
   
 
 lr_scheduler:

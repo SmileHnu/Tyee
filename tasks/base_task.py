@@ -30,6 +30,7 @@ class PRLTask(object):
 
         self.dataset = get_nested_field(cfg, 'dataset.dataset', '')
         self.num_workers = get_nested_field(cfg, 'dataset.num_workers', 4)
+        self.other = get_nested_field(cfg, 'dataset.other', {})
         
         offline_transform_cfg = get_nested_field(cfg, 'dataset.offline_transform', None)
         self.offline_transform = self.build_transforms(offline_transform_cfg)
@@ -37,26 +38,33 @@ class PRLTask(object):
         self.online_transform = self.build_transforms(online_transform_cfg)
         label_transform_cfg = get_nested_field(cfg, 'dataset.label_transform', None)
         self.label_transform = self.build_transforms(label_transform_cfg, is_label_transform=True)
+        before_trial_cfg = get_nested_field(cfg, 'dataset.before_trial', None)
+        self.before_trial = self.build_transforms(before_trial_cfg)
+        after_trial_cfg = get_nested_field(cfg, 'dataset.after_trial', None)
+        self.after_trial = self.build_transforms(after_trial_cfg)
+        after_session_cfg = get_nested_field(cfg, 'dataset.after_session', None)
+        self.after_session = self.build_transforms(after_session_cfg)
+        after_subject_cfg = get_nested_field(cfg, 'dataset.after_subject', None)
+        self.after_subject = self.build_transforms(after_subject_cfg)
 
         self.split_params = get_nested_field(cfg, 'dataset.split', {})
 
         # 模型配置
-        self.downstream_classes = get_nested_field(cfg, 'model.downstream.classes', 1)
-        self.downstream_select = get_nested_field(cfg, 'model.downstream.select', '')
-        self.upstream_select = get_nested_field(cfg, 'model.upstream.select', '')
-        self.upstream_trainable = get_nested_field(cfg, 'model.upstream.trainable', False)
+        self.model_select = get_nested_field(cfg, 'model.select', '')
+        self.model_params = get_nested_field(cfg, 'model', {})
+        self.upstream_trainable = get_nested_field(cfg, 'model.trainable', False)
 
         # 损失函数配置
         self.loss_select = get_nested_field(cfg, 'task.loss.select', '')
         self.loss_params = get_nested_field(cfg, 'task.loss', {})
 
         # 优化器配置
-        self.optimizer_select = get_nested_field(cfg, 'optimizer.select', '')
+        self.optimizer_select = get_nested_field(cfg, 'optimizer.select', None)
         self.lr = get_nested_field(cfg, 'optimizer.lr', 0.0001)
         self.layer_decay = get_nested_field(cfg, 'optimizer.layer_decay', 1.0)
         self.weight_decay = get_nested_field(cfg, 'optimizer.weight_decay', 0.0)
         # 学习率调度器配置
-        self.lr_scheduler_select = get_nested_field(cfg, 'lr_scheduler.select', '')
+        self.lr_scheduler_select = get_nested_field(cfg, 'lr_scheduler.select', None)
         self.lr_scheduler_params = get_nested_field(cfg, 'lr_scheduler', {})
 
 
@@ -115,7 +123,12 @@ class PRLTask(object):
                        num_worker=self.num_workers, 
                        offline_transform=self.offline_transform,
                        online_transform=self.online_transform,
-                       label_transform=self.label_transform)
+                       label_transform=self.label_transform,
+                       before_trial=self.before_trial,
+                       after_trial=self.after_trial,
+                       after_session=self.after_session,
+                       after_subject=self.after_subject,
+                       **self.other)
     
     def build_datasets(self):
         """
@@ -208,12 +221,14 @@ class PRLTask(object):
             elif isinstance(data[0], np.ndarray):
                 collated_data = torch.tensor(np.stack(data))
             elif isinstance(data[0], (int, float)) or isinstance(data[0], list):
+                # print(data)
                 collated_data = torch.tensor(data)
             else:
                 collated_data = data
             return collated_data
 
         for key in batch_signals:
+            # print(key)
             batch_signals[key] = recursive_collate(batch_signals[key])
     
         return batch_signals        

@@ -1,1 +1,1 @@
-from .cross_entropy import LabelSmoothingCrossEntropy, SoftTargetCrossEntropy
+from .cross_entropy import *

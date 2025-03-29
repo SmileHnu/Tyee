@@ -63,6 +63,9 @@ class Trainer(object):
             self.logger.info(f"Start training for fold {fold + 1}")
             # 训练
             self.train()
+            # 打印最好的指标
+            if self.best_metric_value is not None:
+                self.logger.info(f"Best {self.eval_metric}: {self.best_metric_value}")
         
     def _build_task(self) -> object:
         module_name, class_name = self.task_select.rsplit('.', 1)
@@ -425,14 +428,23 @@ class Trainer(object):
                 self.logger.info(f"Best checkpoint saved with {self.eval_metric}: {current_metric_value}")
 
     def _state_dict(self, model, optimizer, lr_scheduler, step):
-        return {
-            "args": self.cfg,
-            "model": model.state_dict(),
-            "optimizer": optimizer.state_dict(),
-            "lr_scheduler": lr_scheduler.state_dict(),
-            "step": step,
-            "best_metric_value": self.best_metric_value
-        }
+        if lr_scheduler is not None:
+            return {
+                "args": self.cfg,
+                "model": model.state_dict(),
+                "optimizer": optimizer.state_dict(),
+                "lr_scheduler": lr_scheduler.state_dict(),
+                "step": step,
+                "best_metric_value": self.best_metric_value
+            }
+        else:
+            return {
+                "args": self.cfg,
+                "model": model.state_dict(),
+                "optimizer": optimizer.state_dict(),
+                "step": step,
+                "best_metric_value": self.best_metric_value
+            }
     
     def _save_checkpoint(self, filename, model, optimizer, lr_scheduler, step):
         checkpoint = self._state_dict(model, optimizer, lr_scheduler, step)

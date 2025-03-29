@@ -188,8 +188,8 @@ TUEV dataset is downloaded from https://isip.piconepress.com/projects/tuh_eeg/ht
 """
 
 # root = "/home/lingyus/data/tuh_eeg_events/v2.0.1/edf"
-# train_out_dir = os.path.join(root, "processed_train")
-# eval_out_dir = os.path.join(root, "processed_eval")
+# train_out_dir = os.path.join(root, "processed_labram_train")
+# eval_out_dir = os.path.join(root, "processed_labram_eval")
 # if not os.path.exists(train_out_dir):
 #     os.makedirs(train_out_dir)
 # if not os.path.exists(eval_out_dir):
@@ -218,29 +218,31 @@ TUEV dataset is downloaded from https://isip.piconepress.com/projects/tuh_eeg/ht
 # )
 
 
-#transfer to train, eval, and test
+# #transfer to train, eval, and test
 root = "/home/lingyus/data/tuh_eeg_events/v2.0.1/edf"
 seed = 4523
 np.random.seed(seed)
 
-# train_files = sorted(os.listdir(os.path.join(root, "processed_train")))
-train_files = os.listdir(os.path.join(root, "processed_train"))
+# train_files = sorted(os.listdir(os.path.join(root, "processed_labram_train")))
+train_files = os.listdir(os.path.join(root, "processed_labram_train"))
 train_sub = list(set([f.split("_")[0] for f in train_files]))
 print("train sub", len(train_sub))
-# train_sub = sorted(train_sub)
+train_sub = sorted(train_sub)
 # print(train_sub)
-test_files = os.listdir(os.path.join(root, "processed_eval"))
+test_files = os.listdir(os.path.join(root, "processed_labram_eval"))
 
 val_sub = np.random.choice(train_sub, size=int(
     len(train_sub) * 0.2), replace=False)
 print(val_sub)
 train_sub = list(set(train_sub) - set(val_sub))
+print(train_sub)
 val_files = [f for f in train_files if f.split("_")[0] in val_sub]
 train_files = [f for f in train_files if f.split("_")[0] in train_sub]
-
+# print(train_files)
+# print(val_files)
 for file in train_files:
-    os.system(f"cp {os.path.join(root, 'processed_train', file)} {os.path.join(root, 'processed1', 'processed_train')}")
+    os.system(f"cp {os.path.join(root, 'processed_labram_train', file)} {os.path.join(root, 'processed_labram', 'processed_train')}")
 for file in val_files:
-    os.system(f"cp {os.path.join(root, 'processed_train', file)} {os.path.join(root, 'processed1', 'processed_eval')}")
+    os.system(f"cp {os.path.join(root, 'processed_labram_train', file)} {os.path.join(root, 'processed_labram', 'processed_eval')}")
 for file in test_files:
-    os.system(f"cp {os.path.join(root, 'processed_eval', file)} {os.path.join(root, 'processed1', 'processed_test')}")
+    os.system(f"cp {os.path.join(root, 'processed_labram_train', file)} {os.path.join(root, 'processed_labram', 'processed_test')}")

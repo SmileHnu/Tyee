@@ -13,17 +13,20 @@
 import numpy as np
 from dataset.transform import BaseTransform
 from typing import List, Dict, Union
+from utils import lazy_import_module
 
 class PickChannels(BaseTransform):
-    def __init__(self, channels: List[str]):
+    def __init__(self, channels: Union[str, List[str]]):
         super(PickChannels, self).__init__()
-        self.channels = channels
+        if isinstance(channels, str):
+            self.channels = lazy_import_module('dataset.constants', channels)
+        else:
+            self.channels = channels
 
     def transform(self, result: Dict[str, np.ndarray]) -> Dict[str, np.ndarray]:
         # print('执行了PickChannels')
         
         dataset_channels_dict = dict(zip(result['channels'], list(range(len(result['channels'])))))
-        
         # 检查是否所有目标通道都在当前通道列表中
         missing_channels = [channel for channel in self.channels if channel not in dataset_channels_dict]
         if missing_channels:
@@ -36,9 +39,12 @@ class PickChannels(BaseTransform):
         return result
 
 class OrderChannels(BaseTransform):
-    def __init__(self, order: List[str], padding_value: float = 0):
+    def __init__(self, order: Union[str, List[str]], padding_value: float = 0):
         super(OrderChannels, self).__init__()
-        self.channels_order = order
+        if isinstance(order, str):
+            self.channels_order = lazy_import_module('dataset.constants', order)
+        else:
+            self.channels_order = order
         self.padding_value = padding_value
 
     def transform(self, result: Dict[str, np.ndarray]) -> Dict[str, np.ndarray]:
@@ -63,9 +69,12 @@ class OrderChannels(BaseTransform):
         return result
 
 class ToIndexChannels(BaseTransform):
-    def __init__(self, channels: List[str], strict_mode: bool = False):
+    def __init__(self, channels: Union[str, List[str]], strict_mode: bool = False):
         super(ToIndexChannels, self).__init__()
-        self.channels = channels
+        if isinstance(channels, str):
+            self.channels = lazy_import_module('dataset.constants', channels)
+        else:
+            self.channels = channels
         self.strict_mode = strict_mode
 
     def transform(self, result: Dict[str, Union[np.ndarray, List[str]]]) -> Dict[str, Union[np.ndarray, List[int]]]:

@@ -198,6 +198,11 @@ class TUEVDataset(BaseDataset):
         for signal_type in self.signal_types:
             result[signal_type] = self.read_signal(signal_record, signal_index, signal_type)
 
+        # biot
+        # result['eeg']['signals'] = result['eeg']['signals'] / (
+        #     np.quantile(np.abs(result['eeg']['signals']), q=0.95, method="linear", axis=-1, keepdims=True)
+        #     + 1e-8
+        # )
         result['label'] = info['label']
         if self.label_transform is not None:
             result['label'] = self.label_transform(result['label'])
@@ -208,6 +213,10 @@ class TUEVDataset(BaseDataset):
                 if 'ToIndexChannels' not in [transform.__class__.__name__ for transform in self.online_transform[signal_type].transforms]:
                     if 'channels' in result[signal_type]:
                         del result[signal_type]['channels']
+        else:
+            for signal_type in self.signal_types:
+                if 'channels' in result[signal_type]:
+                    del result[signal_type]['channels']
         return result
 
     

@@ -14,7 +14,7 @@ import os
 import numpy as np
 import torch
 from tasks import PRLTask
-from dataset import DatasetType
+
 import torch.nn.functional as F
 from utils import get_nested_field, lazy_import_module
 
@@ -24,29 +24,6 @@ class EEGPTTUEV2Task(PRLTask):
 
         self.checkpoint = get_nested_field(cfg, 'model.upstream.checkpoint', default=None)
         
-    def get_train_dataset(self):
-        if self.train_dataset is None:
-            self.train_dataset = self.build_dataset(self.dataset_root, self.train_fpath)
-        return self.train_dataset
-
-    def get_dev_dataset(self):
-        if self.dev_dataset is None:
-            self.dev_dataset = self.build_dataset(self.dataset_root, self.eval_fpath[0])
-        return self.dev_dataset
-    
-    def get_test_dataset(self):
-        if self.test_dataset is None:
-            self.test_dataset = self.build_dataset(self.dataset_root, self.eval_fpath[1])
-        return self.test_dataset
-
-    def build_dataset(self, root: str, fpath: str = "train"):
-        """ 构建数据集 """
-        seed = 4523
-        np.random.seed(seed)
-        files = os.listdir(os.path.join(root, fpath))
-        Dataset = lazy_import_module('dataset', self.dataset)
-        # transforms = [lazy_import_module('dataset.transforms', t) for t in self.transforms_select]
-        return Dataset(os.path.join(root, fpath), files)
     def build_model(self):
         model = lazy_import_module('models.upstream', self.upstream_select)
         return model(load_path = self.checkpoint)
@@ -107,7 +84,7 @@ class EEGPTTUEV2Task(PRLTask):
         else:
             return num_max_layer - 1
     def train_step(self, model: torch.nn.Module, sample: dict[str, torch.Tensor], *args, **kwargs):
-        x = sample['x']
+        x = sample['eeg']['signals']
         label = sample['label']
         x = x.float() / 100
         x, pred = model(x)
@@ -122,7 +99,7 @@ class EEGPTTUEV2Task(PRLTask):
 
     @torch.no_grad()
     def valid_step(self, model: torch.nn.Module, sample: dict[str, torch.Tensor], *args, **kwargs):
-        x = sample['x']
+        x = sample['eeg']['signals']
         label = sample['label']
         x = x.float() / 100
         x, pred = model(x)

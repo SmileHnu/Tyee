@@ -23,7 +23,7 @@ from timm.utils import ModelEma
 from dataset import DatasetType
 from timm.models import create_model
 from collections import OrderedDict
-from models.upstream import labram_base_patch200_200
+from models import labram_base_patch200_200
 from utils import lazy_import_module, get_nested_field
 from timm.loss import LabelSmoothingCrossEntropy
 
@@ -75,37 +75,37 @@ class MoBITask(PRLTask):
         self.dev_dataset = None
 
 
-        self.model_select = get_nested_field(cfg, 'model.upstream.select', '')
-        self.finetune = get_nested_field(cfg, 'model.upstream.finetune', '')  # 获取微调的设置
-        self.nb_classes = get_nested_field(cfg, 'model.upstream.nb_classes', 0)  # 获取类别数
+        self.model_select = get_nested_field(cfg, 'model.select', '')
+        self.finetune = get_nested_field(cfg, 'model.finetune', '')  # 获取微调的设置
+        self.nb_classes = get_nested_field(cfg, 'model.nb_classes', 0)  # 获取类别数
 
-        self.qkv_bias = get_nested_field(cfg, 'model.upstream.qkv_bias', False)  # 获取是否使用 qkv_bias
-        self.rel_pos_bias = get_nested_field(cfg, 'model.upstream.rel_pos_bias', False)  # 获取是否使用相对位置偏置
-        self.abs_pos_emb = get_nested_field(cfg, 'model.upstream.abs_pos_emb', True)  # 获取是否使用绝对位置嵌入
-        self.layer_scale_init_value = get_nested_field(cfg, 'model.upstream.layer_scale_init_value', 0.1)  # 获取初始化的层比例值
+        self.qkv_bias = get_nested_field(cfg, 'model.qkv_bias', False)  # 获取是否使用 qkv_bias
+        self.rel_pos_bias = get_nested_field(cfg, 'model.rel_pos_bias', False)  # 获取是否使用相对位置偏置
+        self.abs_pos_emb = get_nested_field(cfg, 'model.abs_pos_emb', True)  # 获取是否使用绝对位置嵌入
+        self.layer_scale_init_value = get_nested_field(cfg, 'model.layer_scale_init_value', 0.1)  # 获取初始化的层比例值
 
-        self.input_size = get_nested_field(cfg, 'model.upstream.input_size', 200)  # 获取输入大小（默认为200）
-        self.drop = get_nested_field(cfg, 'model.upstream.drop', 0.0)  # 获取丢弃率
-        self.attn_drop_rate = get_nested_field(cfg, 'model.upstream.attn_drop_rate', 0.0)  # 获取注意力丢弃率
-        self.drop_path = get_nested_field(cfg, 'model.upstream.drop_path', 0.1)  # 获取drop path率
+        self.input_size = get_nested_field(cfg, 'model.input_size', 200)  # 获取输入大小（默认为200）
+        self.drop = get_nested_field(cfg, 'model.drop', 0.0)  # 获取丢弃率
+        self.attn_drop_rate = get_nested_field(cfg, 'model.attn_drop_rate', 0.0)  # 获取注意力丢弃率
+        self.drop_path = get_nested_field(cfg, 'model.drop_path', 0.1)  # 获取drop path率
 
-        self.disable_eval_during_finetuning = get_nested_field(cfg, 'model.upstream.disable_eval_during_finetuning', False)  # 是否禁用微调期间的评估
+        self.disable_eval_during_finetuning = get_nested_field(cfg, 'model.disable_eval_during_finetuning', False)  # 是否禁用微调期间的评估
 
-        self.model_ema = get_nested_field(cfg, 'model.upstream.model_ema', False)  # 是否使用模型EMA
-        self.model_ema_decay = get_nested_field(cfg, 'model.upstream.model_ema_decay', 0.9999)  # EMA衰减系数
-        self.model_ema_force_cpu = get_nested_field(cfg, 'model.upstream.model_ema_force_cpu', False)  # 是否强制使用CPU
+        self.model_ema = get_nested_field(cfg, 'model.model_ema', False)  # 是否使用模型EMA
+        self.model_ema_decay = get_nested_field(cfg, 'model.model_ema_decay', 0.9999)  # EMA衰减系数
+        self.model_ema_force_cpu = get_nested_field(cfg, 'model.model_ema_force_cpu', False)  # 是否强制使用CPU
 
         self.args= Args(cfg)
 
-        # 获取 finetuning 相关的配置参数，所有字段都放在 'model.upstream' 下
-        self.finetune = get_nested_field(cfg, 'model.upstream.finetune', '')  # 获取微调的路径
-        self.model_key = get_nested_field(cfg, 'model.upstream.model_key', 'model|module')  # 获取模型关键字
-        self.model_prefix = get_nested_field(cfg, 'model.upstream.model_prefix', '')  # 获取模型前缀
-        self.model_filter_name = get_nested_field(cfg, 'model.upstream.model_filter_name', 'gzp')  # 获取模型过滤名称
-        self.init_scale = get_nested_field(cfg, 'model.upstream.init_scale', 0.001)  # 获取初始化的比例
-        self.use_mean_pooling = get_nested_field(cfg, 'model.upstream.use_mean_pooling', True)  # 获取是否使用平均池化
-        self.use_cls = get_nested_field(cfg, 'model.upstream.use_cls', False)  # 获取是否使用cls token
-        self.disable_weight_decay_on_rel_pos_bias = get_nested_field(cfg, 'model.upstream.disable_weight_decay_on_rel_pos_bias', False)  # 获取是否禁用相对位置偏置的权重衰减
+        # 获取 finetuning 相关的配置参数，所有字段都放在 'model' 下
+        self.finetune = get_nested_field(cfg, 'model.finetune', '')  # 获取微调的路径
+        self.model_key = get_nested_field(cfg, 'model.model_key', 'model|module')  # 获取模型关键字
+        self.model_prefix = get_nested_field(cfg, 'model.model_prefix', '')  # 获取模型前缀
+        self.model_filter_name = get_nested_field(cfg, 'model.model_filter_name', 'gzp')  # 获取模型过滤名称
+        self.init_scale = get_nested_field(cfg, 'model.init_scale', 0.001)  # 获取初始化的比例
+        self.use_mean_pooling = get_nested_field(cfg, 'model.use_mean_pooling', True)  # 获取是否使用平均池化
+        self.use_cls = get_nested_field(cfg, 'model.use_cls', False)  # 获取是否使用cls token
+        self.disable_weight_decay_on_rel_pos_bias = get_nested_field(cfg, 'model.disable_weight_decay_on_rel_pos_bias', False)  # 获取是否禁用相对位置偏置的权重衰减
 
 
         # 60个EEG通道 ， 'PO3', 'POZ', 'PO4', 'PO8' EOG通道
@@ -189,7 +189,7 @@ class MoBITask(PRLTask):
 
     def build_model(self):
         
-        model_name = lazy_import_module('models.upstream', self.model_select)
+        model_name = lazy_import_module('models', self.model_select)
         model = model_name(
         pretrained=False,
         num_classes=self.nb_classes,

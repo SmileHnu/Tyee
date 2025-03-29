@@ -25,21 +25,17 @@
 import numpy as np
 from typing import Dict, Any, List
 from dataset.transform import BaseTransform
-
-TCP_MONTAGE_CHANNELS = [
-    "FP1-F7", "F7-T3", "T3-T5", "T5-O1",
-    "A1-T3", "T3-C3", "C3-CZ", 
-    "FP1-F3", "F3-C3", "C3-P3", "P3-O1",
-    "FP2-F8", "F8-T4", "T4-T6", "T6-O2",
-    "T4-A2", "C4-T4", "CZ-C4",
-    "FP2-F4", "F4-C4", "C4-P4", "P4-O2"
-]
+from utils import lazy_import_module
 
 class UniToBiTransform(BaseTransform):
-    def __init__(self):
+    def __init__(self, target_channels: List[str]):
         super().__init__()
+        if isinstance(target_channels, str):
+            self.target_channels = lazy_import_module('dataset.constants', target_channels)
+        else:
+            self.target_channels = target_channels
 
-    def transform(self, result: Dict[str, Any], target_bipolar_channels: List[str]) -> Dict[str, Any]:
+    def transform(self, result: Dict[str, Any]) -> Dict[str, Any]:
         """
         将单极信号转换为双极信号，通过对目标双极通道列表中的相邻通道做差值计算。
         
@@ -53,19 +49,22 @@ class UniToBiTransform(BaseTransform):
         signal_data = result['signals']
         channel_list = result['channels']
         
-        new_signal_data = {}
+        new_signal_data = []
         new_channel_list = []
 
-        for bipolar_channel in target_bipolar_channels:
+        for bipolar_channel in self.target_channels:
             channel1, channel2 = bipolar_channel.split('-')
-            if channel1 in signal_data and channel2 in signal_data:
-                bipolar_signal = np.array(signal_data[channel1]) - np.array(signal_data[channel2])
-                new_channel_name = f'bipolar_{channel1}_{channel2}'
-                new_signal_data[new_channel_name] = bipolar_signal
+            if channel1 in channel_list and channel2 in channel_list:
+                index1 = channel_list.index(channel1)
+                index2 = channel_list.index(channel2)
+                bipolar_signal = np.array(signal_data[index1]) - np.array(signal_data[index2])
+                new_channel_name = bipolar_channel
+                new_signal_data.append(bipolar_signal)
                 new_channel_list.append(new_channel_name)
             else:
                 raise ValueError(f"在信号数据中未找到通道 {channel1} 和/或 {channel2}。")
         
+        new_signal_data = np.array(new_signal_data)
         # 更新通道列表和信号数据
         result['channels'] = new_channel_list
         result['signals'] = new_signal_data

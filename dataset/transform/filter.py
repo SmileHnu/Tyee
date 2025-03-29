@@ -14,8 +14,9 @@ import mne
 import numpy as np
 from typing import Dict, Any, List
 from dataset.transform import BaseTransform
+from scipy.signal import cheby2, filtfilt
 from neurokit2 import signal_filter
-
+mne.set_log_level('WARNING')
 class NeurokitFilter(BaseTransform):
     def __init__(self, 
                  lowcut=None,
@@ -49,8 +50,8 @@ class NeurokitFilter(BaseTransform):
 
 class Filter(BaseTransform):
     def __init__(self, 
-                 l_freq, 
-                 h_freq, 
+                 l_freq = None, 
+                 h_freq = None, 
                  filter_length="auto", 
                  l_trans_bandwidth="auto", 
                  h_trans_bandwidth="auto", 
@@ -165,6 +166,45 @@ class NotchFilter(BaseTransform):
             fir_design=self.fir_design,
             pad=self.pad
         )
+        # print(filtered_signal)
+        result['signals'] = filtered_signal
+        return result
+
+class Cheby2Filter(BaseTransform):
+    def __init__(self, 
+                 lowcut, 
+                 highcut,  
+                 order=6, 
+                 rp=0.1, 
+                 rs=60, 
+                 btype='bandpass'):
+        super().__init__()
+        self.lowcut = lowcut
+        self.highcut = highcut
+        self.order = order
+        self.rp = rp
+        self.rs = rs
+        self.btype = btype
+
+    def transform(self, result: Dict[str, Any]) -> Dict[str, Any]:
+        # print('执行了Cheby2Filter')
+        """
+        对信号进行Chebyshev II滤波。
+        
+        参数:
+        - result: 包含信号数据的字典。
+        
+        返回:
+        - 更新后的信号数据字典。
+        """
+        signal_data = result['signals']
+        sfreq = result['sampling_rate']
+        nyquist = 0.5 * sfreq
+        low = self.lowcut / nyquist
+        high = self.highcut / nyquist
+        b, a = cheby2(self.order, self.rs, [low, high], btype=self.btype)
+        
+        filtered_signal = filtfilt(b, a, signal_data, axis=1)
         # print(filtered_signal)
         result['signals'] = filtered_signal
         return result

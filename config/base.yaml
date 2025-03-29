@@ -51,12 +51,8 @@ lr_scheduler:
   step_size: 20
 
 model:
-  downstream:
-    classes: 4
-    select: MLP
-  upstream:
-    select: MLP
-    trainable: true
+  select: MLP
+  trainable: true
 
 optimizer:
   lr: 0.01
