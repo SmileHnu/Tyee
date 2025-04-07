@@ -14,21 +14,26 @@ import importlib
 
 def lazy_import_module(module_name: str, class_name: str):
     """
-    动态导入指定的模块和类。此函数尝试导入指定模块，并获取该模块中的指定类。
-    
-    :param module_name: str, 要导入的模块名称。
-    :param class_name: str, 要从模块中获取的类名称。
-    :return: 类对象, 返回指定模块中的类。
-    :raises ImportError: 如果无法导入指定的模块，抛出该异常。
-    :raises AttributeError: 如果指定模块中没有该类，抛出该异常。
+    Dynamically import a specified module and class.
+
+    Args:
+        module_name (str): The name of the module to import.
+        class_name (str): The name of the class to retrieve from the module.
+
+    Returns:
+        type: The class object from the specified module.
+
+    Raises:
+        ImportError: If the module cannot be imported.
+        AttributeError: If the class is not found in the module.
     """
     try:
-        # 动态导入模块
+        # Dynamically import the module
         module = importlib.import_module(module_name)
-        # 获取类，如果不存在则抛出 AttributeError
+        # Retrieve the class from the module
         cls = getattr(module, class_name)
         return cls
     except ImportError as e:
-        raise ImportError(f"无法导入模块 '{module_name}': {e}")
+        raise ImportError(f"Failed to import module '{module_name}': {e}")
     except AttributeError:
-        raise AttributeError(f"模块 '{module_name}' 中没有找到类 '{class_name}'")
+        raise AttributeError(f"Class '{class_name}' not found in module '{module_name}'")

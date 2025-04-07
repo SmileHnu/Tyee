@@ -5,7 +5,7 @@ common:
 
 dataset:
   batch_size: 64
-  dataset: TUABDataset
+  dataset: tuab_dataset.TUABDataset
   num_workers: 4
   root_path:
     train: '/home/lingyus/data/tuh_eeg_abnormal/v3.0.1/edf/train'
@@ -50,7 +50,7 @@ lr_scheduler:
   warmup_epochs: 3
 
 model:
-  select: labram_base_patch200_200
+  select: labram.labram_base_patch200_200
   trainable: true
   finetune: /home/lingyus/code/PRL/models/upstream/labram/checkpoints/labram-base.pth
   nb_classes: 2
@@ -88,7 +88,9 @@ trainer:
   # save_interval: 1066
   # eval_interval: 1066
   log_interval: 20
-  eval_metric: balanced_accuracy
+  eval_metric:
+    select: blanced_accuracy
+    mode: max
   metrics: [balanced_accuracy, accuracy, pr_auc, roc_auc]
     
 

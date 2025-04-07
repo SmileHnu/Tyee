@@ -8,3 +8,6 @@ from .convert_signal import *
 from .scale import *
 from .normalize import *
 from .clean import *
+from .wavelet import *
+from .tfr import *
+from .car import *

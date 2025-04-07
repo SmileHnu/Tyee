@@ -64,7 +64,8 @@ class TUEVTask(PRLTask):
 
     def build_model(self):
         
-        model_name = lazy_import_module('models', self.model_select)
+        module_name, class_name = self.model_select.rsplit('.', 1)
+        model_name = lazy_import_module(f'models.{module_name}', class_name)
         model = model_name(
             n_classes=self.n_classes,
             # set the n_channels according to the pretrained model if necessary

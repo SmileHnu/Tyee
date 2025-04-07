@@ -17,6 +17,7 @@ from dataset.transform import Compose
 from dataset.split import DatasetSplitter
 from utils import lazy_import_module, get_nested_field
 from torch.utils.data import Dataset, Sampler, DataLoader, DistributedSampler
+from typing import Tuple, List, Dict, Any
 
 class PRLTask(object):
     def __init__(self, cfg: dict) -> None:
@@ -116,7 +117,8 @@ class PRLTask(object):
         if root_path is None and io_path is None:
             return None
 
-        Dataset = lazy_import_module('dataset', self.dataset)
+        module_name, class_name = self.dataset.rsplit('.', 1)
+        Dataset = lazy_import_module(f'dataset.{module_name}', class_name)
         return Dataset(root_path=root_path, 
                        io_path=io_path, 
                        io_mode=self.io_mode, 
@@ -203,35 +205,7 @@ class PRLTask(object):
         splits = self.splitter.split(**self.split_params)
 
         return splits
-    
-    def collate_fn(self, batch):
-        # 假设 batch 是一个包含字典的列表
-        batch_signals = {key: [] for key in batch[0]}
-        
-        for item in batch:
-            for key, value in item.items():
-                batch_signals[key].append(value)
-        
-        # 递归处理嵌套字典
-        def recursive_collate(data):
-            if isinstance(data[0], dict):
-                collated_data = {key: recursive_collate([d[key] for d in data]) for key in data[0]}
-            elif isinstance(data[0], torch.Tensor):
-                collated_data = torch.stack(data)
-            elif isinstance(data[0], np.ndarray):
-                collated_data = torch.tensor(np.stack(data))
-            elif isinstance(data[0], (int, float)) or isinstance(data[0], list):
-                # print(data)
-                collated_data = torch.tensor(data)
-            else:
-                collated_data = data
-            return collated_data
-
-        for key in batch_signals:
-            # print(key)
-            batch_signals[key] = recursive_collate(batch_signals[key])
-    
-        return batch_signals        
+          
     def get_batch_iterator(self, dataloader: DataLoader):
         """
         创建一个每次获取 batch_size 数据的迭代器。
@@ -335,6 +309,8 @@ class PRLTask(object):
         def recursive_to_device(data, device):
             if isinstance(data, dict):
                 return {k: recursive_to_device(v, device) for k, v in data.items()}
+            elif isinstance(data, list):
+                return [recursive_to_device(v, device) for v in data]
             elif isinstance(data, torch.Tensor):
                 return data.to(device)
             else:
@@ -344,6 +320,60 @@ class PRLTask(object):
         
         return sample
 
+    def collate_fn(self, batch: List[Dict[str, Any]]) -> Dict[str, Any]:
+        """
+        Custom collate function for batching data.
+
+        This function processes a batch of data, which is a list of dictionaries,
+        and combines them into a single dictionary with batched tensors or arrays.
+
+        Args:
+            batch (List[Dict[str, Any]]): A list of dictionaries, where each dictionary
+                                        represents a single data sample.
+
+        Returns:
+            Dict[str, Any]: A dictionary containing batched data.
+        """
+        # Initialize a dictionary to store batched signals
+        batch_signals = {key: [] for key in batch[0]}
+
+        # Collect data for each key
+        for item in batch:
+            for key, value in item.items():
+                batch_signals[key].append(value)
+
+        # Recursive function to process nested dictionaries
+        def recursive_collate(data: List[Any]) -> Any:
+            """
+            Recursively collate data into tensors or arrays.
+
+            Args:
+                data (List[Any]): A list of data items to be collated.
+
+            Returns:
+                Any: Collated data as tensors, arrays, or other supported types.
+            """
+            if isinstance(data[0], dict):
+                # Process nested dictionaries
+                return {key: recursive_collate([d[key] for d in data]) for key in data[0]}
+            elif isinstance(data[0], torch.Tensor):
+                # Stack tensors
+                return torch.stack(data)
+            elif isinstance(data[0], np.ndarray):
+                # Convert numpy arrays to tensors
+                return torch.tensor(np.stack(data))
+            elif isinstance(data[0], (int, float, list)):
+                # Convert scalars or lists to tensors
+                return torch.tensor(data)
+            else:
+                # Return data as-is for unsupported types
+                return data
+
+        # Apply recursive collation to each key
+        for key in batch_signals:
+            batch_signals[key] = recursive_collate(batch_signals[key])
+
+        return batch_signals  
     
     def train_step(self, model: torch.nn.Module, sample: dict[str, torch.Tensor], *args, **kwargs):
         raise NotImplementedError

@@ -71,34 +71,27 @@ class Normalize(BaseTransform):
             # print("Std:", std)
             result['signals'] = (signals - mean) / (std + self.epsilon)
         elif self.method == 'zscore_per_channel':
-            mean = self.mean if self.mean is not None else np.mean(signals, axis=0, keepdims=True)
-            std = self.std if self.std is not None else np.std(signals, axis=0, keepdims=True)
+            mean = self.mean if self.mean is not None else np.mean(signals, axis=1, keepdims=True)
+            std = self.std if self.std is not None else np.std(signals, axis=1, keepdims=True)
             # print("Mean:", mean)
             # print("Std:", std)
             result['signals'] = (signals - mean) / (std + self.epsilon)
         elif self.method == 'min_max':
-            if self.data_max is not None and self.data_min is not None:
-                max_scale = self.data_max - self.data_min
-                scale = 2 * (np.clip((signals.max() - signals.min()) / max_scale, 0, 1) - 0.5)
-            if len(signals.shape) == 2:
-                xmin = signals.min()
-                xmax = signals.max()
-                if xmax - xmin == 0:
-                    signals = np.zeros_like(signals)
-                    return result
-            elif len(signals.shape) == 3:
-                xmin = np.min(np.min(signals, axis=1, keepdims=True), axis=-1, keepdims=True)
-                xmax = np.max(np.max(signals, axis=1, keepdims=True), axis=-1, keepdims=True)
-                constant_trials = (xmax - xmin) == 0
-                if np.any(constant_trials):
-                    xmax[constant_trials] += 1e-6
-
-            signals = (signals - xmin) / (xmax - xmin)
-            signals -= 0.5
-            signals += (self.high + self.low) / 2
-            signals *= (self.high - self.low)
-            if self.data_max is not None:
-                signals = np.concatenate([signals, np.ones((1, signals.shape[-1])) * scale], axis=0)
+            processed_signals = []
+            for channel_data in signals:
+                xmin = channel_data.min()
+                xmax = channel_data.max()
+                if xmax - xmin == 0:  # 如果通道数据是常量
+                    processed_signals.append(np.zeros_like(channel_data))
+                else:
+                    # 逐通道归一化
+                    normalized = (channel_data - xmin) / (xmax - xmin)
+                    normalized -= 0.5
+                    normalized += (self.high + self.low) / 2
+                    normalized *= (self.high - self.low)
+                    processed_signals.append(normalized)
+            # 将处理后的通道数据重新组合为 (通道, 采样点) 的形状
+            signals = np.array(processed_signals)
             result['signals'] = signals
         else:
             raise ValueError(f"Unsupported normalization method: {self.method}")

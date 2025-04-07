@@ -15,30 +15,31 @@ import mne
 import torch
 import numpy as np
 from dataset import BaseDataset
-from typing import Any, Callable, Union
+from typing import Any, Callable, Union, Dict, Generator
 from dataset.constants.standard_channels import EEG_CHANNELS_ORDER
 
 
 
 class TUEVDataset(BaseDataset):
-    def __init__(self,
-                 root_path: str = './EEG_raw',
-                 chunk_size: int = 800,
-                 overlap: int = 0,
-                 num_channel: int = 62,
-                 online_transform: Union[None, Callable] = None,
-                 offline_transform: Union[None, Callable] = None,
-                 label_transform: Union[None, Callable] = None,
-                 before_trial: Union[None, Callable] = None,
-                 after_trial: Union[Callable, None] = None,
-                 after_session: Union[Callable, None] = None,
-                 after_subject: Union[Callable, None] = None,
-                 io_path: Union[None, str] = None,
-                 io_size: int = 1048576,
-                 io_mode: str = 'lmdb',
-                 num_worker: int = 0,
-                 verbose: bool = True,
-                 ):
+    def __init__(
+        self,
+        root_path: str = './EEG_raw',
+        chunk_size: int = 800,
+        overlap: int = 0,
+        num_channel: int = 62,
+        online_transform: Union[None, Callable] = None,
+        offline_transform: Union[None, Callable] = None,
+        label_transform: Union[None, Callable] = None,
+        before_trial: Union[None, Callable] = None,
+        after_trial: Union[Callable, None] = None,
+        after_session: Union[Callable, None] = None,
+        after_subject: Union[Callable, None] = None,
+        io_path: Union[None, str] = None,
+        io_size: int = 1048576,
+        io_mode: str = 'lmdb',
+        num_worker: int = 0,
+        verbose: bool = True,
+    ) -> None:
         # if io_path is None:
         #     io_path = get_random_dir_path(dir_prefix='datasets')
 
@@ -64,6 +65,7 @@ class TUEVDataset(BaseDataset):
         super().__init__(**params)
         # save all arguments to __dict__
         self.__dict__.update(params)
+    
     def set_records(self, root_path: str = None, **kwargs):
         assert os.path.exists(
             root_path
@@ -124,11 +126,13 @@ class TUEVDataset(BaseDataset):
         return result
         
     @staticmethod
-    def process_record(record, 
-                       signal_types,
-                       result,
-                       offline_transform,
-                       **kwargs):
+    def process_record(
+        record, 
+        signal_types,
+        result,
+        offline_transform,
+        **kwargs
+    ) -> Generator[Dict[str, Any], None, None]:
         file_name = os.path.splitext(os.path.basename(record))[0]
         # print(result['eeg']['signals'])
         if not offline_transform is None:

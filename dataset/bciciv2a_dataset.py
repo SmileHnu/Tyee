@@ -15,28 +15,30 @@ import torch
 import numpy as np
 import scipy.io as scio
 from dataset import BaseDataset
-from typing import Any, Callable, Union, Dict
+from typing import Any, Callable, Union, Generator, Dict, List
 
 class BCICIV2ADataset(BaseDataset):
-    def __init__(self,
-                 root_path: str = './BCICIV_2a_mat',
-                 offset: int = 0,
-                 chunk_size: int = 7 * 250,
-                 overlap: int = 0,
-                 num_channel: int = 22,
-                 skip_trial_with_artifacts: bool = False,
-                 online_transform: Union[None, Callable] = None,
-                 offline_transform: Union[None, Callable] = None,
-                 label_transform: Union[None, Callable] = None,
-                 before_trial: Union[None, Callable] = None,
-                 after_trial: Union[Callable, None] = None,
-                 after_session: Union[Callable, None] = None,
-                 after_subject: Union[Callable, None] = None,
-                 io_path: Union[None, str] = None,
-                 io_size: int = 1048576,
-                 io_mode: str = 'lmdb',
-                 num_worker: int = 0,
-                 verbose: bool = True):
+    def __init__(
+        self,
+        root_path: str = './BCICIV_2a_mat',
+        offset: int = 0,
+        chunk_size: int = 7 * 250,
+        overlap: int = 0,
+        num_channel: int = 22,
+        skip_trial_with_artifacts: bool = False,
+        online_transform: Union[None, Callable] = None,
+        offline_transform: Union[None, Callable] = None,
+        label_transform: Union[None, Callable] = None,
+        before_trial: Union[None, Callable] = None,
+        after_trial: Union[Callable, None] = None,
+        after_session: Union[Callable, None] = None,
+        after_subject: Union[Callable, None] = None,
+        io_path: Union[None, str] = None,
+        io_size: int = 1048576,
+        io_mode: str = 'lmdb',
+        num_worker: int = 0,
+        verbose: bool = True
+    ) -> None:
         params = {
             'root_path': root_path,
             'offset': offset,
@@ -61,7 +63,7 @@ class BCICIV2ADataset(BaseDataset):
         # save all arguments to __dict__
         self.__dict__.update(params)
 
-    def set_records(self, root_path: str = './BCICIV_2a_mat', **kwargs):
+    def set_records(self, root_path: str = './BCICIV_2a_mat', **kwargs) -> List:
         assert os.path.exists(
             root_path
         ), f'root_path ({root_path}) does not exist. Please download the dataset and set the root_path to the downloaded path.'
@@ -84,17 +86,19 @@ class BCICIV2ADataset(BaseDataset):
         return result
     
     @staticmethod
-    def process_record(record: str,
-                       result: Dict,
-                       signal_types: list,
-                       offset: int = 0,
-                       chunk_size: int = 7 * 250,
-                       overlap: int = 0,
-                       num_channel: int = 22,
-                       skip_trial_with_artifacts: bool = False,
-                       before_trial: Union[None, Callable] = None,
-                       offline_transform: Union[None, Callable] = None,
-                       **kwargs):
+    def process_record(
+        record: str,
+        result: Dict,
+        signal_types: list,
+        offset: int = 0,
+        chunk_size: int = 7 * 250,
+        overlap: int = 0,
+        num_channel: int = 22,
+        skip_trial_with_artifacts: bool = False,
+        before_trial: Union[None, Callable] = None,
+        offline_transform: Union[None, Callable] = None,
+        **kwargs
+    ) -> Generator[Dict[str, Any], None, None]:
 
         if chunk_size <= 0:
             dynamic_chunk_size = 7 * 250
@@ -182,7 +186,7 @@ class BCICIV2ADataset(BaseDataset):
                     start_at = start_at + step
                     end_at = start_at + dynamic_chunk_size
     
-    def __getitem__(self, index):
+    def __getitem__(self, index) -> Dict:
         info = self.read_info(index)
         
         signal_index = str(info['clip_id'])

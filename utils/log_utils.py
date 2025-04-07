@@ -12,49 +12,69 @@
 import os
 import yaml
 import logging
-
 def init_logging(log_dir: str):
     """
-    初始化日志记录器，设置基本的日志配置。
+    Initialize the logger with basic configurations.
 
-    :param log_dir: str, 日志文件存放的目录。
-    :return: None, 配置好的日志记录器和文件已经初始化。
+    Args:
+        log_dir (str): Directory where the log file will be stored.
+
+    Returns:
+        None
     """
-    # 创建日志文件夹
+    # Create the log directory if it does not exist
     os.makedirs(log_dir, exist_ok=True)
     log_file = os.path.join(log_dir, "log.log")
 
-    # 设置日志格式和配置
+    # Define the log format
     log_format = "[%(asctime)s][%(name)s][%(levelname)s] - %(message)s"
 
-    # 只进行一次日志配置
+    # Configure the logging system
     logging.basicConfig(
         level=logging.INFO,
         format=log_format,
-        
         handlers=[
-            logging.StreamHandler(),
-            logging.FileHandler(log_file),
+            logging.StreamHandler(),  # Log to the console
+            logging.FileHandler(log_file),  # Log to a file
         ]
     )
-    print("配置成功！")
+    print("Logging initialized successfully!")
 
-def save_config(cfg, exp_dir):
-    """将配置文件保存到experiment目录下的config.yaml。"""
+
+def save_config(cfg: dict, exp_dir: str):
+    """
+    Save the configuration dictionary to a YAML file in the experiment directory.
+
+    Args:
+        cfg (dict): The configuration dictionary to save.
+        exp_dir (str): The experiment directory where the config file will be saved.
+
+    Returns:
+        None
+    """
     config_file = os.path.join(exp_dir, "config.yaml")
     with open(config_file, "w", encoding='utf-8') as f:
         yaml.dump(cfg, f, default_flow_style=False, allow_unicode=True)
 
-def create_experiment_directories(exp_dir):
-    """创建实验目录结构，包括保存log, config, checkpoint, 和 TensorBoard文件夹。"""
-    # 创建实验根目录
+
+def create_experiment_directories(exp_dir: str):
+    """
+    Create the directory structure for an experiment, including subdirectories for logs, checkpoints, and TensorBoard.
+
+    Args:
+        exp_dir (str): The root directory for the experiment.
+
+    Returns:
+        tuple: Paths to the TensorBoard directory and the checkpoint directory.
+    """
+    # Create the root experiment directory
     os.makedirs(exp_dir, exist_ok=True)
 
-    # 创建TensorBoard文件夹
-    tb_dir = os.path.join(exp_dir, f"tb")
+    # Create the TensorBoard directory
+    tb_dir = os.path.join(exp_dir, "tb")
     os.makedirs(tb_dir, exist_ok=True)
 
-    # 创建Checkpoint文件夹
+    # Create the checkpoint directory
     checkpoint_dir = os.path.join(exp_dir, "checkpoint")
     os.makedirs(checkpoint_dir, exist_ok=True)
 

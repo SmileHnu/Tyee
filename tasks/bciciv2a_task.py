@@ -28,7 +28,8 @@ class BCICIV2aTask(PRLTask):
         # print(self.model_params)
     
     def build_model(self):
-        model_name = lazy_import_module('models', self.model_select)
+        module_name, class_name = self.model_select.rsplit('.', 1)
+        model_name = lazy_import_module(f'models.{module_name}', class_name)
         model = model_name(**self.model_params)
         return model
         

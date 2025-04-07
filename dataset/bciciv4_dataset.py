@@ -14,32 +14,35 @@ import os
 import copy
 import scipy.io as scio
 from scipy.ndimage import label
+from sklearn.preprocessing import MinMaxScaler
+from sklearn.preprocessing import RobustScaler
 from scipy.interpolate import interp1d
 import numpy as np
 from dataset import BaseDataset
-from typing import Any, Callable, Union
-from dataset.constants.standard_channels import EEG_CHANNELS_ORDER
+from typing import Any, Callable, Union, Dict, Generator
 
 class BCICIV4Dataset(BaseDataset):
-    def __init__(self,
-                 root_path: str = './BCICIV4',
-                 chunk_size: int = 40,
-                 overlap: int = 0,
-                 num_channel: int = 62,
-                 signal_types: list = ['ecog'],
-                 online_transform: Union[None, Callable] = None,
-                 offline_transform: Union[None, Callable] = None,
-                 label_transform: Union[None, Callable] = None,
-                 before_trial: Union[None, Callable] = None,
-                 after_trial: Union[Callable, None] = None,
-                 after_session: Union[Callable, None] = None,
-                 after_subject: Union[Callable, None] = None,
-                 io_path: Union[None, str] = None,
-                 io_size: int = 1048576,
-                 io_mode: str = 'lmdb',
-                 num_worker: int = 0,
-                 verbose: bool = True,
-                 ):
+    def __init__(
+        self,
+        root_path: str = './BCICIV4',
+        chunk_size: int = 40,
+        overlap: int = 0,
+        time_delay_secs: float = 0.2,
+        num_channel: int = 62,
+        signal_types: list = ['ecog'],
+        online_transform: Union[None, Callable] = None,
+        offline_transform: Union[None, Callable] = None,
+        label_transform: Union[None, Callable] = None,
+        before_trial: Union[None, Callable] = None,
+        after_trial: Union[Callable, None] = None,
+        after_session: Union[Callable, None] = None,
+        after_subject: Union[Callable, None] = None,
+        io_path: Union[None, str] = None,
+        io_size: int = 1048576,
+        io_mode: str = 'lmdb',
+        num_worker: int = 0,
+        verbose: bool = True,
+    ) -> None:
         # if io_path is None:
         #     io_path = get_random_dir_path(dir_prefix='datasets')
 
@@ -48,6 +51,7 @@ class BCICIV4Dataset(BaseDataset):
             'root_path': root_path,
             'chunk_size': chunk_size,
             'overlap': overlap,
+            'time_delay_secs': time_delay_secs,
             'num_channel': num_channel,
             'signal_types': signal_types,
             'online_transform': online_transform,
@@ -86,10 +90,10 @@ class BCICIV4Dataset(BaseDataset):
         
         data = scio.loadmat(record)
         test_label = scio.loadmat(record.replace('comp.mat','testlabels.mat'))
-        train_data = data['train_data'].T
-        train_dg = data['train_dg']
-        test_data = data['test_data'].T
-        test_dg = test_label['test_dg']
+        train_data = data['train_data'].astype(np.float64).T
+        train_dg = data['train_dg'].astype(np.float64).T
+        test_data = data['test_data'].astype(np.float64).T
+        test_dg = test_label['test_dg'].astype(np.float64).T
         result = {
             'train':{
                 'data': train_data,
@@ -102,24 +106,22 @@ class BCICIV4Dataset(BaseDataset):
         }
         return result
         
-        
     @staticmethod
-    def process_record(record, 
-                       result,
-                       signal_types,
-                       chunk_size,
-                       overlap,
-                       offline_transform,
-                       **kwargs):
+    def process_record(
+        record, 
+        result,
+        signal_types,
+        chunk_size,
+        overlap,
+        time_delay_secs,
+        offline_transform,
+        **kwargs
+    ) -> Generator[Dict[str, Any], None, None]:
         file_name = os.path.splitext(os.path.basename(record))[0]
         subject_id = file_name.split('_')[0]
         raw_result = copy.deepcopy(result)
-        raw_freq = 1000
         for key in ['train', 'test']:
             # print(f'Processing {file_name}...')
-            print(f'Processing record: {file_name}——{key}')
-            print(raw_result[key]['data'])
-            print(raw_result[key]['data'].shape)
             result = {
                 'ecog' : {
                     'signals': raw_result[key]['data'].copy(),
@@ -137,32 +139,21 @@ class BCICIV4Dataset(BaseDataset):
                     return None
                 
             new_freq = result['ecog']['sampling_rate']
-            # 如果采样率发生变化，重新映射 label
-            if new_freq != raw_freq:
-                # 计算原始时间轴和新时间轴
-                original_time = np.linspace(0, len(raw_result[key]['dg']) / raw_freq, len(raw_result[key]['dg']))
-                new_time = np.linspace(0, result['ecog']['signals'].shape[1] / new_freq, result['ecog']['signals'].shape[1])  # 修正为数据的时间轴
-
-                # 初始化插值后的 dg
-                interpolated_dg = []
-
-                # 对每个通道分别进行插值
-                for channel in range(raw_result[key]['dg'].shape[1]):  # 遍历每个通道
-                    channel_data = raw_result[key]['dg'][:, channel]  # 提取当前通道的数据
-                    dg_interp = interp1d(original_time, channel_data, kind='linear', fill_value="extrapolate")
-                    interpolated_channel = dg_interp(new_time)  # 对当前通道进行插值
-                    interpolated_dg.append(interpolated_channel)
-
-                # 将插值后的通道数据重新组合成二维数组
-                raw_result[key]['dg'] = np.stack(interpolated_dg, axis=1).astype(raw_result[key]['dg'].dtype)
-            dg = raw_result[key]['dg'].copy().T
+            # print(raw_result[key]['dg'].shape)
+            raw_result[key]['dg'] = interpolate_fingerflex(raw_result[key]['dg'], needed_hz=new_freq,)
+            dg = raw_result[key]['dg'].copy()
             ecog = result['ecog']['signals'].copy()
+            dg, ecog = crop_for_time_delay(dg, ecog, time_delay_sec=time_delay_secs , fs=new_freq)
+            scaler = MinMaxScaler()
+            scaler.fit(dg.T)
+            dg = scaler.transform(dg.T).T
+            
             start = 0
             end = chunk_size
             # 计算重叠步长
             stride = chunk_size - overlap
             idx = 0
-            while end <= dg.shape[1]:
+            while end <= dg.shape[-1]:
                 # print(f'Processing trial: {idx}')
                 clip_id = f'{idx}_{key}_{file_name}'
                 info = {
@@ -171,11 +162,11 @@ class BCICIV4Dataset(BaseDataset):
                     'trial_id': key,
                     'start_at': start,
                     'end_at': end,
-                    'label': dg[:,end-1:end]
+                    'label': dg[...,start:end]
                 }
                 result = {
                     'ecog': {
-                        'signals': ecog[:, start:end],
+                        'signals': ecog[..., start:end],
                         'sampling_rate': result['ecog']['sampling_rate'],
                         'channels': result['ecog']['channels'],
                     }
@@ -216,3 +207,57 @@ class BCICIV4Dataset(BaseDataset):
                 if 'channels' in result[signal_type]:
                     del result[signal_type]['channels']
         return result
+    
+def interpolate_fingerflex(finger_flex, cur_fs=1000, true_fs=25, needed_hz=100, interp_type='cubic'):
+    
+    """
+    Interpolation of the finger motion recording to match the new sampling rate
+    :param finger_flex: Initial sequences with finger flexions data
+    :param cur_fs: ECoG sampling rate
+    :param true_fs: Actual finger motions recording sampling rate
+    :param needed_hz: Required sampling rate
+    :param interp_type: Type of interpolation. By default - cubic
+    :return: Returns an interpolated set of finger motions with the desired sampling rate
+    """
+    
+    print("Interpolating fingerflex...")
+    downscaling_ratio = cur_fs // true_fs
+    print("Computing true_fs values...")
+    finger_flex_true_fs = finger_flex[:, ::downscaling_ratio]
+    finger_flex_true_fs = np.c_[finger_flex_true_fs,
+        finger_flex_true_fs.T[-1]]  # Add as the last value on the interpolation edge the last recorded
+    # Because otherwise it is not clear how to interpolate the tail at the end
+
+    upscaling_ratio = needed_hz // true_fs
+    
+    ts = np.asarray(range(finger_flex_true_fs.shape[1])) * upscaling_ratio
+    
+    print("Making funcs...")
+    interpolated_finger_flex_funcs = [interp1d(ts, finger_flex_true_fs_ch, kind=interp_type) for
+                                     finger_flex_true_fs_ch in finger_flex_true_fs]
+    ts_needed_hz = np.asarray(range(finger_flex_true_fs.shape[1] * upscaling_ratio)[
+                              :-upscaling_ratio])  # Removing the extra added edge
+    
+    print("Interpolating with needed frequency")
+    interpolated_finger_flex = np.array([[interpolated_finger_flex_func(t) for t in ts_needed_hz] for
+                                         interpolated_finger_flex_func in interpolated_finger_flex_funcs])
+    return interpolated_finger_flex
+
+
+def crop_for_time_delay(finger_flex : np.ndarray, spectrogramms : np.ndarray, time_delay_sec : float, fs : int):
+    """
+    Taking into account the delay between brain waves and movements
+    :param finger_flex: Finger flexions
+    :param spectrogramms: Computed spectrogramms
+    :param time_delay_sec: time delay hyperparameter
+    :param fs: Sampling rate
+    :return: Shifted series with a delay
+    """
+
+    time_delay = int(time_delay_sec*fs)
+
+    # the first motions do not depend on available data
+    finger_flex_cropped = finger_flex[..., time_delay:] 
+    # The latter spectrograms have no corresponding data
+    spectrogramms_cropped = spectrogramms[..., :spectrogramms.shape[-1]-time_delay]
+    return finger_flex_cropped, spectrogramms_cropped

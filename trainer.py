@@ -20,18 +20,37 @@ from torch.nn.parallel import DistributedDataParallel as DDP
 
 INT_MAX = 2**31 - 1
 
-class Trainer(object):
-    def __init__(self, cfg, rank, world_size) -> None:
+class Trainer:
+    """
+    Trainer class for managing the training, evaluation, and checkpointing process.
 
+    Args:
+        cfg (dict): Configuration dictionary.
+        rank (int): Rank of the current process in distributed training.
+        world_size (int): Total number of processes in distributed training.
+    """
+
+    def __init__(self, cfg, rank, world_size) -> None:
+        """
+        Initialize the Trainer class.
+
+        Args:
+            cfg (dict): Configuration dictionary.
+            rank (int): Rank of the current process in distributed training.
+            world_size (int): Total number of processes in distributed training.
+        """
         self.cfg = cfg
-        
-        # 获取任务名称
+        self.rank = rank
+        self.world_size = world_size
+
+        # Task configuration
         self.task_select = get_nested_field(self.cfg, 'task.select', '')
         self.task = self._build_task()
-        # 自动混合精度配置
+
+        # Mixed precision configuration
         self.fp16 = get_nested_field(self.cfg, 'trainer.fp16', False)
 
-        # 训练配置
+        # Training configuration
         self._total_steps = get_nested_field(self.cfg, 'trainer.total_steps', INT_MAX)
         self._total_epochs = get_nested_field(self.cfg, 'trainer.total_epochs', INT_MAX)
         self._update_interval = get_nested_field(self.cfg, 'trainer.update_interval', 1)
@@ -41,337 +60,326 @@ class Trainer(object):
         self._batch_size = get_nested_field(self.cfg, 'dataset.batch_size', 1)
         self._max_grad_norm = get_nested_field(self.cfg, 'trainer.max_grad_norm', None)
 
-        # 指标
-        self.eval_metric = get_nested_field(self.cfg, 'trainer.eval_metric', None)
+        # Metrics configuration
         metrics_list = get_nested_field(self.cfg, 'trainer.metrics', None)
+        self.eval_metric = get_nested_field(self.cfg, 'trainer.eval_metric.select', metrics_list[0])
+        self.eval_metric_mode = get_nested_field(self.cfg, 'trainer.eval_metric.mode', 'max')
         self._metrics_evaluator = MetricEvaluator(metrics_list)
-        
-        # 从配置中读取实验保存路径
+
+        # Experiment directories
         self.exp_dir = get_nested_field(self.cfg, "common.exp_dir")
         self.tb_root = get_nested_field(self.cfg, "common.tb_dir")
         self.checkpoint_root = get_nested_field(self.cfg, "common.checkpoint_dir")
 
-        # DDP配置
-        self.world_size = world_size
-        self.rank = rank
-
-        # 执行训练
+    def run(self):
+        """
+        Execute the training process, including initialization, training, evaluation, and checkpointing.
+        """
         for fold, (train_dataset, dev_dataset, eval_dataset) in enumerate(self.task.get_datasets()):
-            # 实例化训练基础组件
             self._init_components(fold, train_dataset, dev_dataset, eval_dataset)
-
             self.logger.info(f"Start training for fold {fold + 1}")
-            # 训练
-            self.train()
-            # 打印最好的指标
+            self.train_loop()
             if self.best_metric_value is not None:
                 self.logger.info(f"Best {self.eval_metric}: {self.best_metric_value}")
-        
+
     def _build_task(self) -> object:
+        """
+        Dynamically import and build the task class.
+
+        Returns:
+            object: An instance of the task class.
+        """
         module_name, class_name = self.task_select.rsplit('.', 1)
         task = lazy_import_module(f'tasks.{module_name}', class_name)
         return task(self.cfg)
-    
+
     def _init_components(self, fold, train_dataset, dev_dataset, test_dataset):
-        # 配置logging
+        """
+        Initialize components for training, including logging, datasets, and model.
+
+        Args:
+            fold (int): Current fold index.
+            train_dataset (Dataset): Training dataset.
+            dev_dataset (Dataset): Validation dataset.
+            test_dataset (Dataset): Test dataset.
+        """
+        # Logging configuration
         self.logger = logging.getLogger(__name__)
-        # 配置checkpoint目录
+
+        # Checkpoint directory
         self.checkpoint_dir = os.path.join(self.checkpoint_root, f'fold_{fold}')
         os.makedirs(self.checkpoint_dir, exist_ok=True)
-        # 创建 TensorBoard 日志目录
+
+        # TensorBoard directory
         tb_fold_dir = os.path.join(self.tb_root, f'fold_{fold}')
         os.makedirs(tb_fold_dir, exist_ok=True)
-        
-        # TensorBoard日志
         self.writer = SummaryWriter(log_dir=tb_fold_dir)
 
-        # 加载数据集
+        # Dataset configuration
         self.train_dataset = train_dataset
         self.dev_dataset = dev_dataset
         self.test_dataset = test_dataset
 
-        # 构造采样器
+        # Samplers
         self.train_sampler = self.task.build_sampler(self.train_dataset, self.world_size, self.rank)
-        if self.dev_dataset is not None:
-            self.dev_sampler = self.task.build_sampler(self.dev_dataset, self.world_size, self.rank)
-        else:
-            self.dev_sampler = None
-        if self.test_dataset is not None:
-            self.test_sampler = self.task.build_sampler(self.test_dataset, self.world_size, self.rank)
-        else:
-            self.test_sampler = None
-        
+        self.dev_sampler = self.task.build_sampler(self.dev_dataset, self.world_size, self.rank) if self.dev_dataset else None
+        self.test_sampler = self.task.build_sampler(self.test_dataset, self.world_size, self.rank) if self.test_dataset else None
 
-        # 构造数据加载器
+        # Data loaders
         self.train_loader = self.task.build_dataloader(self.train_dataset, self._batch_size, sampler=self.train_sampler, shuffle=True)
-        if self.dev_dataset is not None:
-            self.dev_loader = self.task.build_dataloader(self.dev_dataset, self._batch_size, sampler=self.dev_sampler, shuffle=False)
-        else:
-            self.dev_loader = None
-        if self.test_dataset is not None:
-            self.test_loader = self.task.build_dataloader(self.test_dataset, self._batch_size, sampler=self.test_sampler, shuffle=False)
-        else:
-            self.test_loader = None
+        self.dev_loader = self.task.build_dataloader(self.dev_dataset, self._batch_size, sampler=self.dev_sampler, shuffle=False) if self.dev_dataset else None
+        self.test_loader = self.task.build_dataloader(self.test_dataset, self._batch_size, sampler=self.test_sampler, shuffle=False) if self.test_dataset else None
 
-        # 判定训练step
+        # Training steps and intervals
         niter_per_epoch = len(self.train_dataset) // (self._batch_size * self.world_size)
         self._total_steps = min(self._total_steps, self._total_epochs * niter_per_epoch)
+        self._eval_interval = self._eval_interval or niter_per_epoch
+        self._save_interval = self._save_interval or niter_per_epoch
 
-        if self._eval_interval is None:
-            self._eval_interval = niter_per_epoch
-        
-        if self._save_interval is None:
-            self._save_interval = niter_per_epoch
-
-        # 模型、优化器与学习率调度器
-        self.model = self.task.build_model()
+        # Model, optimizer, and scheduler
+        self.device = torch.device(self.rank)
+        self.model = self.task.build_model().to(self.device)
         self.optimizer = self.task.build_optimizer(self.model)
         self.lr_scheduler = self.task.build_lr_scheduler(self.optimizer, niter_per_epoch)
         self.step = 1
         self.best_metric_value = None
 
-
-        self.device = torch.device(self.rank)
-        self.model = self.model.to(self.device)
+        # Distributed training
         if self.world_size > 1:
             self.model = DDP(self.model, device_ids=[self.rank])
-        
-        # 如果使用FP16，初始化 GradScaler
+
+        # Mixed precision training
         self.scaler = torch.amp.GradScaler(enabled=self.fp16) if self.fp16 else None
 
-        # 检查是否启用了模型恢复
+        # Resume from checkpoint
         self.resume_enabled = get_nested_field(self.cfg, 'trainer.resume.enabled', False)
         if self.resume_enabled:
             resume_checkpoint = get_nested_field(self.cfg, 'trainer.resume.checkpoint', '')
             if not os.path.exists(resume_checkpoint):
-                raise FileExistsError(f"Resume checkpoint file {resume_checkpoint} not exists !")
+                raise FileNotFoundError(f"Resume checkpoint file {resume_checkpoint} does not exist!")
             self._load_checkpoint(resume_checkpoint)
             self.logger.info(f"Model loaded from checkpoint {resume_checkpoint}")
  
-    def train(self):
+    def train_loop(self):
         """
-        训练模型的主函数，执行训练过程，包括训练、评估、日志记录和模型保存等。
-
-        :param rank: int, 当前进程的rank，用于分布式训练中标识进程。
-        :param world_size: int, 总进程数，用于分布式训练中的参数设置。
+        Run the training and evaluation loop, including logging and checkpointing.
         """
-        
-
         iterator = self.task.get_batch_iterator(self.train_loader)
-        # 迭代数据集找到step对应的batch
+
+        # Skip to the current step's batch
         for _ in range((self.step - 1) % len(self.train_loader)):
             sample = self.task.load_sample(iterator, self.device)
-        # 初始化累积指标
+
+        # Initialize accumulated metrics
         accumulated_train_metrics = {}
 
         for step in range(self.step, self._total_steps + 1):
-            # 更新epoch和迭代器
+            # Update epoch and iterator
             if step % len(self.train_loader) == 0:
                 self.train_sampler.set_epoch(step // len(self.train_loader))
                 iterator = self.task.get_batch_iterator(self.train_loader)
-             # 训练步骤
+
+            # Perform a single training step
             train_result = self._train_step(iterator, step)
 
-            # 累积训练指标
+            # Accumulate training metrics
             for metric, value in train_result.items():
-                if metric not in accumulated_train_metrics:
-                    accumulated_train_metrics[metric] = 0
-                accumulated_train_metrics[metric] += value
+                accumulated_train_metrics[metric] = accumulated_train_metrics.get(metric, 0) + value
 
-            # 在更新参数之前，计算梯度范数
-            grad_norm = get_grad_norm(self.model.parameters(), norm_type=2)  # 可以选择L2范数
+            # Compute gradient norm before updating parameters
+            grad_norm = get_grad_norm(self.model.parameters(), norm_type=2)
 
-            # 打印lr
+            # Log optimizer-related metrics
             if self.rank == 0:
-                min_lr = 10.
-                max_lr = 0.
-                for group in self.optimizer.param_groups:
-                    min_lr = min(min_lr, group["lr"])
-                    max_lr = max(max_lr, group["lr"])
-                    weight_decay = group['weight_decay']
+                self._log_optimizer_metrics(step, grad_norm)
 
-                self.writer.add_scalar(f'opt/lr', max_lr, step)
-                self.writer.add_scalar(f'opt/min_lr', min_lr, step)
-                self.writer.add_scalar(f'opt/weight_decay', weight_decay, step)
-                self.writer.add_scalar(f'opt/grad_norm', grad_norm, step)
-            # 日志记录
+            # Log training metrics
             if step % self._log_interval == 0 and self.rank == 0:
-                # 计算平均训练指标
-                avg_train_metrics = {
-                    metric: round(value.item() / self._log_interval, 4) if isinstance(value, torch.Tensor) else round(value / self._log_interval, 4)
-                    for metric, value in accumulated_train_metrics.items()
-                }
-            
-                # 打印训练日志
-                self.logger.info(f"Train, Step {step}, Metrics: {avg_train_metrics}")
-                # 重置累积值
+                self._log_training_metrics(step, accumulated_train_metrics)
                 accumulated_train_metrics = {}
-                # 写入 TensorBoard
-                for metric, value in avg_train_metrics.items():
-                    self.writer.add_scalar(f'train/{metric}', value, step)
-                
-            # 验证集日志
+
+            # Evaluate on validation and test sets
             if step % self._eval_interval == 0:
-                
-                # 验证集评估
-                if self.dev_loader is not None:
-                    dev_result = self._eval_step(self.dev_loader)
-                # 测试集评估
-                if self.test_loader is not None:
-                    test_result = self._eval_step(self.test_loader)
+                self._evaluate(step)
 
-                if self.rank == 0:
-                    if self.dev_loader is not None:
-                        # 打印验证日志
-                        self.logger.info(f"Dev, Step {step}, Metrics: {dev_result}")
-
-                        # 写入 TensorBoard
-                        for metric, value in dev_result.items():
-                            self.writer.add_scalar(f'dev/{metric}', value, step)
-
-                    if self.test_loader is not None:
-                        # 打印测试日志
-                        self.logger.info(f"Test, Step {step}, Metrics: {test_result}")
-
-                        for metric, value in test_result.items():
-                            self.writer.add_scalar(f'test/{metric}', value, step)
-
-                    # 检查并保存最优模型
-                    self._check_and_save_best(dev_result, step)
-
-            # 保存检查点
+            # Save checkpoints
             if step % self._save_interval == 0 and self.rank == 0:
-                # 构造保存路径和文件名
-                checkpoint_filename = f"{self.checkpoint_dir}/checkpoint_step_{step}.pt"
+                self._save_checkpoint_step(step)
 
-                # 保存模型参数
-                self._save_checkpoint(checkpoint_filename, self.model, self.optimizer, self.lr_scheduler, step)
-
-                # 删除之前的检查点文件（如果存在）
-                if hasattr(self, 'last_checkpoint') and os.path.exists(self.last_checkpoint):
-                    os.remove(self.last_checkpoint)
-
-                # 更新记录的上一次检查点文件名
-                self.last_checkpoint = checkpoint_filename
-
-                # 记录日志
-                self.logger.info(f"Checkpoint saved for step {step}")
-    
     def _train_step(self, iterator, step):
         """
-        执行单个训练步骤，包括前向传播、损失计算、反向传播、参数更新，以及指标的更新与计算。
+        Perform a single training step, including forward pass, loss computation, backward pass, and parameter update.
 
-        :param iterator: iterator, 用于获取当前批次数据的迭代器。
-        :param model: torch.nn.Module, 当前模型。
-        :param optimizer: torch.optim.Optimizer, 用于优化模型参数的优化器。
-        :param lr_scheduler: torch.optim.lr_scheduler.LRScheduler, 学习率调度器，用于调整学习率。
-        :param scaler: torch.cuda.amp.GradScaler, 用于混合精度训练时的梯度缩放。
-        :param device: torch.device, 模型和数据的计算设备（如GPU）。
-        :return: dict, 包含损失和计算出的指标的字典。
+        Args:
+            iterator: Iterator for the current batch.
+            step (int): Current training step.
+
+        Returns:
+            dict: A dictionary containing loss and computed metrics.
         """
         sample = self.task.load_sample(iterator, self.device)
         self.model.train()
 
-        # 使用自动混合精度（autocast）
+        # Use automatic mixed precision (AMP)
         with torch.amp.autocast('cuda', enabled=self.fp16):
-            result = self.task.train_step(self.model, sample)  # 执行训练步骤
-            loss = result['loss'].clone()  # 提取损失
+            result = self.task.train_step(self.model, sample)
+            loss = result['loss'].clone()
             loss /= self._update_interval
-        # 累积梯度
+
+        # Backward pass
         if self.fp16:
-            self.scaler.scale(loss).backward()  # 使用缩放后的梯度反向传播
+            self.scaler.scale(loss).backward()
         else:
-            loss.backward()  # 不使用FP16，常规反向传播
+            loss.backward()
 
-        # 每 self.update_interval 步更新一次参数
-        if step  % self._update_interval == 0:
-            if self.fp16:
-                # 反缩放梯度
-                self.scaler.unscale_(self.optimizer)  # 反缩放梯度
+        # Update parameters every `update_interval` steps
+        if step % self._update_interval == 0:
+            self._update_parameters()
 
-                # 裁剪梯度
-                if self._max_grad_norm is not None:
-                    torch.nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=self._max_grad_norm)  # 裁剪梯度
-
-                # 更新参数
-                self.scaler.step(self.optimizer)  # 更新参数
-                self.scaler.update()  # 更新Scaler状态
-            else:
-                # 裁剪梯度
-                if self._max_grad_norm is not None:
-                    torch.nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=self._max_grad_norm)  # 裁剪梯度
-
-                self.optimizer.step()  # 更新参数
-
-            # 清零梯度
-            self.optimizer.zero_grad()
-
+        # Update learning rate scheduler
         if self.lr_scheduler:
             self.lr_scheduler.step()
 
-        # 如果是自监督模型，需要额外的步骤
-        self.task.momentum_update(self.model)
-
-        # 更新指标
+        # Update metrics
         if 'output' in result:
-            self._metrics_evaluator.update_metrics(result)  # 更新指标数据
-            metrics = self._metrics_evaluator.calculate_metrics()  # 计算当前步骤的指标
+            self._metrics_evaluator.update_metrics(result)
+            metrics = self._metrics_evaluator.calculate_metrics()
         else:
             metrics = None
 
-        # 聚合和平均损失与指标
-        result = self._aggregate_metrics(result['loss'], metrics)
+        return self._aggregate_metrics(result['loss'].item(), metrics)
 
-        return result
+    def _update_parameters(self):
+        """
+        Update model parameters, including gradient clipping and optimizer step.
+        """
+        if self.fp16:
+            self.scaler.unscale_(self.optimizer)
+            if self._max_grad_norm is not None:
+                torch.nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=self._max_grad_norm)
+            self.scaler.step(self.optimizer)
+            self.scaler.update()
+        else:
+            if self._max_grad_norm is not None:
+                torch.nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=self._max_grad_norm)
+            self.optimizer.step()
 
+        self.optimizer.zero_grad()
+
+    def _log_optimizer_metrics(self, step, grad_norm):
+        """
+        Log optimizer-related metrics, such as learning rate and gradient norm.
+
+        Args:
+            step (int): Current training step.
+            grad_norm (float): Gradient norm.
+        """
+        min_lr, max_lr, weight_decay = float('inf'), 0.0, 0.0
+        for group in self.optimizer.param_groups:
+            min_lr = min(min_lr, group["lr"])
+            max_lr = max(max_lr, group["lr"])
+            weight_decay = group['weight_decay']
+
+        self.writer.add_scalar('opt/lr', max_lr, step)
+        self.writer.add_scalar('opt/min_lr', min_lr, step)
+        self.writer.add_scalar('opt/weight_decay', weight_decay, step)
+        self.writer.add_scalar('opt/grad_norm', grad_norm, step)
+
+    def _log_training_metrics(self, step, accumulated_train_metrics):
+        """
+        Log training metrics to the console and TensorBoard.
+
+        Args:
+            step (int): Current training step.
+            accumulated_train_metrics (dict): Accumulated training metrics.
+        """
+        avg_train_metrics = {
+            metric: round(value.item() / self._log_interval, 4) if isinstance(value, torch.Tensor) else round(value / self._log_interval, 4)
+            for metric, value in accumulated_train_metrics.items()
+        }
+
+        self.logger.info(f"Train, Step {step}, Metrics: {avg_train_metrics}")
+        for metric, value in avg_train_metrics.items():
+            self.writer.add_scalar(f'train/{metric}', value, step)
+    
+    def _evaluate(self, step):
+        """
+        Evaluate the model on validation and test sets and log the results.
+
+        Args:
+            step (int): Current training step.
+        """
+        if self.dev_loader is not None:
+            dev_result = self._eval_step(self.dev_loader)
+        if self.test_loader is not None:
+            test_result = self._eval_step(self.test_loader)
+
+        if self.rank == 0:
+            if self.dev_loader is not None:
+                self.logger.info(f"Dev, Step {step}, Metrics: {dev_result}")
+                for metric, value in dev_result.items():
+                    self.writer.add_scalar(f'dev/{metric}', value, step)
+
+            if self.test_loader is not None:
+                self.logger.info(f"Test, Step {step}, Metrics: {test_result}")
+                for metric, value in test_result.items():
+                    self.writer.add_scalar(f'test/{metric}', value, step)
+
+            self._check_and_save_best(dev_result, step)
 
     def _eval_step(self, loader):
         """
-        执行单个评估步骤，包括模型评估、损失计算以及指标计算。
+        Perform a single evaluation step, including model evaluation, loss computation, and metric calculation.
 
-        :param model: torch.nn.Module, 当前模型。
-        :param loader: DataLoader, 用于加载数据的迭代器。
-        :param device: torch.device, 模型和数据的计算设备（如GPU）。
-        :param world_size: int, 分布式训练中的总进程数，用于计算全局的平均损失。
-        :return: dict, 包含总评估损失和计算出的指标。
+        Args:
+            loader (DataLoader): DataLoader for loading evaluation data.
+
+        Returns:
+            dict: A dictionary containing the total evaluation loss and computed metrics.
         """
         self.model.eval()
         with torch.no_grad():
-            total, correct = 0, 0
-            tot_eval_loss = 0
+            total_loss = 0
             iterator = self.task.get_batch_iterator(loader)
+
             for _ in range(len(loader)):
                 sample = self.task.load_sample(iterator, self.device)
-                # 使用自动混合精度（autocast）
+
+                # Use automatic mixed precision (AMP)
                 with torch.amp.autocast('cuda', enabled=self.fp16):
                     result = self.task.valid_step(self.model, sample)
-                    tot_eval_loss += result['loss'].item()  # 累加损失
-                total += 1
+                    total_loss += result['loss'].item()
 
-                self._metrics_evaluator.update_metrics(result)  # 更新指标
+                # Update metrics
+                self._metrics_evaluator.update_metrics(result)
 
-            metrics = self._metrics_evaluator.calculate_metrics()  # 计算最终的指标
+            # Calculate final metrics
+            metrics = self._metrics_evaluator.calculate_metrics()
 
-        # 聚合和平均损失与指标
-        result = self._aggregate_metrics(tot_eval_loss, metrics, total)
-
+        # Aggregate and average loss and metrics
+        result = self._aggregate_metrics(total_loss, metrics, len(loader))
         return result
+
     def _aggregate_metrics(self, loss, metrics, total=None):
         """
-        聚合和平均损失与指标。
+        Aggregate and average loss and metrics across processes (for distributed training).
 
-        :param loss: torch.Tensor 或 float, 当前步骤的损失。
-        :param metrics: dict, 当前步骤的指标。
-        :param world_size: int, 分布式训练中的总进程数。
-        :param total: int, 样本总数（仅在评估步骤中使用）。
-        :return: dict, 包含聚合和平均后的损失与指标的字典。
+        Args:
+            loss (float or torch.Tensor): Current step loss.
+            metrics (dict): Current step metrics.
+            total (int, optional): Total number of samples (used for averaging).
+
+        Returns:
+            dict: A dictionary containing aggregated and averaged loss and metrics.
         """
         if self.world_size > 1:
+            # Aggregate loss across processes
             if not isinstance(loss, torch.Tensor):
                 loss = torch.tensor(loss).to(self.device)
             dist.all_reduce(loss, op=dist.ReduceOp.SUM)
             loss /= self.world_size
 
+            # Aggregate metrics across processes
             if metrics is not None:
                 for metric, value in metrics.items():
                     if isinstance(value, torch.Tensor):
@@ -382,20 +390,12 @@ class Trainer(object):
                         tensor_value = torch.tensor(value).to(self.device)
                         dist.all_reduce(tensor_value, op=dist.ReduceOp.SUM)
                         metrics[metric] = round(tensor_value.item() / self.world_size, 4)
-            else:
-                metrics = {}
 
+        # Average loss over total samples if provided
         if total is not None:
-            if isinstance(loss, torch.Tensor):
-                loss = loss.item()
             loss /= total
 
-        # 确保 loss 是浮点数
-        if isinstance(loss, torch.Tensor):
-            loss = loss.item()
-
         result = {"loss": round(loss, 4)}
-        # 仅在 metrics 不为 None 时更新 result
         if metrics is not None:
             result.update(metrics)
 
@@ -403,23 +403,26 @@ class Trainer(object):
 
     def _check_and_save_best(self, dev_result, step):
         """
-        检查当前评估指标是否达到了最优，并保存最优模型。
+        Check if the current evaluation metric is the best and save the best model checkpoint.
 
-        :param dev_result: dict, 包含当前评估结果的字典。
+        Args:
+            dev_result (dict): Dictionary containing the current evaluation results.
+            step (int): Current training step.
         """
-        current_metric_value = dev_result.get(self.eval_metric, None)  # 获取当前评估指标的值
+        current_metric_value = dev_result.get(self.eval_metric, None)
 
-        # 初始化最优指标值和模型保存路径
         if current_metric_value is not None:
             save_best = False
 
-            # 如果已经有 best_metric_value，比较当前指标是否更优
-            if self.best_metric_value is not None:
-                if current_metric_value > self.best_metric_value:
+            # Compare with the best metric value based on eval_metric_mode
+            if self.eval_metric_mode == "max":
+                if self.best_metric_value is None or current_metric_value > self.best_metric_value:
+                    save_best = True
+            elif self.eval_metric_mode == "min":
+                if self.best_metric_value is None or current_metric_value < self.best_metric_value:
                     save_best = True
             else:
-                # 如果没有 best_metric_value，初始化为当前指标
-                save_best = True
+                raise ValueError(f"Invalid eval_metric_mode: {self.eval_metric_mode}. Must be 'max' or 'min'.")
 
             if save_best:
                 self.best_metric_value = current_metric_value
@@ -428,37 +431,74 @@ class Trainer(object):
                 self.logger.info(f"Best checkpoint saved with {self.eval_metric}: {current_metric_value}")
 
     def _state_dict(self, model, optimizer, lr_scheduler, step):
+        """
+        Create a state dictionary for saving checkpoints.
+
+        Args:
+            model (torch.nn.Module): The model to save.
+            optimizer (torch.optim.Optimizer): The optimizer to save.
+            lr_scheduler (torch.optim.lr_scheduler, optional): The learning rate scheduler to save.
+            step (int): Current training step.
+
+        Returns:
+            dict: A dictionary containing the state of the model, optimizer, scheduler, and other metadata.
+        """
+        state = {
+            "args": self.cfg,
+            "model": model.state_dict(),
+            "optimizer": optimizer.state_dict(),
+            "step": step,
+            "best_metric_value": self.best_metric_value
+        }
         if lr_scheduler is not None:
-            return {
-                "args": self.cfg,
-                "model": model.state_dict(),
-                "optimizer": optimizer.state_dict(),
-                "lr_scheduler": lr_scheduler.state_dict(),
-                "step": step,
-                "best_metric_value": self.best_metric_value
-            }
-        else:
-            return {
-                "args": self.cfg,
-                "model": model.state_dict(),
-                "optimizer": optimizer.state_dict(),
-                "step": step,
-                "best_metric_value": self.best_metric_value
-            }
-    
+            state["lr_scheduler"] = lr_scheduler.state_dict()
+        return state
+
+    def _save_checkpoint_step(self, step):
+        """
+        Save a checkpoint at the current training step.
+
+        Args:
+            step (int): Current training step.
+        """
+        checkpoint_filename = f"{self.checkpoint_dir}/checkpoint_step_{step}.pt"
+        self._save_checkpoint(checkpoint_filename, self.model, self.optimizer, self.lr_scheduler, step)
+
+        # Remove the last checkpoint if it exists
+        if hasattr(self, 'last_checkpoint') and os.path.exists(self.last_checkpoint):
+            os.remove(self.last_checkpoint)
+
+        self.last_checkpoint = checkpoint_filename
+        self.logger.info(f"Checkpoint saved for step {step}")
+
     def _save_checkpoint(self, filename, model, optimizer, lr_scheduler, step):
+        """
+        Save a checkpoint to a file.
+
+        Args:
+            filename (str): Path to save the checkpoint.
+            model (torch.nn.Module): The model to save.
+            optimizer (torch.optim.Optimizer): The optimizer to save.
+            lr_scheduler (torch.optim.lr_scheduler, optional): The learning rate scheduler to save.
+            step (int): Current training step.
+        """
         checkpoint = self._state_dict(model, optimizer, lr_scheduler, step)
         torch.save(checkpoint, filename)
-        print(f"Checkpoint saved to {filename}")
+        self.logger.info(f"Checkpoint saved to {filename}")
 
     def _load_checkpoint(self, filename):
+        """
+        Load a checkpoint from a file.
+
+        Args:
+            filename (str): Path to the checkpoint file.
+        """
         ckpt_params = torch.load(filename)
         self.cfg = ckpt_params["args"]
         self.model.load_state_dict(ckpt_params["model"])
         self.optimizer.load_state_dict(ckpt_params["optimizer"])
-        self.lr_scheduler.load_state_dict(ckpt_params["lr_scheduler"])
+        if "lr_scheduler" in ckpt_params and self.lr_scheduler is not None:
+            self.lr_scheduler.load_state_dict(ckpt_params["lr_scheduler"])
         self.step = ckpt_params["step"] + 1
         self.best_metric_value = ckpt_params["best_metric_value"]
-
-    
-        
+        self.logger.info(f"Checkpoint loaded from {filename}")

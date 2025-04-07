@@ -26,19 +26,24 @@ dataset:
     # dev_size: 0.33333
     n_splits: 5
   other:
-    chunk_size: 40
-    stride: 8
+    chunk_size: 256
+    overlap: 255
 
   offline_transform:
-    emg:
-      Filter:
-        method: iir
-        l_freq: 1
-        iir_params:
-          order: 3
-          ftype: butter
+    ecog:
       Normalize:
-        method: min_max
+        method: zscore_per_channel
+        epsilon: 0
+      CAR:
+      Filter:
+        l_freq: 40
+        h_freq: 300
+      NotchFilter:
+        freqs: [50, 100, 150, 200, 250, 300, 350, 400, 450]
+      TFR:
+        freqs: [ 40. , 42.12088229,  44.35421812,  46.70597002,  49.18241664, 51.79016955, 54.53619088,  57.42781192,  60.47275265,  63.67914241,67.05554154,  70.61096431,  74.3549029,   78.29735282,  82.44883955,86.82044664,  91.42384534,  96.2713257,  101.37582945, 106.75098448,112.4111413,  118.37141127, 124.64770702, 131.25678488, 138.21628964,145.54480167, 153.26188648, 161.388147,   169.94527858, 178.95612687,188.44474888, 198.43647715, 208.95798741, 220.03736978, 231.70420381,243.98963737, 256.9264699,  270.5492399,  284.8943172,  300.]
+        output: 'power'
+        n_jobs: 6
 
  
 
@@ -51,19 +56,14 @@ lr_scheduler:
   warmup_epochs: 5
 
 model:
-  select: Conformer
-  n_outputs: 52
-  n_chans: 62
-  n_times: 40
-  filter_time_length: 10
-  n_filters_time: 64
-  drop_prob: 0.3
-  pool_time_length: 5
-  pool_time_stride: 2
-  att_depth: 4
-  att_heads: 8
-  att_drop_prob: 0.2
-
+  select: AutoEncoder1D
+  channels: [32, 32, 64, 64, 128, 128]
+  kernel_sizes: [7, 7, 5, 5, 5]
+  strides: [2, 2, 2, 2, 2]
+  dilation: [1, 1, 1, 1, 1]
+  n_electrodes: 62
+  n_freqs: 40
+  n_channels_out: 5
   # select: EEGNet
   # n_chans: 16
   # chunk_size: 40
@@ -71,9 +71,9 @@ model:
     
 
 optimizer:
-  lr:  0.001
+  lr:  8.42e-5
   select: Adam
-  # weight_decay: 0.05             # 权重衰减 (L2正则化)
+  weight_decay: 1e-6             # 权重衰减 (L2正则化)
   # layer_decay: 0.65                # 层级学习率衰减
 
 task:
@@ -93,7 +93,9 @@ trainer:
   # save_interval: 1066
   # eval_interval: 1066
   log_interval: 20
-  eval_metric: r2
+  eval_metric:
+    select: r2
+    mode: max
   metrics: [r2, pea_cor, rmse,]
     
 

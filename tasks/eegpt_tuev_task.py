@@ -105,7 +105,8 @@ class EEGPTTUEVTask(PRLTask):
 
     def build_model(self):
 
-        model_name = lazy_import_module('models', self.upstream_select)
+        module_name, class_name = self.model_select.rsplit('.', 1)
+        model_name = lazy_import_module(f'models.{module_name}', class_name)
         use_channels_names = [      
              'FP1','FPZ', 'FP2',
         'F7', 'F3', 'FZ', 'F4', 'F8',

@@ -11,270 +11,284 @@
 """
 
 import numpy as np
-from typing import Dict, List, Tuple, Union
-from sklearn.model_selection import KFold, train_test_split, StratifiedKFold, StratifiedShuffleSplit
+import pandas as pd
+from typing import Dict, List, Tuple, Union, Optional
+from sklearn.model_selection import (
+    KFold,
+    train_test_split,
+    StratifiedKFold,
+    StratifiedShuffleSplit
+)
 from torch.utils.data import Subset
 from dataset import BaseDataset
-import pandas as pd
+
 
 class DatasetSplitter:
     """
-    数据集划分工具类，用于将数据集划分为训练集、验证集和测试集。
+    数据集划分工具类，用于将生理信号数据集划分为训练集、验证集和测试集。
 
     参数:
-        train_dataset (BaseDataset): 训练数据集。
-        dev_dataset (BaseDataset, 可选): 验证数据集，默认为 None。
-        test_dataset (BaseDataset, 可选): 测试数据集，默认为 None。
+        train_dataset (BaseDataset): 训练数据集（包含完整 info 数据）。
+        dev_dataset (Optional[BaseDataset]): 验证数据集，默认为 None。
+        test_dataset (Optional[BaseDataset]): 测试数据集，默认为 None。
+
+    常见的划分方法包括：
+        - none: 不进行划分，直接返回输入数据集。
+        - kfold: 使用 K 折交叉验证，支持分层（适用于 clip_id 等）。
+        - hold_out: 按留出法划分训练/验证/测试集。
+        - loso: Leave-One-Subject-Out 划分（例如：对 subject_id 划分）。
+        - loto: Leave-One-Trial-Out 划分（对 trial_id 划分）。
+        - seedv: 针对 SEED-V 数据集的自定义划分（每个 session 内试验 5:5:5）。
+        - ninapro: 针对 Ninapro 数据集的划分（基于 trial 和 stimulus）。
     """
-    def __init__(self, 
-                 train_dataset: BaseDataset, 
-                 dev_dataset: BaseDataset = None, 
-                 test_dataset: BaseDataset = None):
+
+    def __init__(
+        self,
+        train_dataset: BaseDataset,
+        dev_dataset: Optional[BaseDataset] = None,
+        test_dataset: Optional[BaseDataset] = None,
+    ) -> None:
         self.train_dataset = train_dataset
         self.dev_dataset = dev_dataset
         self.test_dataset = test_dataset
 
-    def split(self, method: str = 'none', split_by: str = 'record_id', stratified: bool = False, seed: int = None, shuffle: bool=False, **kwargs) -> Union[Tuple[BaseDataset, BaseDataset, BaseDataset], List[Tuple[BaseDataset, BaseDataset, BaseDataset]]]:
+    def split(
+        self,
+        method: str = "none",
+        split_by: str = "record_id",
+        stratified: bool = False,
+        seed: Optional[int] = None,
+        shuffle: bool = False,
+        **kwargs,
+    ) -> Union[
+        Tuple[BaseDataset, Optional[BaseDataset], Optional[BaseDataset]],
+        List[Tuple[BaseDataset, Optional[BaseDataset], Optional[BaseDataset]]],
+    ]:
         """
-        划分数据集的方法。
+        根据指定的方法划分数据集。
 
         参数:
-            method (str): 划分数据集的方法。可选值为 'none'、'kfold'、'hold_out'。
-            split_by (str): 划分数据集的粒度。可选值为 'record_id'、'clip_id'、'subject_id'、'session_id'、'trial_id'。
-            stratified (bool): 是否按照标签分层划分数据集。
-            shuffle (bool): 是否打乱数据集。
-            seed (int, 可选): 随机种子，用于数据划分的可重复性。
-            **kwargs: 其他参数。
+            method (str): 划分方法。可选值包括：
+                'none', 'kfold', 'hold_out', 'loso', 'loto', 'seedv', 'ninapro'
+            split_by (str): 划分的粒度，例如 'record_id', 'clip_id',
+                            'subject_id', 'session_id', 'trial_id'。
+            stratified (bool): 是否采用分层采样（例如对 clip_id）。
+            seed (Optional[int]): 随机种子。
+            shuffle (bool): 是否打乱顺序。
+            **kwargs: 其他划分参数，如 n_splits, test_size, dev_size 等。
 
         返回:
-            Union[Tuple[BaseDataset, BaseDataset, BaseDataset], List[Tuple[BaseDataset, BaseDataset, BaseDataset]]]: 划分后的数据集。
+            如果 method 为 'none'，返回单个三元组；
+            否则返回包含多个划分结果的列表，每个元素为 (train, dev, test) 三元组。
         """
-        if method == 'none':
-            # 不需要划分数据集
+        if method == "none":
             return [(self.train_dataset, self.dev_dataset, self.test_dataset)]
 
-        elif method == 'kfold':
-            # 按k折叉验证的方式划分数据集
-            n_splits = kwargs.get('n_splits', 5)
-            if not shuffle:
-                seed = None
-            if split_by == 'clip_id' and stratified:
-                kf = StratifiedKFold(n_splits=n_splits, shuffle=shuffle, random_state=seed)
-                labels = self.train_dataset.info['label']
-            else:
-                kf = KFold(n_splits=n_splits, shuffle=shuffle, random_state=seed)
-                labels = None
-            unique_ids = self.train_dataset.info[split_by].unique()
-            
-            # print(f'unique_ids:{unique_ids}')
-            splits = []
-            for train_idx, val_idx in kf.split(unique_ids, labels):
-                # print(f"Train indices: {train_idx}")
-                # print(f"Validation indices: {val_idx}")
-                train_subset = self._create_subset(unique_ids[train_idx], split_by)
-                val_subset = self._create_subset(unique_ids[val_idx], split_by)
-                splits.append((train_subset, val_subset, self.test_dataset))
-            return splits
+        elif method == "kfold":
+            return self._split_kfold(split_by, stratified, seed, shuffle, **kwargs)
 
-        elif method == 'hold_out':
-            # 按留出法划分数据集
-            unique_ids = self.train_dataset.info[split_by].unique()
-            test_size = kwargs.get('test_size', 0.2)
-            dev_size = kwargs.get('dev_size', 0.2)
+        elif method == "hold_out":
+            return self._split_hold_out(split_by, stratified, seed, shuffle, **kwargs)
 
-            if stratified and split_by == 'clip_id':
-                labels = self.train_dataset.info['label']
-                split_fn = self.stratified_split
-            else:
-                labels = None
-                split_fn = self.random_split
+        elif method == "loso":
+            # 留一被试/会话划分（如 subject_id 或 session_id）
+            return self._split_leave_one(split_by)
 
-            if self.dev_dataset is None and self.test_dataset is None:
-                train_ids, test_ids = split_fn(unique_ids, labels, test_size, seed, shuffle)
-                train_ids, dev_ids = split_fn(train_ids, 
-                                              labels[train_ids] if labels is not None else None, 
-                                              dev_size, seed, shuffle)
-            elif self.dev_dataset is None:
-                train_ids, dev_ids = split_fn(unique_ids, labels, dev_size, seed, shuffle)
-                test_subset = self.test_dataset
-            elif self.test_dataset is None:
-                train_ids, test_ids = split_fn(unique_ids, labels, test_size, seed, shuffle)
-                dev_ids = None
-            else:
-                return [(self.train_dataset, self.dev_dataset, self.test_dataset)]
+        elif method == "loto":
+            # 留一试验划分（以 trial_id 为粒度）
+            return self._split_leave_one(split_by="trial_id")
 
-            train_subset = self._create_subset(train_ids, split_by)
-            val_subset = self._create_subset(dev_ids, split_by) if dev_ids is not None else self.dev_dataset
-            test_subset = self._create_subset(test_ids, split_by) if self.test_dataset is None else self.test_dataset
-            return [(train_subset, val_subset, test_subset)]
-        elif method == 'tuev':
-            train_ids = ['record_0', 'record_1', 'record_2', 'record_3', 'record_4', 'record_5', 
-                         'record_6', 'record_7', 'record_9', 'record_10', 'record_11', 'record_13', 
-                         'record_14', 'record_15', 'record_16', 'record_17', 'record_18', 'record_19', 
-                         'record_21', 'record_22', 'record_23', 'record_24', 'record_25', 'record_30', 
-                         'record_32', 'record_33', 'record_34', 'record_35', 'record_36', 'record_37', 
-                         'record_38', 'record_39', 'record_40', 'record_41', 'record_42', 'record_43', 
-                         'record_44', 'record_45', 'record_46', 'record_47', 'record_49', 'record_50', 
-                         'record_51', 'record_52', 'record_53', 'record_54', 'record_55', 'record_57', 
-                         'record_58', 'record_59', 'record_61', 'record_62', 'record_63', 'record_64', 
-                         'record_65', 'record_66', 'record_68', 'record_69', 'record_70', 'record_71', 
-                         'record_72', 'record_73', 'record_74', 'record_76', 'record_77', 'record_78', 
-                         'record_79', 'record_80', 'record_81', 'record_82', 'record_84', 'record_85', 
-                         'record_86', 'record_87', 'record_88', 'record_89', 'record_90', 'record_93', 
-                         'record_95', 'record_97', 'record_98', 'record_99', 'record_100', 'record_101',
-                         'record_102', 'record_103', 'record_104', 'record_105', 'record_106', 'record_107', 
-                         'record_108', 'record_109', 'record_110', 'record_111', 'record_112', 'record_113', 
-                         'record_114', 'record_115', 'record_116', 'record_117', 'record_118', 'record_119', 
-                         'record_121', 'record_123', 'record_124', 'record_126', 'record_127', 'record_128', 
-                         'record_129', 'record_130', 'record_132', 'record_133', 'record_134', 'record_135', 
-                         'record_136', 'record_137', 'record_138', 'record_139', 'record_141', 'record_142', 
-                         'record_143', 'record_145', 'record_147', 'record_148', 'record_149', 'record_150', 
-                         'record_151', 'record_152', 'record_153', 'record_155', 'record_156', 'record_159', 
-                         'record_161', 'record_162', 'record_163', 'record_164', 'record_166', 'record_167', 
-                         'record_168', 'record_169', 'record_171', 'record_172', 'record_173', 'record_174', 
-                         'record_175', 'record_176', 'record_178', 'record_179', 'record_180', 'record_181', 
-                         'record_182', 'record_183', 'record_184', 'record_185', 'record_186', 'record_187', 
-                         'record_188', 'record_189', 'record_190', 'record_191', 'record_192', 'record_193', 
-                         'record_194', 'record_195', 'record_196', 'record_197', 'record_198', 'record_199', 
-                         'record_200', 'record_201', 'record_202', 'record_203', 'record_206', 'record_207', 
-                         'record_208', 'record_209', 'record_210', 'record_211', 'record_212', 'record_213', 
-                         'record_214', 'record_215', 'record_216', 'record_217', 'record_219', 'record_220', 
-                         'record_221', 'record_222', 'record_223', 'record_224', 'record_225', 'record_226', 
-                         'record_228', 'record_229', 'record_230', 'record_232', 'record_237', 'record_238', 
-                         'record_246', 'record_247', 'record_248', 'record_249', 'record_250', 'record_251', 
-                         'record_254', 'record_255', 'record_256', 'record_257', 'record_258', 'record_259', 
-                         'record_260', 'record_261', 'record_262', 'record_263', 'record_264', 'record_265', 
-                         'record_266', 'record_267', 'record_268', 'record_269', 'record_270', 'record_271', 
-                         'record_272', 'record_273', 'record_278', 'record_279', 'record_283', 'record_284', 
-                         'record_285', 'record_286', 'record_287', 'record_288', 'record_289', 'record_290', 
-                         'record_291', 'record_292', 'record_293', 'record_294', 'record_295', 'record_296', 
-                         'record_298', 'record_299', 'record_300', 'record_301', 'record_302', 'record_304', 
-                         'record_306', 'record_307', 'record_308', 'record_309', 'record_310', 'record_312', 
-                         'record_314', 'record_315', 'record_316', 'record_317', 'record_319', 'record_321', 
-                         'record_322', 'record_323', 'record_324', 'record_325', 'record_327', 'record_328', 
-                         'record_329', 'record_330', 'record_331', 'record_332', 'record_333', 'record_334', 
-                         'record_335', 'record_336', 'record_338', 'record_339', 'record_341', 'record_342', 
-                         'record_344', 'record_347', 'record_348', 'record_349', 'record_350', 'record_351', 
-                         'record_354', 'record_355', 'record_357', 'record_358']
-            dev_ids = ['record_8', 'record_12', 'record_20', 'record_26', 'record_27', 'record_28', 
-                       'record_29', 'record_31', 'record_48', 'record_56', 'record_60', 'record_67', 
-                       'record_75', 'record_83', 'record_91', 'record_92', 'record_94', 'record_96', 
-                       'record_120', 'record_122', 'record_125', 'record_131', 'record_140', 'record_144', 
-                       'record_146', 'record_154', 'record_157', 'record_158', 'record_160', 'record_165', 
-                       'record_170', 'record_177', 'record_204', 'record_205', 'record_218', 'record_227', 
-                       'record_231', 'record_233', 'record_234', 'record_235', 'record_236', 'record_239', 
-                       'record_240', 'record_241', 'record_242', 'record_243', 'record_244', 'record_245', 
-                       'record_252', 'record_253', 'record_274', 'record_275', 'record_276', 'record_277', 
-                       'record_280', 'record_281', 'record_282', 'record_297', 'record_303', 'record_305', 
-                       'record_311', 'record_313', 'record_318', 'record_320', 'record_326', 'record_337', 
-                       'record_340', 'record_343', 'record_345', 'record_346', 'record_352', 'record_353', 
-                       'record_356']
-            train_subset = self._create_subset(train_ids, split_by)
-            val_subset = self._create_subset(dev_ids, split_by)
-            test_subset = self.test_dataset
-            return [(train_subset, val_subset, test_subset)]
-        elif method == 'seedv':
-            # 使用自定义的split_seedv方法划分数据集
-            return self.split_seedv(split_by, seed)
-        elif method == 'ninapro':
-            # 获取所有的 trial_id
-            unique_trial_ids = self.train_dataset.info['trial_id'].unique()
-            train_indices = []
-            test_indices = []
+        elif method == "seedv":
+            return self._split_seedv(split_by, seed)
 
-            for trial_id in unique_trial_ids:
-                # 获取当前 trial_id 下的所有 stimulus_id
-                trial_indices = self.train_dataset.info[self.train_dataset.info['trial_id'] == trial_id].index
-                stimulus_ids = self.train_dataset.info.loc[trial_indices, 'stimulus_id'].unique()
-
-                # 确保每个 trial_id 下有 6 个 stimulus_id
-                assert len(stimulus_ids) == 6, f"Trial {trial_id} 下的 stimulus_id 数量不是 6，而是 {len(stimulus_ids)}"
-
-                # 按 2:1 分割 stimulus_id
-                np.random.shuffle(stimulus_ids)  # 打乱顺序
-                split_point = len(stimulus_ids) * 2 // 3
-                train_stimulus_ids = stimulus_ids[:split_point]
-                test_stimulus_ids = stimulus_ids[split_point:]
-                print(f'train_stimulus_ids:{train_stimulus_ids}')
-                print(f'test_stimulus_ids:{test_stimulus_ids}')
-                # 获取对应的样本索引
-                train_indices.extend(train_stimulus_ids)
-                test_indices.extend(test_stimulus_ids)
-
-            # 创建训练集和测试集
-            train_subset = self._create_subset(train_indices, 'stimulus_id')
-            test_subset = self._create_subset(test_indices, 'stimulus_id')
-
-            return [(train_subset, test_subset, None)]
+        elif method == "ninapro":
+            return self._split_ninapro()
 
         else:
             raise ValueError(f"Unsupported split method: {method}")
 
-
-    def _create_subset(self, ids: List[int], split_by: str) -> Subset:
+    def _create_subset(self, ids: List, split_by: str) -> Subset:
         """
-        根据ids创建BaseDataset子集。
+        根据给定的 ID 列表和分割依据，在训练集上创建子集。
 
         参数:
-            ids (List[int]): 样本的ID列表。
+            ids (List): 要选择的唯一 ID 列表。
             split_by (str): 划分数据集的粒度。
 
         返回:
-            Subset: 子集。
+            Subset: 对应样本的子集。
         """
-        indices = self.train_dataset.info[self.train_dataset.info[split_by].isin(ids)].index.tolist()
+        indices = self.train_dataset.info[
+            self.train_dataset.info[split_by].isin(ids)
+        ].index.tolist()
         return Subset(self.train_dataset, indices)
-    
-    def stratified_split(self, ids, labels, test_size, random_state, shuffle):
-        """分层采样辅助函数"""
-        
-        sss = StratifiedShuffleSplit(n_splits=1, test_size=test_size, random_state=random_state)
+
+    def _split_kfold(
+        self,
+        split_by: str,
+        stratified: bool,
+        seed: Optional[int],
+        shuffle: bool,
+        **kwargs,
+    ) -> List[Tuple[BaseDataset, BaseDataset, Optional[BaseDataset]]]:
+        n_splits = kwargs.get("n_splits", 5)
+        if not shuffle:
+            seed = None
+        # 当粒度为 clip_id 且需要分层时使用 StratifiedKFold
+        if split_by == "clip_id" and stratified:
+            kf = StratifiedKFold(n_splits=n_splits, shuffle=shuffle, random_state=seed)
+            labels = self.train_dataset.info["label"]
+        else:
+            kf = KFold(n_splits=n_splits, shuffle=shuffle, random_state=seed)
+            labels = None
+
+        unique_ids = self.train_dataset.info[split_by].unique()
+        splits = []
+        for train_idx, val_idx in kf.split(unique_ids, labels):
+            train_ids = list(unique_ids[train_idx])
+            val_ids = list(unique_ids[val_idx])
+            train_subset = self._create_subset(train_ids, split_by)
+            val_subset = self._create_subset(val_ids, split_by)
+            splits.append((train_subset, val_subset, self.test_dataset))
+        return splits
+
+    def _split_hold_out(
+        self,
+        split_by: str,
+        stratified: bool,
+        seed: Optional[int],
+        shuffle: bool,
+        **kwargs,
+    ) -> List[Tuple[BaseDataset, Optional[BaseDataset], Optional[BaseDataset]]]:
+        unique_ids = self.train_dataset.info[split_by].unique()
+        test_size = kwargs.get("test_size", 0.2)
+        dev_size = kwargs.get("dev_size", 0.2)
+
+        if stratified and split_by == "clip_id":
+            labels = self.train_dataset.info["label"]
+            split_fn = self._stratified_split
+        else:
+            labels = None
+            split_fn = self._random_split
+
+        if self.dev_dataset is None and self.test_dataset is None:
+            train_ids, test_ids = split_fn(unique_ids, labels, test_size, seed, shuffle)
+            # 在训练集上再次划分出验证集
+            train_ids, dev_ids = split_fn(
+                train_ids,
+                labels[train_ids] if labels is not None else None,
+                dev_size,
+                seed,
+                shuffle,
+            )
+        elif self.dev_dataset is None:
+            train_ids, dev_ids = split_fn(unique_ids, labels, dev_size, seed, shuffle)
+            test_ids = None
+        elif self.test_dataset is None:
+            train_ids, test_ids = split_fn(unique_ids, labels, test_size, seed, shuffle)
+            dev_ids = None
+        else:
+            return [(self.train_dataset, self.dev_dataset, self.test_dataset)]
+
+        train_subset = self._create_subset(list(train_ids), split_by)
+        dev_subset = self._create_subset(list(dev_ids), split_by) if dev_ids is not None else self.dev_dataset
+        test_subset = (
+            self._create_subset(list(test_ids), split_by)
+            if test_ids is not None and self.test_dataset is None
+            else self.test_dataset
+        )
+        return [(train_subset, dev_subset, test_subset)]
+
+    def _split_leave_one(
+        self, split_by: str
+    ) -> List[Tuple[BaseDataset, BaseDataset, BaseDataset]]:
+        """
+        留一划分：以每个唯一的 split_by 作为测试集，
+        在剩余中选一个作为验证集，其余作为训练集。
+        """
+        unique_ids = self.train_dataset.info[split_by].unique()
+        splits = []
+        for test_id in unique_ids:
+            remaining_ids = [s for s in unique_ids if s != test_id]
+            for val_id in remaining_ids:
+                train_ids = [s for s in remaining_ids if s != val_id]
+                train_subset = self._create_subset(train_ids, split_by)
+                val_subset = self._create_subset([val_id], split_by)
+                test_subset = self._create_subset([test_id], split_by)
+                splits.append((train_subset, val_subset, test_subset))
+        return splits
+
+    def _stratified_split(
+        self,
+        ids: np.ndarray,
+        labels: Optional[pd.Series],
+        test_size: float,
+        random_state: Optional[int],
+        shuffle: bool,
+    ) -> Tuple[np.ndarray, np.ndarray]:
+        sss = StratifiedShuffleSplit(
+            n_splits=1, test_size=test_size, random_state=random_state
+        )
         train_idx, test_idx = next(sss.split(ids, labels))
         return ids[train_idx], ids[test_idx]
 
-    def random_split(self, ids, labels, test_size, random_state, shuffle):
-        """随机采样辅助函数"""
-        
-        if not shuffle:
-            random_state = None
-        return train_test_split(ids, test_size=test_size, random_state=random_state, shuffle=shuffle)
+    def _random_split(
+        self,
+        ids: np.ndarray,
+        labels: Optional[pd.Series],
+        test_size: float,
+        random_state: Optional[int],
+        shuffle: bool,
+    ) -> Tuple[np.ndarray, np.ndarray]:
+        return train_test_split(
+            ids, test_size=test_size, random_state=random_state, shuffle=shuffle
+        )
 
-    def split_seedv(self, split_by: str, seed: int = None) -> Tuple[BaseDataset, BaseDataset, BaseDataset]:
+    def _split_seedv(
+        self, split_by: str, seed: Optional[int] = None
+    ) -> List[Tuple[BaseDataset, BaseDataset, BaseDataset]]:
         """
-        按照SEED-V数据集的划分方法，将每个会话的15个试验划分为三个部分（5:5:5），并将每个部分合并到所有会话中，最终得到训练集、验证集和测试集。
-
-        参数:
-            split_by (str): 划分数据集的粒度。
-            seed (int, 可选): 随机种子，用于数据划分的可重复性。
-
-        返回:
-            Tuple[BaseDataset, BaseDataset, BaseDataset]: 划分后的训练集、验证集和测试集。
+        针对 SEED-V 数据集的划分方法，
+        每个 session 的15个试验按顺序分为三个部分（5:5:5），
+        并将所有 session 的结果合并得到训练集、验证集和测试集。
         """
         np.random.seed(seed)
         unique_sessions = self.train_dataset.info[split_by].unique()
         train_ids, val_ids, test_ids = [], [], []
-
         for session_id in unique_sessions:
-            # 定义出所有的试验 ID
             trials = [f"{session_id}_{i}" for i in range(15)]
-            
-            # 按顺序划分成三部分
-            part1 = trials[:5]
-            part2 = trials[5:10]
-            part3 = trials[10:]
-
-            # 将三部分放入列表并打乱
-            parts = [part1, part2, part3]
-            # np.random.shuffle(parts)
-
-            # 分别作为训练集、验证集和测试集
-            train_ids.extend(parts[0])
-            val_ids.extend(parts[1])
-            test_ids.extend(parts[2])
-        print(f'train_ids:{train_ids}')
-        print(f'val_ids:{val_ids}')
-        print(f'test_ids:{test_ids}')
-        train_subset = self._create_subset(train_ids, 'trial_id')
-        val_subset = self._create_subset(val_ids, 'trial_id')
-        test_subset = self._create_subset(test_ids, 'trial_id')
+            part1, part2, part3 = trials[:5], trials[5:10], trials[10:]
+            train_ids.extend(part1)
+            val_ids.extend(part2)
+            test_ids.extend(part3)
+        train_subset = self._create_subset(train_ids, "trial_id")
+        val_subset = self._create_subset(val_ids, "trial_id")
+        test_subset = self._create_subset(test_ids, "trial_id")
         return [(train_subset, val_subset, test_subset)]
+
+    def _split_ninapro(
+        self,
+    ) -> List[Tuple[BaseDataset, BaseDataset, Optional[BaseDataset]]]:
+        """
+        针对 Ninapro 数据集的划分方法：
+        根据 trial_id 划分，每个 trial 下要求有 6 个 stimulus_id，
+        按 2:1 分割 stimulus_id 分别作为训练和测试。
+        """
+        unique_trial_ids = self.train_dataset.info["trial_id"].unique()
+        train_indices, test_indices = [], []
+        for trial_id in unique_trial_ids:
+            trial_info = self.train_dataset.info[self.train_dataset.info["trial_id"] == trial_id]
+            stimulus_ids = trial_info["stimulus_id"].unique()
+            if len(stimulus_ids) != 6:
+                raise ValueError(
+                    f"Trial {trial_id} 的 stimulus_id 数量不是 6，而是 {len(stimulus_ids)}"
+                )
+            np.random.shuffle(stimulus_ids)
+            split_point = int(len(stimulus_ids) * 2 / 3)
+            train_stimuli = stimulus_ids[:split_point]
+            test_stimuli = stimulus_ids[split_point:]
+            train_indices.extend(train_stimuli)
+            test_indices.extend(test_stimuli)
+        train_subset = self._create_subset(train_indices, "stimulus_id")
+        test_subset = self._create_subset(test_indices, "stimulus_id")
+        return [(train_subset, test_subset, None)]

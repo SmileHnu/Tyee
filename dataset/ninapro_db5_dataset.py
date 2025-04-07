@@ -16,29 +16,29 @@ from scipy.ndimage import label
 from scipy.interpolate import interp1d
 import numpy as np
 from dataset import BaseDataset
-from typing import Any, Callable, Union
-from dataset.constants.standard_channels import EEG_CHANNELS_ORDER
+from typing import Any, Callable, Union, Dict, Generator
 
 class NinaproDB5Dataset(BaseDataset):
-    def __init__(self,
-                 root_path: str = './NinaproDB5',
-                 chunk_size: int = 40,
-                 overlap: int = 32,
-                 num_channel: int = 16,
-                 signal_types: list = ['emg'],
-                 online_transform: Union[None, Callable] = None,
-                 offline_transform: Union[None, Callable] = None,
-                 label_transform: Union[None, Callable] = None,
-                 before_trial: Union[None, Callable] = None,
-                 after_trial: Union[Callable, None] = None,
-                 after_session: Union[Callable, None] = None,
-                 after_subject: Union[Callable, None] = None,
-                 io_path: Union[None, str] = None,
-                 io_size: int = 1048576,
-                 io_mode: str = 'lmdb',
-                 num_worker: int = 0,
-                 verbose: bool = True,
-                 ):
+    def __init__(
+        self,
+        root_path: str = './NinaproDB5',
+        chunk_size: int = 40,
+        overlap: int = 32,
+        num_channel: int = 16,
+        signal_types: list = ['emg'],
+        online_transform: Union[None, Callable] = None,
+        offline_transform: Union[None, Callable] = None,
+        label_transform: Union[None, Callable] = None,
+        before_trial: Union[None, Callable] = None,
+        after_trial: Union[Callable, None] = None,
+        after_session: Union[Callable, None] = None,
+        after_subject: Union[Callable, None] = None,
+        io_path: Union[None, str] = None,
+        io_size: int = 1048576,
+        io_mode: str = 'lmdb',
+        num_worker: int = 0,
+        verbose: bool = True,
+    ) -> None:
         # if io_path is None:
         #     io_path = get_random_dir_path(dir_prefix='datasets')
 
@@ -84,14 +84,15 @@ class NinaproDB5Dataset(BaseDataset):
     def read_record(record: str, **kwargs):
         
         a_data = scio.loadmat(record)
-        emg = np.array(a_data['emg']).astype(np.float64)
+        emg = np.array(a_data['emg']).astype(np.float64).T
         restimulus = np.array(a_data['restimulus'])
         sampling_rate = a_data['frequency'].astype(np.float64)
         glove = np.array(a_data['glove']).astype(np.float64)
         result = {
             'emg': {
-                'signals': emg.T,
+                'signals': emg,
                 'sampling_rate': sampling_rate,
+                'channels': [f"sEMG{i}" for i in range(emg.shape[0])],
             },
             'restimulus': restimulus,
             'glove': glove,
@@ -100,15 +101,16 @@ class NinaproDB5Dataset(BaseDataset):
         }
         return result
         
-        
     @staticmethod
-    def process_record(record, 
-                       result,
-                       signal_types,
-                       chunk_size,
-                       overlap,
-                       offline_transform,
-                       **kwargs):
+    def process_record(
+        record, 
+        result,
+        signal_types,
+        chunk_size,
+        overlap,
+        offline_transform,
+        **kwargs
+    ) -> Generator[Dict[str, Any], None, None]:
         file_name = os.path.splitext(os.path.basename(record))[0]
         subject_id = file_name.split('_')[0]
         session_id = file_name.split('_')[1]
@@ -130,6 +132,7 @@ class NinaproDB5Dataset(BaseDataset):
         data = result['emg']['signals'].copy()
         sampling_rate = result['emg']['sampling_rate'].copy()
         freq = result['freq'].copy()
+        channels = result['emg']['channels'].copy()
         mask = restimulus > 0
         label_array, num_segments = label(mask)
         # 如果采样率发生变化，重新映射 glove 和 restimulus
@@ -178,8 +181,9 @@ class NinaproDB5Dataset(BaseDataset):
                 result = {
                     'key': clip_id,
                     'emg': {
-                        'signals': emg[8:,:],  # 确保最终存储的信号形状是 (通道数, 采样点)
+                        'signals': emg,  # 确保最终存储的信号形状是 (通道数, 采样点)
                         'sampling_rate': sampling_rate,
+                        'channels': channels
                     }
                 }
                 result.update({
@@ -187,12 +191,6 @@ class NinaproDB5Dataset(BaseDataset):
                 })
                 yield result
                 idx += 1
-
-                
-
-            
-            
-        
 
     def __getitem__(self, index):
         info = self.read_info(index)

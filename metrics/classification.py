@@ -5,18 +5,19 @@
 @License : (C) Copyright 2025, Hunan University
 @Contact : shulingyu@hnu.edu.cn
 @Software: Visual Studio Code
-@File    : class_metrics.py
+@File    : classification.py
 @Time    : 2025/01/06 14:35:26
 @Desc    : 
 """
 
 import numpy as np
 import torch
-from sklearn.metrics import accuracy_score, balanced_accuracy_score, average_precision_score,\
-                            jaccard_score, roc_auc_score, precision_score, \
-                            recall_score, f1_score, cohen_kappa_score
 from abc import ABC, abstractmethod
-
+from sklearn.metrics import (
+    accuracy_score, balanced_accuracy_score, average_precision_score,
+    jaccard_score, roc_auc_score, precision_score, recall_score,
+    f1_score, cohen_kappa_score
+)
 import warnings
 warnings.filterwarnings("ignore", category=UserWarning)
 
@@ -37,9 +38,13 @@ class ClassMetric(ABC):
     
     def process_result(self, results: list):
         """
-        处理输入的结果列表：将 Tensor 数据转换为 NumPy 数组，并根据任务类型处理输出。
-        :param results: 列表，每个元素是一个字典，包含 'loss'、'label' 和 'output' 等元素。
-        :return: 元组，包含处理后的 label 和 output 列表。
+        Process the input results list: handle the output based on task type.
+
+        Args:
+            results (list): A list of dictionaries, each containing 'label' and 'output'.
+
+        Returns:
+            tuple: Processed label and output lists.
         """
         all_targets = []
         all_outputs = []
@@ -47,18 +52,22 @@ class ClassMetric(ABC):
         for result in results:
             label = result.get('label')
             output = result.get('output')
-            if output.ndim == 2 and output.shape[1] > 1:  # 多分类问题
+
+            # Handle multi-class and binary classification outputs
+            if output.ndim == 2 and output.shape[1] > 1:  # Multi-class classification
                 output = np.argmax(output, axis=-1)
-            elif output.ndim == 2 and output.shape[1] == 1:  # 二分类问题（输出是概率值）
+            elif output.ndim == 2 and output.shape[1] == 1:  # Binary classification (probabilities)
                 output = (output > 0.5).astype(int)
-            elif output.ndim == 1:  # 二分类问题（输出是一维数组，通常是概率值）
+            elif output.ndim == 1:  # Binary classification (1D probabilities)
                 output = (output > 0.5).astype(int)
+
             if label is not None and output is not None:
                 all_targets.append(label)
                 all_outputs.append(output)
-        
-        all_outputs = torch.cat(all_outputs, dim=0).numpy()
-        all_targets = torch.cat(all_targets, dim=0).numpy()
+
+        # Concatenate all targets and outputs
+        all_outputs = np.concatenate(all_outputs, axis=0)
+        all_targets = np.concatenate(all_targets, axis=0)
 
         return all_targets, all_outputs
     

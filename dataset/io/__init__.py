@@ -1,2 +1,2 @@
-from .physio_signal import PhysioSignalIO
-from .meta_info import MetaInfoIO
+from .signal_io import PhysioSignalIO
+from .meta_io import MetaInfoIO

@@ -5,7 +5,7 @@ common:
 
 dataset:
   batch_size: 32
-  dataset: SEEDVDataset
+  dataset: seedv_dataset.SEEDVDataset
   num_workers: 4
   root_path:
     train: '/home/lingyus/data/SEED-V/EEG_raw'
@@ -50,7 +50,7 @@ lr_scheduler:
   warmup_epochs: 5
 
 model:
-  select: Conformer
+  select: conformer.Conformer
   n_outputs: 5
   n_chans: 62
   n_times: 2000
@@ -81,7 +81,9 @@ trainer:
   # save_interval: 1066
   # eval_interval: 1066
   log_interval: 20
-  eval_metric: accuracy
+  eval_metric:
+    select: accuracy
+    mode: max
   metrics: [accuracy, balanced_accuracy, cohen_kappa, f1_weighted]
     
 

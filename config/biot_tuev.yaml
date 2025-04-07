@@ -5,7 +5,7 @@ common:
 
 dataset:
   batch_size: 64
-  dataset: TUEVDataset
+  dataset: tuev_dataset.TUEVDataset
   num_workers: 4
   root_path:
     train: '/home/lingyus/data/tuh_eeg_events/v2.0.1/edf/train/'
@@ -45,7 +45,7 @@ dataset:
 #   warmup_epochs: 5
 
 model:
-  select: BIOT
+  select: biot.BIOTClassifier
   pretrain_model_path: /home/lingyus/code/PRL/models/upstream/biot/checkpoint/EEG-six-datasets-18-channels.ckpt
   n_classes: 6
   in_channels: 18
@@ -78,7 +78,9 @@ trainer:
   # save_interval: 1066
   # eval_interval: 1066
   log_interval: 20
-  eval_metric: balanced_accuracy
+  eval_metric:
+    select: blanced_accuracy
+    mode: max
   metrics: [balanced_accuracy, accuracy, f1_weighted, cohen_kappa]
     
 

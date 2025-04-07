@@ -79,7 +79,9 @@ trainer:
   save_interval: 20
   eval_interval: 20
   log_interval: 20
-  eval_metric: balanced_accuracy
+  eval_metric:
+    select: balanced_accuracy
+    mode: max
   metrics: [balanced_accuracy, accuracy, f1_weighted, cohen_kappa]
 
 distributed:

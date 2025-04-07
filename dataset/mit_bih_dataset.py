@@ -17,30 +17,30 @@ import torch
 import wfdb
 import numpy as np
 from dataset import BaseDataset
-from typing import Any, Callable, Union
-from dataset.constants.standard_channels import EEG_CHANNELS_ORDER
+from typing import Any, Callable, Union, Dict, Generator
 
 class MITBIHDataset(BaseDataset):
-    def __init__(self,
-                 root_path: str = './mit-bih-arrhythmia-database-1.0.0',
-                 pre_offset : int = 100,
-                 post_offset : int = 200,
-                 interval_warn: int = 500,
-                 num_channel: int = 62,
-                 signal_types: list = ['ecg'],
-                 online_transform: Union[None, Callable] = None,
-                 offline_transform: Union[None, Callable] = None,
-                 label_transform: Union[None, Callable] = None,
-                 before_trial: Union[None, Callable] = None,
-                 after_trial: Union[Callable, None] = None,
-                 after_session: Union[Callable, None] = None,
-                 after_subject: Union[Callable, None] = None,
-                 io_path: Union[None, str] = None,
-                 io_size: int = 1048576,
-                 io_mode: str = 'lmdb',
-                 num_worker: int = 0,
-                 verbose: bool = True,
-                 ):
+    def __init__(
+        self,
+        root_path: str = './mit-bih-arrhythmia-database-1.0.0',
+        pre_offset : int = 100,
+        post_offset : int = 200,
+        interval_warn: int = 500,
+        num_channel: int = 62,
+        signal_types: list = ['ecg'],
+        online_transform: Union[None, Callable] = None,
+        offline_transform: Union[None, Callable] = None,
+        label_transform: Union[None, Callable] = None,
+        before_trial: Union[None, Callable] = None,
+        after_trial: Union[Callable, None] = None,
+        after_session: Union[Callable, None] = None,
+        after_subject: Union[Callable, None] = None,
+        io_path: Union[None, str] = None,
+        io_size: int = 1048576,
+        io_mode: str = 'lmdb',
+        num_worker: int = 0,
+        verbose: bool = True,
+    ) -> None:
         # if io_path is None:
         #     io_path = get_random_dir_path(dir_prefix='datasets')
 
@@ -107,17 +107,18 @@ class MITBIHDataset(BaseDataset):
             'labels': labels
         }
         
-        
     @staticmethod
-    def process_record(record, 
-                       result,
-                       signal_types,
-                       pre_offset,
-                       post_offset,
-                       interval_warn,
-                       before_trial,
-                       offline_transform,
-                       **kwargs):
+    def process_record(
+        record, 
+        result,
+        signal_types,
+        pre_offset,
+        post_offset,
+        interval_warn,
+        before_trial,
+        offline_transform,
+        **kwargs
+    ) -> Generator[Dict[str, Any], None, None]:
         file_name = os.path.splitext(os.path.basename(record))[0]
         if before_trial is not None:
             try:
@@ -153,8 +154,9 @@ class MITBIHDataset(BaseDataset):
             if R_time-pre_offset < 0 or R_time+post_offset > data_len:
                 # print(f'R_time is out of range')
                 continue
-            if R_time - R_location[index-1] > interval_warn:
-                continue
+            if index+1 < len(R_location):
+                if R_time - R_location[index-1] > interval_warn or R_location[index+1] - R_time > interval_warn:
+                    continue
 
             data = a_data[:,R_time-pre_offset:R_time+post_offset]
             info = {
@@ -184,8 +186,6 @@ class MITBIHDataset(BaseDataset):
             # print(result)
             yield result
             
-        
-
     def __getitem__(self, index):
         info = self.read_info(index)
         

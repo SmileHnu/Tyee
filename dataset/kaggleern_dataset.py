@@ -19,31 +19,33 @@ import pandas as pd
 import numpy as np
 import scipy.io as scio
 from dataset import BaseDataset
-from typing import Any, Callable, Union, Dict
+from typing import Any, Callable, Union, Dict, Generator
 
 class KaggleERNDataset(BaseDataset):
-    def __init__(self,
-                 root_path: str = './KaggleERN/train',
-                 label_path: str = './KaggleERN/train_labels.csv',
-                 signal_types: list = ['eeg'],
-                 offset: int = 0,
-                 tmin: int = -0.7,
-                 tlen: int = 2,
-                 overlap: int = 0,
-                 num_channel: int = 22,
-                 skip_trial_with_artifacts: bool = False,
-                 online_transform: Union[None, Callable] = None,
-                 offline_transform: Union[None, Callable] = None,
-                 label_transform: Union[None, Callable] = None,
-                 before_trial: Union[None, Callable] = None,
-                 after_trial: Union[Callable, None] = None,
-                 after_session: Union[Callable, None] = None,
-                 after_subject: Union[Callable, None] = None,
-                 io_path: Union[None, str] = None,
-                 io_size: int = 1048576,
-                 io_mode: str = 'lmdb',
-                 num_worker: int = 0,
-                 verbose: bool = True):
+    def __init__(
+        self,
+        root_path: str = './KaggleERN/train',
+        label_path: str = './KaggleERN/train_labels.csv',
+        signal_types: list = ['eeg'],
+        offset: int = 0,
+        tmin: int = -0.7,
+        tlen: int = 2,
+        overlap: int = 0,
+        num_channel: int = 22,
+        skip_trial_with_artifacts: bool = False,
+        online_transform: Union[None, Callable] = None,
+        offline_transform: Union[None, Callable] = None,
+        label_transform: Union[None, Callable] = None,
+        before_trial: Union[None, Callable] = None,
+        after_trial: Union[Callable, None] = None,
+        after_session: Union[Callable, None] = None,
+        after_subject: Union[Callable, None] = None,
+        io_path: Union[None, str] = None,
+        io_size: int = 1048576,
+        io_mode: str = 'lmdb',
+        num_worker: int = 0,
+        verbose: bool = True
+    ) -> None:
         params = {
             'root_path': root_path,
             'label_path': label_path,
@@ -116,18 +118,20 @@ class KaggleERNDataset(BaseDataset):
         return result
     
     @staticmethod
-    def process_record(record: str,
-                       result: Dict,
-                       signal_types: list,
-                       offset: int = 0,
-                       tmin: int = -0.7,
-                       tlen: int = 2,
-                       overlap: int = 0,
-                       num_channel: int = 22,
-                       skip_trial_with_artifacts: bool = False,
-                       before_trial: Union[None, Callable] = None,
-                       offline_transform: Union[None, Callable] = None,
-                       **kwargs):
+    def process_record(
+        record: str,
+        result: Dict,
+        signal_types: list,
+        offset: int = 0,
+        tmin: int = -0.7,
+        tlen: int = 2,
+        overlap: int = 0,
+        num_channel: int = 22,
+        skip_trial_with_artifacts: bool = False,
+        before_trial: Union[None, Callable] = None,
+        offline_transform: Union[None, Callable] = None,
+        **kwargs
+    ) -> Generator[Dict[str, Any], None, None]:
         file_name = os.path.splitext(os.path.basename(record))[0]
         # 使用正则表达式提取subject_id和session_id
         match = re.match(r'Data_S(\d+)_Sess(\d+)', file_name)

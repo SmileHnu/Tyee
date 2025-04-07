@@ -30,18 +30,46 @@ from dataset.io import MetaInfoIO
 log = logging.getLogger('dataset')
 
 class BaseDataset(Dataset):
-    def __init__(self,
-                 io_path: Union[str, None] = None,
-                 io_mode: str = 'lmdb',
-                 io_size: int = 1048576,
-                 lazy_threshold: int = 128,
-                 num_worker: int = 0,
-                 verbose: bool = True,
-                 after_trial: Callable = None,
-                 after_session: Callable = None,
-                 after_subject: Callable = None,
-                 signal_types: list = ['EEG'], 
-                 **kwargs):
+    """
+    BaseDataset class for managing physiological signal datasets.
+
+    This class provides functionalities for:
+    - Initializing and processing datasets.
+    - Handling lazy and eager loading modes.
+    - Reading and writing signal data.
+    - Managing metadata and post-processing hooks.
+    """
+
+    def __init__(
+        self,
+        io_path: Union[str, None] = None,
+        io_mode: str = 'lmdb',
+        io_size: int = 1048576,
+        lazy_threshold: int = 128,
+        num_worker: int = 0,
+        verbose: bool = True,
+        after_trial: Callable = None,
+        after_session: Callable = None,
+        after_subject: Callable = None,
+        signal_types: list = ['EEG'], 
+        **kwargs
+    ) -> None:
+        """
+        Initialize the BaseDataset.
+
+        Args:
+            io_path (str): Path to the dataset storage.
+            io_mode (str): Storage mode ('lmdb', 'memory', etc.).
+            io_size (int): Size of the storage.
+            lazy_threshold (int): Threshold for switching to lazy loading.
+            num_worker (int): Number of workers for parallel processing.
+            verbose (bool): Whether to display progress bars.
+            after_trial (Callable): Hook for processing after each trial.
+            after_session (Callable): Hook for processing after each session.
+            after_subject (Callable): Hook for processing after each subject.
+            signal_types (List[str]): List of signal types to process.
+            **kwargs: Additional arguments for dataset processing.
+        """
         self.io_path = io_path
         self.io_size = io_size
         self.io_mode = io_mode
@@ -53,8 +81,8 @@ class BaseDataset(Dataset):
         self.after_subject = after_subject
         self.signal_types = [signal_type.lower() for signal_type in signal_types]
         
-        # 判断io_path是否存在
-        if not os.path.exists(self.io_path) or self.io_mode == 'memory':
+        # Check if the dataset folder is empty or in memory mode
+        if self.is_folder_empty(self.io_path) or self.io_mode == 'memory':
             log.info(
                 f'🔍 | No cached processing results found, processing {self.signal_types} data from {self.io_path}.')
             os.makedirs(self.io_path, exist_ok=True)
@@ -96,7 +124,7 @@ class BaseDataset(Dataset):
                             record=record,
                             read_record=self.read_record,
                             process_record=self.process_record,
-                            signal_types=self.signal_types,  # 传递信号类型
+                            signal_types=self.signal_types,  
                             verbose=self.verbose,
                             **kwargs)
                         for record_id, record in tqdm(enumerate(records),
@@ -142,10 +170,68 @@ class BaseDataset(Dataset):
                 io_path=self.io_path,
                 io_size=self.io_size,
                 io_mode=self.io_mode)
-        
-       
+
+    def is_folder_empty(self, folder_path: str) -> bool:
+        """
+        Check if the folder structure is valid and contains the required data.
+
+        Args:
+            folder_path (str): Path to the top-level folder to check.
+
+        Returns:
+            bool: True if the folder is empty, missing required files, or contains only empty files. False otherwise.
+        """
+        if not os.path.exists(folder_path):
+            return True
+
+        # Check for record folders
+        record_folders = [f for f in os.listdir(folder_path) if f.startswith("record_") and os.path.isdir(os.path.join(folder_path, f))]
+        if not record_folders:
+            return True
+
+        has_valid_record = False
+
+        # Validate each record folder
+        for record_folder in record_folders:
+            record_path = os.path.join(folder_path, record_folder)
+
+            # Check for info.csv
+            metadata_file_path = os.path.join(record_path, "info.csv")
+            if not os.path.exists(metadata_file_path) or os.path.getsize(metadata_file_path) == 0:
+                log.warning(f"Missing or empty info.csv in {record_path}. Deleting this record.")
+                shutil.rmtree(record_path)
+                continue
+
+            # Check for non-empty signal folders
+            signal_folders = [f for f in os.listdir(record_path) if os.path.isdir(os.path.join(record_path, f)) and f != "info.csv"]
+            has_non_empty_signal = False
+            for signal_folder in signal_folders:
+                signal_folder_path = os.path.join(record_path, signal_folder)
+                for root, dirs, files in os.walk(signal_folder_path):
+                    if any(os.path.getsize(os.path.join(root, file)) > 0 for file in files):
+                        has_non_empty_signal = True
+                        break
+                if has_non_empty_signal:
+                    break
+
+            if not has_non_empty_signal:
+                log.warning(f"No valid signal data found in {record_path}. Deleting this record.")
+                shutil.rmtree(record_path) 
+                continue
+
+            has_valid_record = True
+
+        return not has_valid_record
 
     def init_io(self, io_path: str, io_size: int, io_mode: str):
+        """
+        Initialize IO for the dataset.
+
+        Args:
+            io_path (str): Path to the dataset storage.
+            io_size (int): Size of the storage.
+            io_mode (str): Storage mode ('lmdb', 'memory', 'pickle').
+        """
         # get all records
         records = os.listdir(io_path)
         # filter the records with the prefix 'record_'
@@ -195,7 +281,6 @@ class BaseDataset(Dataset):
 
                 info_io = MetaInfoIO(meta_info_io_path)
                 info_df = info_io.read_all()
-                # 检查 DataFrame 是否为空
                 if info_df.empty:
                     log.warning(f"Empty DataFrame for record: {record}, skipping.")
                     continue
@@ -209,9 +294,15 @@ class BaseDataset(Dataset):
 
         self.info = pd.concat(info_merged, ignore_index=True)
 
-    
+    def is_lazy(self) -> bool:
+        """
+        Initialize IO for the dataset.
 
-    def is_lazy(self):
+        Args:
+            io_path (str): Path to the dataset storage.
+            io_size (int): Size of the storage.
+            io_mode (str): Storage mode ('lmdb', 'memory', etc.).
+        """
         assert hasattr(self, 'signal_io_router') or hasattr(
             self, 'signal_paths'), "The dataset should contain signal_io_router or signal_paths."
         if hasattr(self, 'signal_io_router') and len(self.signal_io_router) > 0:
@@ -221,6 +312,17 @@ class BaseDataset(Dataset):
         raise ValueError("Both signal_io_router and signal_paths are empty.")
 
     def read_signal(self, record: str, key: str, signal_type: str) -> Any:
+        """
+        Read a signal from the dataset.
+
+        Args:
+            record (str): The record identifier.
+            key (str): The key of the signal to read.
+            signal_type (str): The type of signal to read.
+
+        Returns:
+            Any: The signal data.
+        """
         if self.is_lazy():
             # Create temporary PhysioSignalIO instance
             signal_io = PhysioSignalIO(
@@ -234,6 +336,15 @@ class BaseDataset(Dataset):
             return signal_io.read_signal(signal_type, key)
 
     def write_signal(self, record: str, key: str, signal: Any, signal_type: str):
+        """
+        Write a signal to the dataset.
+
+        Args:
+            record (str): The record identifier.
+            key (str): The key of the signal to write.
+            signal (Any): The signal data to write.
+            signal_type (str): The type of signal to write.
+        """
         if self.is_lazy():
             # Create temporary PhysioSignalIO instance
             signal_io = PhysioSignalIO(
@@ -247,34 +358,44 @@ class BaseDataset(Dataset):
             signal_io.write_signal(signal=signal, signal_type=signal_type, key=key)
 
     def read_info(self, index: int) -> Dict:
-        '''
-        根据给定的 :obj:`index` 查询 MetaInfoIO 中对应的元信息。
+        """
+        Retrieve metadata information from MetaInfoIO based on the given index.
 
-        在元信息中，clip_id 是必需的。指定 EEG 在 EEGSignalIO 中的对应键，可以基于 :obj:`self.read_eeg(key)` 索引 EEG 样本。
+        The metadata must include `clip_id`, which specifies the corresponding key
+        in PhusioSignalIO. This key can be used to index samples via `self.read_signal(key)`.
 
-        参数:
-            index (int): 要查询的元信息的索引。
+        Args:
+            index (int): The index of the metadata to retrieve.
 
-        返回:
-            dict: 元信息。
-        '''
+        Returns:
+            dict: The metadata information as a dictionary.
+        """
         info = self.info.iloc[index].to_dict()
         return info
 
     def exist(self, io_path: str) -> bool:
-        '''
-        检查数据库 IO 是否存在。
+        """
+        Check if the database IO exists.
 
-        参数:
-            io_path (str): 数据库 IO 的路径。
+        Args:
+            io_path (str): Path to the database IO.
 
-        返回:
-            bool: 如果数据库 IO 存在，则返回 True，否则返回 False。
-        '''
+        Returns:
+            bool: True if the database IO exists, False otherwise.
+        """
 
         return os.path.exists(io_path)
 
-    def __getitem__(self, index: int) -> any:
+    def __getitem__(self, index: int) -> Dict:
+        """
+        Retrieve a dataset item by index.
+
+        Args:
+            index (int): Index of the item to retrieve.
+
+        Returns:
+            Dict[str, Any]: A dictionary containing signal data and labels.
+        """
         info = self.read_info(index)
         signal_index = str(info['clip_id'])
         signal_record = str(info['record_id'])
@@ -286,22 +407,89 @@ class BaseDataset(Dataset):
         return result
 
     def get_labels(self) -> list:
-        '''
-        获取数据集的标签。
+        """
+        Retrieve all labels from the dataset.
 
-        返回:
-            list: 标签列表。
-        '''
+        Returns:
+            list: A list of labels from the dataset.
+        """
         labels = []
         for i in range(len(self)):
             _, label = self.__getitem__(i)
             labels.append(label)
         return labels
 
-    def __len__(self):
+    def __len__(self) -> int:
+        """
+        Get the total number of items in the dataset.
+
+        Returns:
+            int: The number of items in the dataset.
+        """
         return len(self.info)
 
+    def collate_fn(self, batch: List[Dict[str, Any]]) -> Dict[str, Any]:
+        """
+        Custom collate function for batching data.
+
+        This function processes a batch of data, which is a list of dictionaries,
+        and combines them into a single dictionary with batched tensors or arrays.
+
+        Args:
+            batch (List[Dict[str, Any]]): A list of dictionaries, where each dictionary
+                                        represents a single data sample.
+
+        Returns:
+            Dict[str, Any]: A dictionary containing batched data.
+        """
+        # Initialize a dictionary to store batched signals
+        batch_signals = {key: [] for key in batch[0]}
+
+        # Collect data for each key
+        for item in batch:
+            for key, value in item.items():
+                batch_signals[key].append(value)
+
+        # Recursive function to process nested dictionaries
+        def recursive_collate(data: List[Any]) -> Any:
+            """
+            Recursively collate data into tensors or arrays.
+
+            Args:
+                data (List[Any]): A list of data items to be collated.
+
+            Returns:
+                Any: Collated data as tensors, arrays, or other supported types.
+            """
+            if isinstance(data[0], dict):
+                # Process nested dictionaries
+                return {key: recursive_collate([d[key] for d in data]) for key in data[0]}
+            elif isinstance(data[0], torch.Tensor):
+                # Stack tensors
+                return torch.stack(data)
+            elif isinstance(data[0], np.ndarray):
+                # Convert numpy arrays to tensors
+                return torch.tensor(np.stack(data))
+            elif isinstance(data[0], (int, float, list)):
+                # Convert scalars or lists to tensors
+                return torch.tensor(data)
+            else:
+                # Return data as-is for unsupported types
+                return data
+
+        # Apply recursive collation to each key
+        for key in batch_signals:
+            batch_signals[key] = recursive_collate(batch_signals[key])
+
+        return batch_signals  
+
     def __copy__(self) -> 'BaseDataset':
+        """
+        Create a shallow copy of the dataset.
+
+        Returns:
+            BaseDataset: A shallow copy of the dataset.
+        """
         cls = self.__class__
         result = cls.__new__(cls)
         # Copy basic attributes
@@ -327,35 +515,100 @@ class BaseDataset(Dataset):
         result.info = copy(self.info)
         return result
 
-    def set_records(self, **kwargs):
-        '''
-        生成数据库的块方法。用于描述需要处理哪些数据块以生成数据库。在类的 :obj:`__init__` 中由 :obj:`joblib.Parallel` 并行调用。
+    @staticmethod
+    def get_subject_id(**kwargs) -> str:
+        """
+        Retrieve the subject ID for a specific record.
 
-        参数:
-            lock (joblib.parallel.Lock): IO 写入器的锁。 (默认: :obj:`None`)
-            **kwargs: 从类的 __init__ 派生的参数。
+        Args:
+            **kwargs: Additional parameters.
 
-        .. code-block:: python
+        Returns:
+            str: The subject ID. Default is '0'.
+        """
+        return "0"
 
-        def set_records(self, root_path: str = None, **kwargs):
-                # 例如，返回文件名列表以供 process_record 处理
+    @staticmethod
+    def get_session_id(**kwargs) -> str:
+        """
+        Retrieve the session ID for a specific record.
+
+        Args:
+            **kwargs: Additional parameters.
+
+        Returns:
+            str: The session ID. Default is '0'.
+        """
+        return "0"
+
+    @staticmethod
+    def get_trial_id(**kwargs) -> str:
+        """
+        Retrieve the trial ID for a specific record.
+
+        Args:
+            **kwargs: Additional parameters.
+
+        Returns:
+            str: The trial ID. Default is '0'.
+        """
+        return "0"
+
+    def set_records(self, **kwargs) -> List:
+        """
+        Generate database blocks for processing.
+
+        This method is used to describe which data blocks need to be processed
+        to generate the database. It is called in the `__init__` method of the class
+        and executed in parallel using `joblib.Parallel`.
+
+        Args:
+            **kwargs: Parameters derived from the class `__init__`.
+
+        Example:
+            def set_records(self, root_path: str = None, **kwargs):
+                # Return a list of filenames to be processed by `process_record`
                 return os.listdir(root_path)
 
-        '''
+        Raises:
+            NotImplementedError: If the method is not implemented in the subclass.
+        """
         raise NotImplementedError(
             "Method set_records is not implemented in class BaseDataset")
 
     @staticmethod
-    def handle_record(io_path: Union[None, str] = None,
-                    io_size: int = 1048576,
-                    io_mode: str = 'lmdb',
-                    record: Any = None,
-                    record_id: Union[int, str] = None,
-                    read_record: Callable = None,
-                    process_record: Callable = None,
-                    signal_types: list = ['eeg'],  
-                    verbose: bool = True,
-                    **kwargs):
+    def handle_record(
+        io_path: Union[None, str] = None,
+        io_size: int = 1048576,
+        io_mode: str = 'lmdb',
+        record: Any = None,
+        record_id: Union[int, str] = None,
+        read_record: Callable = None,
+        process_record: Callable = None,
+        signal_types: list = ['eeg'],  
+        verbose: bool = True,
+        **kwargs
+    ) -> Dict:
+        """
+        Handle a single record for database generation.
+
+        This method processes a single record and writes the processed data to the database.
+
+        Args:
+            io_path (str): Path to the database storage.
+            io_size (int): Size of the storage.
+            io_mode (str): Storage mode ('lmdb', 'memory', etc.).
+            record (Any): The record to process.
+            record_id (Union[int, str]): The identifier of the record.
+            read_record (Callable): Function to read the record.
+            process_record (Callable): Function to process the record.
+            signal_types (list): List of signal types to process.
+            verbose (bool): Whether to display progress bars.
+            **kwargs: Additional arguments for processing.
+
+        Returns:
+            Dict: A dictionary containing the record identifier.
+        """
         _record_id = str(record_id)
         meta_info_io_path = os.path.join(io_path, f'record_{_record_id}', 'info.csv')
         info_io = MetaInfoIO(meta_info_io_path)
@@ -367,7 +620,7 @@ class BaseDataset(Dataset):
 
         kwargs['record'] = record
         kwargs['signal_types'] = signal_types
-        kwargs['result'] = read_record(**kwargs)
+        kwargs['result'] = read_record(record, **kwargs)
         gen = process_record(**kwargs)
 
         if record_id == 0:
@@ -398,42 +651,88 @@ class BaseDataset(Dataset):
         }
     
     @staticmethod
-    def read_record(record: Any, **kwargs) -> Dict:
-        '''
-        读取数据库的 IO 方法。用于描述如何读取文件。在类的 :obj:`__init__` 中由 :obj:`joblib.Parallel` 并行调用，此方法的输出将传递给 :obj:`process_record`。
+    def read_record(record: str | tuple, **kwargs) -> Dict:
+        """
+        Read a record from the database.
 
-        参数:
-            record (Any): 要处理的记录。它是 set_records 返回的列表中的一个元素。 (默认: :obj:`Any`)
-            **kwargs: 从类的 :obj:`__init__` 派生的参数。
+        This method describes how to read a file. It is called in the `__init__` method
+        of the class and executed in parallel using `joblib.Parallel`. The output of this
+        method is passed to `process_record`.
 
-        .. code-block:: python
+        Args:
+            record (Any): The record to process. It is an element from the list returned by `set_records`.
+            **kwargs: Parameters derived from the class `__init__`.
 
+        Example:
             def read_record(**kwargs):
                 return {
-                    'samples': ...
-                    'labels': ...
+                    'eeg':{
+                        'signal': eeg_signal,
+                        'channels': eeg_channels,
+                        'freq': eeg_freq,  
+                    },
+                    'ecg':{
+                        'signal': ecg_signal,
+                        'channels': ecg_channels,
+                        'freq': ecg_freq,
+                    },
+                    ...,
+                    'labels':{
+                        'taskA':{
+                            'type': 'event',
+                            'data': [
+                                {'start': 0.5, 'end': 2.3, 'value': 'stimulus'},
+                                {'start': 3.0, 'end': 4.0, 'value': 'response'}
+                            ],
+                        },
+                        'taskB':{
+                            'type': 'point',
+                            'data': [
+                                {'index': 1024, 'value': 'N'},  
+                                {'index': 2048, 'value': 'V'},
+                                {'index': 3072, 'value': 'A'}
+                            ]
+                        },
+                        ...,
+                    },
+                    'meta':{
+                        'filename': filename
+                        ...
+
+                    }
                 }
 
-        '''
+        Raises:
+            NotImplementedError: If the method is not implemented in the subclass.
+        """
 
         raise NotImplementedError(
             "Method read_record is not implemented in class BaseDataset"
         )
 
     @staticmethod
-    def process_record(record: Any, **kwargs) -> Dict:
-        '''
-        生成数据库的 IO 方法。用于描述如何处理文件以生成数据库。在类的 :obj:`__init__` 中由 :obj:`joblib.Parallel` 并行调用。
+    def process_record(result: Dict, **kwargs) -> Dict:
+        """
+        Process a record to generate the database.
 
-        参数:
-            record (Any): 要处理的记录。它是 set_records 返回的列表中的一个元素。 (默认: :obj:`Any`)
-            **kwargs: 从类的 :obj:`__init__` 派生的参数。
+        This method describes how to process a file to generate the database. It is called
+        in the `__init__` method of the class and executed in parallel using `joblib.Parallel`.
 
-        .. code-block:: python
+        Args:
+            result (Any): The result to process. It is an Dict returned by `read_records`.
+            **kwargs: Parameters derived from the class `__init__`.
 
+        Example:
             def process_record(record: Any = None, chunk_size: int = 128, **kwargs):
-                # 处理记录
-                eeg = np.ndarray((chunk_size, 64, 128), dtype=np.float32)
+                # Process the record
+                eeg_signal = np.ndarray(62,chunk_size),dtype=np.float32)
+                eeg_channel = ['1','2',....]
+                eeg_freq = 200
+                eeg = {
+                    'signal': signal,
+                    'channels': eeg_channel,
+                    'freq': eeg_freq
+                }
                 key = '1'
                 info = {
                     'subject': '1',
@@ -447,14 +746,30 @@ class BaseDataset(Dataset):
                     'info': info
                 }
 
-        '''
+        Raises:
+            NotImplementedError: If the method is not implemented in the subclass.
+        """
         raise NotImplementedError(
             "Method process_record is not implemented in class BaseDataset")
 
-    def update_record(self,
-                    after_trial: Callable = None,
-                    after_session: Callable = None,
-                    after_subject: Callable = None):
+    def update_record(
+        self,
+        after_trial: Callable = None,
+        after_session: Callable = None,
+        after_subject: Callable = None
+    ) -> None:
+        """
+        Apply post-processing hooks to the dataset.
+
+        This method applies the provided hooks (`after_trial`, `after_session`, `after_subject`)
+        to process the dataset at different levels (trial, session, subject). The processed
+        data is written back to the dataset.
+
+        Args:
+            after_trial (Callable, optional): A hook function to process data at the trial level.
+            after_session (Callable, optional): A hook function to process data at the session level.
+            after_subject (Callable, optional): A hook function to process data at the subject level.
+        """
         pbar = tqdm(total=len(self),
                     disable=not self.verbose,
                     desc="[POST-PROCESS]")
@@ -534,15 +849,27 @@ class BaseDataset(Dataset):
 
     @staticmethod
     def hook_data_interface(hook: Callable, data: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-        # 初始化一个空字典，用于存储堆叠后的数据
+        """
+        Apply post-processing hooks to the dataset.
+
+        This method applies the provided hooks (`after_trial`, `after_session`, `after_subject`)
+        to process the dataset at different levels (trial, session, subject). The processed
+        data is written back to the dataset.
+
+        Args:
+            after_trial (Callable, optional): A hook function to process data at the trial level.
+            after_session (Callable, optional): A hook function to process data at the session level.
+            after_subject (Callable, optional): A hook function to process data at the subject level.
+        """
+        # Initialize a dictionary to store stacked data
         stacked_data = {key: [] for key in data[0].keys()}
 
-        # 遍历每个字典，将数据堆叠到一起
+        # Stack data into tensors
         for item in data:
             for key, value in item.items():
                 stacked_data[key].append(value)
 
-        # 将列表转换为张量
+        # Convert lists to tensors or arrays
         for key, value in stacked_data.items():
             if isinstance(value[0], np.ndarray):
                 stacked_data[key] = np.stack(value, axis=0)
@@ -552,7 +879,7 @@ class BaseDataset(Dataset):
         
         processed_data = hook(stacked_data)
 
-        # 将处理后的张量转换回列表形式
+        # Split processed tensors back into individual items
         result = []
         for i in range(len(data)):
             item = {}
@@ -571,6 +898,12 @@ class BaseDataset(Dataset):
 
     @property
     def repr_body(self) -> Dict:
+        """
+        Return the core attributes of the dataset for representation.
+
+        Returns:
+            Dict: A dictionary containing the core attributes of the dataset.
+        """
         return {
             'io_path': self.io_path,
             'io_size': self.io_size,
@@ -579,9 +912,21 @@ class BaseDataset(Dataset):
 
     @property
     def repr_tail(self) -> Dict:
+        """
+        Return additional attributes of the dataset for representation.
+
+        Returns:
+            Dict: A dictionary containing additional attributes of the dataset.
+        """
         return {'length': self.__len__()}
 
     def __repr__(self) -> str:
+        """
+        Generate a string representation of the dataset.
+
+        Returns:
+            str: A string representation of the dataset.
+        """
         # init info
         format_string = self.__class__.__name__ + '('
         for i, (k, v) in enumerate(self.repr_body.items()):

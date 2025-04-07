@@ -5,14 +5,14 @@ common:
 
 dataset:
   batch_size: 128
-  dataset: NinaproDB5Dataset
+  dataset: ninapro_db5_dataset.NinaproDB5Dataset
   num_workers: 4
   root_path:
-    train: '/home/lingyus/data/NinaproDB5'
+    train: '/home/lingyus/data/NinaproDB5/s1'
     dev:
     # test: 
   io_path:
-    train: "/home/lingyus/data/NinaproDB5/processed_40"
+    train: "/home/lingyus/data/NinaproDB5/processed_test"
     dev: 
     test: 
   io_mode: pickle
@@ -37,6 +37,12 @@ dataset:
         iir_params:
           order: 3
           ftype: butter
+      PickChannels:
+        channels: ['sEMG8', 'sEMG9', 'sEMG10', 'sEMG11', 'sEMG12', 'sEMG13', 'sEMG14', 'sEMG15']
+        # channels: ['sEMG0','sEMG1', 'sEMG2', 'sEMG3', 'sEMG4', 'sEMG5', 'sEMG6', 'sEMG7']
+      # WaveletTransform:
+      #   wavelet: 'db4'
+      #   level: 3
       Normalize:
         method: min_max
 
@@ -51,18 +57,18 @@ lr_scheduler:
   warmup_epochs: 5
 
 model:
-  select: Conformer
+  select: conformer.Conformer
   n_outputs: 52
   n_chans: 8
   n_times: 40
-  filter_time_length: 8
+  filter_time_length: 5
   n_filters_time: 64
-  drop_prob: 0.3
-  pool_time_length: 5
-  pool_time_stride: 2
+  drop_prob: 0.1
+  pool_time_length: 3
+  pool_time_stride: 1
   att_depth: 4
   att_heads: 8
-  att_drop_prob: 0.2
+  att_drop_prob: 0.1
 
   # select: EEGNet
   # n_chans: 16
@@ -93,7 +99,9 @@ trainer:
   # save_interval: 1066
   # eval_interval: 1066
   log_interval: 20
-  eval_metric: accuracy
+  eval_metric:
+    select: accuracy
+    mode: max
   metrics: [accuracy, precision_macro, f1_macro, recall_macro]
     
 

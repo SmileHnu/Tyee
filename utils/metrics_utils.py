@@ -7,7 +7,7 @@
 @Software: Visual Studio Code
 @File    : metrics_utils.py
 @Time    : 2024/11/15 20:28:51
-@Desc    : 
+@Desc    : Utility class for dynamically building and evaluating metrics.
 """
 
 import numpy as np
@@ -17,83 +17,121 @@ from .import_utils import lazy_import_module
 
 class MetricEvaluator:
     """
-    MetricEvaluator 类用于根据配置字典动态构建并计算指标。
+    A utility class for dynamically building and evaluating metrics.
 
-    它提供了两个主要功能：
-    1. 根据给定的指标列表，动态构建和实例化各个指标类。
-    2. 保存每个 batch 的预测结果，并在需要时计算这些指标。
-    3. 计算这些指标并返回结果。
+    This class provides the following functionalities:
+    1. Dynamically build and instantiate metric classes based on a given list of metric names.
+    2. Store batch-wise prediction results for later evaluation.
+    3. Compute and return the results of the metrics.
 
-    :param metric_list: list, 包含指标名称的列表。
+    Args:
+        metric_list (list): A list of metric names to be dynamically instantiated.
     """
 
     def __init__(self, metric_list: list):
         """
-        初始化 MetricEvaluator 类，构建指标实例列表。
+        Initialize the MetricEvaluator class and build metric instances.
 
-        :param metric_list: list, 包含指标名称的列表。
+        Args:
+            metric_list (list): A list of metric names to be dynamically instantiated.
         """
-        self.metrics = self.build_metrics(metric_list)  # 构建指标实例列表
-        self.results = []  # 用于存储所有的 result
+        self.metrics = self.build_metrics(metric_list)  # Build metric instances
+        self.results = []  # Store batch-wise results
 
     def build_metrics(self, metric_list: list):
         """
-        根据指标列表动态构建并返回指标类实例列表。
+        Dynamically build and return a list of metric class instances.
 
-        :param metric_list: list, 包含指标名称的列表。
-        :return: list, 指标类实例的列表，包含所有根据配置文件实例化的指标对象。
+        Args:
+            metric_list (list): A list of metric names.
+
+        Returns:
+            list: A list of instantiated metric objects.
         """
         metrics = []
         for metric_name in metric_list:
-            # 动态导入指标类
-            metric_cls = lazy_import_module(f"metrics", metric_name)
-            # 实例化指标类
+            # Dynamically import the metric class
+            metric_cls = lazy_import_module("metrics", metric_name)
+            # Instantiate the metric class
             metric = metric_cls()
             metrics.append(metric)
         return metrics
 
     def update_metrics(self, result: dict):
         """
-        保存每个 batch 的预测结果，需要转移到CPU上。
+        Store batch-wise prediction results, ensuring they are moved to the CPU.
 
-        :param result: dict, 包含一个 batch 的预测结果，可以包含多个字段，如 'label', 'output' 等。
+        Args:
+            result (dict): A dictionary containing batch-wise prediction results, 
+                           such as 'label' and 'output'.
         """
-        # 将每个 batch 的结果转移到 CPU 上并转换为 numpy 数组
+        # Move batch results to CPU and convert to numpy arrays
         for key, value in result.items():
+            # print(f"Key: {key}, Type: {type(value)}")
             if isinstance(value, torch.Tensor):
-                result[key] = value.detach().cpu()
-            else:
-                result[key] = value.cpu()
-            
+                result[key] = value.detach().cpu().numpy()
+            elif isinstance(value, np.ndarray):
+                # print("Warning: Numpy array detected in result. Ensure it is on CPU.")
+                result[key] = value
+
         self.results.append(result)
 
     def calculate_metrics(self):
         """
-        计算所有已更新的指标，并返回指标计算结果。
+        Compute all updated metrics and return the results.
 
-        :return: dict, 包含每个指标名称和对应计算结果的字典。
+        Returns:
+            dict: A dictionary containing metric names as keys and their computed results as values.
         """
         metrics_result = {}
 
         for metric in self.metrics:
-            
-            # 获取指标实例的类名称作为字典的键
+            # Use the metric instance's name as the dictionary key
             metric_name = metric.name
 
-            # 调用每个指标实例的 compute 方法计算指标结果
+            # Compute the metric result using the stored results
             result = metric.compute(self.results)
 
-            # 如果结果是 numpy 类型，转换为标准的 Python 浮点数
+            # Convert numpy types to standard Python float
             if isinstance(result, (np.float32, np.float64)):
                 result = float(result)
 
-            # 保留结果的小数点后四位
+            # Round the result to 4 decimal places
             result = round(result, 4)
 
-            # 将计算结果添加到结果字典
+            # Add the computed result to the metrics dictionary
             metrics_result[metric_name] = result
 
-        # 清空 results 列表
+        # Clear stored results after computation
         self.results.clear()
 
         return metrics_result
+
+
+if __name__ == "__main__":
+    # 构造测试数据 (batch, 输出层数量, 输出结果)
+    true_values = torch.tensor([
+        [[1.0, 2.0], [3.0, 4.0]],
+        [[5.0, 6.0], [7.0, 8.0]]
+    ])  # shape: (2, 2, 2)
+
+    predicted_values = torch.tensor([
+        [[1.1, 1.9], [3.2, 3.8]],
+        [[4.9, 6.1], [7.1, 7.9]]
+    ])  # shape: (2, 2, 2)
+
+    # 将测试数据包装成结果字典
+    result = {"label": true_values, "output": predicted_values}
+
+    # 初始化 MetricEvaluator，传入需要测试的指标名称
+    evaluator = MetricEvaluator(metric_list=["mse", "mae"])
+
+    # 更新指标，模拟多次 batch 的结果
+    for _ in range(3):  # 假设有 3 个 batch
+        evaluator.update_metrics(result)
+
+    # 计算所有指标
+    metrics_result = evaluator.calculate_metrics()
+
+    # 打印结果
+    print("Metrics Result:", metrics_result)

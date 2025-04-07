@@ -26,7 +26,8 @@ class SEEDVTask(PRLTask):
 
 
     def build_model(self):
-        model_name = lazy_import_module('models', self.upstream_select)
+        module_name, class_name = self.model_select.rsplit('.', 1)
+        model_name = lazy_import_module(f'models.{module_name}', class_name)
         model = model_name(**self.model_params)
         # print(model)
         return model

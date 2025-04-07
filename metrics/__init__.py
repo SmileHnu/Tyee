@@ -1,11 +1,13 @@
-from .regression_metrics import (
+from .regression import (
     MeanSquaredError as mse,
     MeanAbsoluteError as mae,
     RMSE as rmse,
-    R2Score as r2
+    R2Score as r2,
+    CosineSimilarity as cosine_similarity,
+    PearsonCorrelation as pearson_correlation,
 )
 
-from .class_metrics import (
+from .classification import (
     Accuracy as accuracy,
     BalancedAccuracy as balanced_accuracy,
     CohenKappa as cohen_kappa,

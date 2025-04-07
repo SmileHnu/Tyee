@@ -18,29 +18,29 @@ import torch
 import wfdb
 import numpy as np
 from dataset import BaseDataset
-from typing import Any, Callable, Union
-from dataset.constants.standard_channels import EEG_CHANNELS_ORDER
+from typing import Any, Callable, Union, Dict, Generator
 
 class MITBIHAFIBDataset(BaseDataset):
-    def __init__(self,
-                 root_path: str = './mit-bih-arrhythmia-database-1.0.0',
-                 pre_offset : int = 100,
-                 post_offset : int = 200,
-                 num_channel: int = 62,
-                 signal_types: list = ['ecg'],
-                 online_transform: Union[None, Callable] = None,
-                 offline_transform: Union[None, Callable] = None,
-                 label_transform: Union[None, Callable] = None,
-                 before_trial: Union[None, Callable] = None,
-                 after_trial: Union[Callable, None] = None,
-                 after_session: Union[Callable, None] = None,
-                 after_subject: Union[Callable, None] = None,
-                 io_path: Union[None, str] = None,
-                 io_size: int = 1048576,
-                 io_mode: str = 'lmdb',
-                 num_worker: int = 0,
-                 verbose: bool = True,
-                 ):
+    def __init__(
+        self,
+        root_path: str = './mit-bih-arrhythmia-database-1.0.0',
+        pre_offset : int = 100,
+        post_offset : int = 200,
+        num_channel: int = 62,
+        signal_types: list = ['ecg'],
+        online_transform: Union[None, Callable] = None,
+        offline_transform: Union[None, Callable] = None,
+        label_transform: Union[None, Callable] = None,
+        before_trial: Union[None, Callable] = None,
+        after_trial: Union[Callable, None] = None,
+        after_session: Union[Callable, None] = None,
+        after_subject: Union[Callable, None] = None,
+        io_path: Union[None, str] = None,
+        io_size: int = 1048576,
+        io_mode: str = 'lmdb',
+        num_worker: int = 0,
+        verbose: bool = True,
+    ) -> None:
         # if io_path is None:
         #     io_path = get_random_dir_path(dir_prefix='datasets')
 
@@ -87,7 +87,6 @@ class MITBIHAFIBDataset(BaseDataset):
 
     @staticmethod
     def read_record(record: str, **kwargs):
-        
         data = wfdb.rdsamp(record)
         annotation = wfdb.rdann(record,'atr')
         ecg_signals = data[0].transpose()
@@ -105,17 +104,18 @@ class MITBIHAFIBDataset(BaseDataset):
             'R_location': R_location,
             'labels': labels
         }
-        
-        
+       
     @staticmethod
-    def process_record(record, 
-                       result,
-                       signal_types,
-                       pre_offset,
-                       post_offset,
-                       before_trial,
-                       offline_transform,
-                       **kwargs):
+    def process_record(
+        record, 
+        result,
+        signal_types,
+        pre_offset,
+        post_offset,
+        before_trial,
+        offline_transform,
+        **kwargs
+    ) -> Generator[Dict[str, Any], None, None]:
         file_name = os.path.splitext(os.path.basename(record))[0]
         if before_trial is not None:
             try:
@@ -179,8 +179,6 @@ class MITBIHAFIBDataset(BaseDataset):
             # print(result)
             yield result
             
-        
-
     def __getitem__(self, index):
         info = self.read_info(index)
         

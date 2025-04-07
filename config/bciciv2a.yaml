@@ -5,7 +5,7 @@ common:
 
 dataset:
   batch_size: 72
-  dataset: BCICIV2ADataset
+  dataset: bciciv2a_dataset.BCICIV2ADataset
   num_workers: 4
   root_path:
     # train: '/home/lingyus/data/BCICIV2a/processed'
@@ -61,7 +61,7 @@ model:
   # t_patch_size: 250
   # num_classes: 4
 
-  select: EEGNet
+  select: eegnet.EEGNet
   n_chans: 22
   chunk_size: 1000
   num_classes: 4
@@ -91,7 +91,9 @@ trainer:
   save_interval: 40
   eval_interval: 40
   log_interval: 20
-  eval_metric: accuracy
+  eval_metric:
+    select: accuracy
+    mode: max
   metrics: [accuracy, cohen_kappa]
     
 

@@ -5,7 +5,7 @@ common:
 
 dataset:
   batch_size: 64
-  dataset: TUEVDataset
+  dataset: tuev_dataset.TUEVDataset
   num_workers: 4
   root_path:
     train: '/home/lingyus/data/tuh_eeg_events/v2.0.1/edf/train/'
@@ -47,7 +47,7 @@ lr_scheduler:
   warmup_start_lr: 0
   warmup_epochs: 5
 model:
-  select: EEGPT_TUEV
+  select: eegpt.EEGPTClassifier
   trainable: true
   finetune: /home/lingyus/code/PRL/models/upstream/eegpt/checkpoint/eegpt_mcae_58chs_4s_large4E.ckpt
   nb_classes: 6
@@ -85,7 +85,9 @@ trainer:
   # save_interval: 1066
   # eval_interval: 1066
   log_interval: 20
-  eval_metric: balanced_accuracy
+  eval_metric:
+    select: blanced_accuracy
+    mode: max
   metrics: [balanced_accuracy, accuracy, f1_weighted, cohen_kappa]
 distributed:
   backend: nccl
