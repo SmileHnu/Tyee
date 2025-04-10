@@ -9,11 +9,11 @@ dataset:
   num_workers: 4
   root_path:
     train: '/home/lingyus/data/NinaproDB5/s1'
-    dev:
+    val:
     # test: 
   io_path:
     train: "/home/lingyus/data/NinaproDB5/processed_test"
-    dev: 
+    val: 
     test: 
   io_mode: pickle
   split: 
@@ -23,7 +23,7 @@ dataset:
     shuffle: true
     seed: 7
     # test_size: 0
-    # dev_size: 0.33333
+    # val_size: 0.33333
     n_splits: 5
   other:
     chunk_size: 40

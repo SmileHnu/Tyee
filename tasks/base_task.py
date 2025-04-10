@@ -14,7 +14,6 @@ import torch
 import numpy as np
 from torch.utils.data import Dataset
 from dataset.transform import Compose
-from dataset.split import DatasetSplitter
 from utils import lazy_import_module, get_nested_field
 from torch.utils.data import Dataset, Sampler, DataLoader, DistributedSampler
 from typing import Tuple, List, Dict, Any
@@ -48,7 +47,9 @@ class PRLTask(object):
         after_subject_cfg = get_nested_field(cfg, 'dataset.after_subject', None)
         self.after_subject = self.build_transforms(after_subject_cfg)
 
-        self.split_params = get_nested_field(cfg, 'dataset.split', {})
+        self.split_select = get_nested_field(cfg, 'dataset.split.select', 'NoSplit')
+        self.split_init_params = get_nested_field(cfg, 'dataset.split.init_params', {})
+        self.split_run_params = get_nested_field(cfg, 'dataset.split.run_params', {})
 
         # 模型配置
         self.model_select = get_nested_field(cfg, 'model.select', '')
@@ -70,7 +71,7 @@ class PRLTask(object):
 
 
         self.train_dataset = None
-        self.dev_dataset = None
+        self.val_dataset = None
         self.test_dataset = None
         self.loss = self.build_loss()
 
@@ -140,10 +141,20 @@ class PRLTask(object):
             Tuple[Dataset, Dataset, Dataset]: 训练集、验证集和测试集。
         """
         train_dataset = self.build_dataset(self.root_path.get('train', None), self.io_path.get('train', None))
-        dev_dataset = self.build_dataset(self.root_path.get('dev', None), self.io_path.get('dev', None))
+        val_dataset = self.build_dataset(self.root_path.get('val', None), self.io_path.get('val', None))
         test_dataset = self.build_dataset(self.root_path.get('test', None), self.io_path.get('test', None))
 
-        return train_dataset, dev_dataset, test_dataset
+        return train_dataset, val_dataset, test_dataset
+    def build_splitter(self):
+        """
+        构建数据集划分器的方法。
+
+        返回:
+            DatasetSplitter: 数据集划分器对象。
+        """
+        splitter_cls = lazy_import_module('dataset.split', self.split_select)
+        
+        return splitter_cls(**self.split_init_params)
 
     def build_model(self):
         """ 构建模型 """
@@ -198,12 +209,14 @@ class PRLTask(object):
     
     def get_datasets(self,):
         """ 获取数据集 """
-        self.train_dataset, self.dev_dataset, self.test_dataset = self.build_datasets()
-
-        self.splitter = DatasetSplitter(train_dataset=self.train_dataset, dev_dataset=self.dev_dataset, test_dataset=self.test_dataset)
-
-        splits = self.splitter.split(**self.split_params)
-
+        self.train_dataset, self.val_dataset, self.test_dataset = self.build_datasets()
+        splitter = self.build_splitter()
+        splits = list(splitter.split(
+                            self.train_dataset, 
+                            self.val_dataset, 
+                            self.test_dataset, 
+                            **self.split_run_params
+        ))
         return splits
           
     def get_batch_iterator(self, dataloader: DataLoader):

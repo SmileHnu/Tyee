@@ -9,11 +9,11 @@ dataset:
   num_workers: 4
   root_path:
     # train: '/home/lingyus/data/BCICIV2a/processed'
-    dev:
+    val:
     # test: '/home/lingyus/data/tuh_eeg_events/v2.0.1/edf/eval/'
   io_path:
     train: "/mnt/ssd/lingyus/sleep_edf_processed"
-    dev: 
+    val: 
     test: 
   io_mode: pickle
   split: 

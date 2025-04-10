@@ -9,18 +9,18 @@ dataset:
   num_workers: 4
   root_path:
     # train: '/home/lingyus/data/BCICIV2a/processed'
-    dev:
+    val:
     # test: '/home/lingyus/data/tuh_eeg_events/v2.0.1/edf/eval/'
   io_path:
     train: "/home/lingyus/data/BCICIV2a/1/train/processed"
-    dev: "/home/lingyus/data/BCICIV2a/1/eval/processed"
+    val: "/home/lingyus/data/BCICIV2a/1/eval/processed"
     test: 
   io_mode: pickle
   split: 
     method: none
     split_by: clip_id
     seed: 4523
-    dev: 0.2
+    val: 0.2
   other:
     chunk_size: 1000,
     offset: 500,

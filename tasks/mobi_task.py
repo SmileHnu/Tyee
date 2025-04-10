@@ -72,7 +72,7 @@ class MoBITask(PRLTask):
 
         self.train_dataset = None
         self.test_dataset = None
-        self.dev_dataset = None
+        self.val_dataset = None
 
 
         self.model_select = get_nested_field(cfg, 'model.select', '')
@@ -125,10 +125,10 @@ class MoBITask(PRLTask):
             self.train_dataset = self.build_dataset(self.dataset_root, self.train_fpath)
         return self.train_dataset
 
-    def get_dev_dataset(self):
-        if self.dev_dataset is None:
-            self.dev_dataset = self.build_dataset(self.dataset_root, self.eval_fpath[0])
-        return self.dev_dataset
+    def get_val_dataset(self):
+        if self.val_dataset is None:
+            self.val_dataset = self.build_dataset(self.dataset_root, self.eval_fpath[0])
+        return self.val_dataset
     
     def get_test_dataset(self):
         if self.test_dataset is None:

@@ -9,11 +9,11 @@ dataset:
   num_workers: 2
   root_path:
     train:
-    dev:
+    val:
     test:
   io_path:
     train:
-    dev:
+    val:
     test:
   io_mode: # 'lmdb', 'pickle', 'memory'
   split: 

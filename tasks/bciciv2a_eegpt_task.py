@@ -34,10 +34,10 @@ class BCICIV2ATask(PRLTask):
             self.train_dataset = self.build_dataset(self.test_subject, self.dataset_root, DatasetType.TRAIN)
         return self.train_dataset
     
-    def get_dev_dataset(self):
-        if self.dev_dataset is None:
-            self.dev_dataset = self.build_dataset(self.test_subject, self.dataset_root, DatasetType.TEST)
-        return self.dev_dataset
+    def get_val_dataset(self):
+        if self.val_dataset is None:
+            self.val_dataset = self.build_dataset(self.test_subject, self.dataset_root, DatasetType.TEST)
+        return self.val_dataset
 
     def get_test_dataset(self):
         return None

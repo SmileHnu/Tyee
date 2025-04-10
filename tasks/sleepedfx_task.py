@@ -30,7 +30,7 @@ class SleepEDFxTask(PRLTask):
                               66, 71, 72, 73, 74, 75, 
                               76, 77, 81, 82]
         self.train_dataset = None
-        self.dev_dataset = None
+        self.val_dataset = None
         self.test_dataset = None
         self.model_select = get_nested_field(cfg, 'model.select', '')
         self.model_params = get_nested_field(cfg, 'model', {})

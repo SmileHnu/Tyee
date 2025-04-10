@@ -9,7 +9,7 @@ dataset:
   num_workers: 8
   path: /mnt/ssd/lingyus/PhysioNetP300
   train_subjects: [1,2,3,4,5,6,7,9]
-  dev_subjects: [11]
+  val_subjects: [11]
   
 
 lr_scheduler:

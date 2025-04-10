@@ -8,7 +8,7 @@ dataset:
   dataset: SleepEDFxDataset
   num_workers: 8
   path: /mnt/ssd/lingyus/sleep_edf/TrainFold
-  dev_subjects: [66, 71, 72, 73, 74, 75]
+  val_subjects: [66, 71, 72, 73, 74, 75]
   
 
 lr_scheduler:

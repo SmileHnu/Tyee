@@ -9,22 +9,20 @@ dataset:
   num_workers: 4
   root_path:
     train: '/home/lingyus/data/mit-bih-arrhythmia-database-1.0.0'
-    dev:
+    val:
     # test: 
   io_path:
     train: "/home/lingyus/data/mit-bih-arrhythmia-database-1.0.0/processed_wavelet"
-    dev: 
+    val: 
     test: 
   io_mode: pickle
   split: 
-    method: hold_out
-    split_by: clip_id
-    stratified: false
-    shuffle: true
-    seed: 7
-    test_size: 0.2
-    dev_size: 0.125
-    # n_splits: 10
+    select: HoldOut
+    init_params:
+      split_path: /home/lingyus/data/test/mit_bih_split
+      val_size: 0.2
+      random_state: 42
+      shuffle: true
   other:
     pre_offset: 100
     post_offset: 200

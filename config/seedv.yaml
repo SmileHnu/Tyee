@@ -9,18 +9,18 @@ dataset:
   num_workers: 4
   root_path:
     train: '/home/lingyus/data/SEED-V/EEG_raw'
-    dev:
+    val:
     test: 
   io_path:
     train: "/home/lingyus/data/EEG_raw_processed"
-    dev:
+    val:
     test: 
   io_mode: pickle
   split: 
     method: seedv
     split_by: session_id
     seed: 0
-    # dev_size: 0.5
+    # val_size: 0.5
     # test_size: 0.33
   offline_transform:
     eeg:

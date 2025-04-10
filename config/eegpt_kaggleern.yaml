@@ -9,7 +9,7 @@ dataset:
   num_workers: 0
   path: /mnt/ssd/lingyus
   train_subjects: [2,6,7,11,12,13,14,16,17,18,20,21]
-  dev_subjects: [1,3,4,5,8,9,10,15,19,25]
+  val_subjects: [1,3,4,5,8,9,10,15,19,25]
   sessions: [1,2,3,4,5]
 
 lr_scheduler:

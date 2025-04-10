@@ -66,7 +66,7 @@ class SEEDVTask(PRLTask):
 
         self.train_dataset = None
         self.test_dataset = None
-        self.dev_dataset = None
+        self.val_dataset = None
 
 
         self.model_select = get_nested_field(cfg, 'model.select', '')

@@ -21,7 +21,7 @@ class PhysioP300Task(PRLTask):
         self.checkpoint = get_nested_field(cfg, 'model.upstream.checkpoint', default=None)
         
         self.train_subjects = get_nested_field(cfg, 'dataset.train_subjects', None)
-        self.dev_subjects = get_nested_field(cfg, 'dataset.dev_subjects', None)
+        self.val_subjects = get_nested_field(cfg, 'dataset.val_subjects', None)
         
 
     def build_dataset(self, path, subjects=None):
@@ -33,10 +33,10 @@ class PhysioP300Task(PRLTask):
             self.train_dataset = self.build_dataset(self.dataset_root, subjects=self.train_subjects)
         return self.train_dataset
     
-    def get_dev_dataset(self):
-        if self.dev_dataset is None:
-            self.dev_dataset = self.build_dataset(self.dataset_root, subjects=self.dev_subjects)
-        return self.dev_dataset
+    def get_val_dataset(self):
+        if self.val_dataset is None:
+            self.val_dataset = self.build_dataset(self.dataset_root, subjects=self.val_subjects)
+        return self.val_dataset
 
     def get_test_dataset(self):
         return None

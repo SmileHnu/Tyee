@@ -9,18 +9,18 @@ dataset:
   num_workers: 4
   root_path:
     train: '/home/lingyus/data/tuh_eeg_events/v2.0.1/edf/train/'
-    dev:
+    val:
     test: '/home/lingyus/data/tuh_eeg_events/v2.0.1/edf/eval/'
   io_path:
     train: "/home/lingyus/data/tuh_eeg_events/v2.0.1/edf/processed_biot_train"
-    dev:
+    val:
     test: "/home/lingyus/data/tuh_eeg_events/v2.0.1/edf/processed_biot_eval"
   io_mode: pickle
   split: 
     method: hold_out
     split_by: subject_id
     seed: 4523
-    dev_size: 0.1
+    val_size: 0.1
   offline_transform:
     eeg:
       Scale:

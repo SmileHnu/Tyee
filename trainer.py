@@ -75,8 +75,8 @@ class Trainer:
         """
         Execute the training process, including initialization, training, evaluation, and checkpointing.
         """
-        for fold, (train_dataset, dev_dataset, eval_dataset) in enumerate(self.task.get_datasets()):
-            self._init_components(fold, train_dataset, dev_dataset, eval_dataset)
+        for fold, (train_dataset, val_dataset, eval_dataset) in enumerate(self.task.get_datasets()):
+            self._init_components(fold, train_dataset, val_dataset, eval_dataset)
             self.logger.info(f"Start training for fold {fold + 1}")
             self.train_loop()
             if self.best_metric_value is not None:
@@ -93,14 +93,14 @@ class Trainer:
         task = lazy_import_module(f'tasks.{module_name}', class_name)
         return task(self.cfg)
 
-    def _init_components(self, fold, train_dataset, dev_dataset, test_dataset):
+    def _init_components(self, fold, train_dataset, val_dataset, test_dataset):
         """
         Initialize components for training, including logging, datasets, and model.
 
         Args:
             fold (int): Current fold index.
             train_dataset (Dataset): Training dataset.
-            dev_dataset (Dataset): Validation dataset.
+            val_dataset (Dataset): Validation dataset.
             test_dataset (Dataset): Test dataset.
         """
         # Logging configuration
@@ -117,17 +117,17 @@ class Trainer:
 
         # Dataset configuration
         self.train_dataset = train_dataset
-        self.dev_dataset = dev_dataset
+        self.val_dataset = val_dataset
         self.test_dataset = test_dataset
 
         # Samplers
         self.train_sampler = self.task.build_sampler(self.train_dataset, self.world_size, self.rank)
-        self.dev_sampler = self.task.build_sampler(self.dev_dataset, self.world_size, self.rank) if self.dev_dataset else None
+        self.val_sampler = self.task.build_sampler(self.val_dataset, self.world_size, self.rank) if self.val_dataset else None
         self.test_sampler = self.task.build_sampler(self.test_dataset, self.world_size, self.rank) if self.test_dataset else None
 
         # Data loaders
         self.train_loader = self.task.build_dataloader(self.train_dataset, self._batch_size, sampler=self.train_sampler, shuffle=True)
-        self.dev_loader = self.task.build_dataloader(self.dev_dataset, self._batch_size, sampler=self.dev_sampler, shuffle=False) if self.dev_dataset else None
+        self.val_loader = self.task.build_dataloader(self.val_dataset, self._batch_size, sampler=self.val_sampler, shuffle=False) if self.val_dataset else None
         self.test_loader = self.task.build_dataloader(self.test_dataset, self._batch_size, sampler=self.test_sampler, shuffle=False) if self.test_dataset else None
 
         # Training steps and intervals
@@ -309,23 +309,23 @@ class Trainer:
         Args:
             step (int): Current training step.
         """
-        if self.dev_loader is not None:
-            dev_result = self._eval_step(self.dev_loader)
+        if self.val_loader is not None:
+            val_result = self._eval_step(self.val_loader)
         if self.test_loader is not None:
             test_result = self._eval_step(self.test_loader)
 
         if self.rank == 0:
-            if self.dev_loader is not None:
-                self.logger.info(f"Dev, Step {step}, Metrics: {dev_result}")
-                for metric, value in dev_result.items():
-                    self.writer.add_scalar(f'dev/{metric}', value, step)
+            if self.val_loader is not None:
+                self.logger.info(f"Val, Step {step}, Metrics: {val_result}")
+                for metric, value in val_result.items():
+                    self.writer.add_scalar(f'val/{metric}', value, step)
 
             if self.test_loader is not None:
                 self.logger.info(f"Test, Step {step}, Metrics: {test_result}")
                 for metric, value in test_result.items():
                     self.writer.add_scalar(f'test/{metric}', value, step)
 
-            self._check_and_save_best(dev_result, step)
+            self._check_and_save_best(val_result, step)
 
     def _eval_step(self, loader):
         """
@@ -401,15 +401,15 @@ class Trainer:
 
         return result
 
-    def _check_and_save_best(self, dev_result, step):
+    def _check_and_save_best(self, val_result, step):
         """
         Check if the current evaluation metric is the best and save the best model checkpoint.
 
         Args:
-            dev_result (dict): Dictionary containing the current evaluation results.
+            val_result (dict): Dictionary containing the current evaluation results.
             step (int): Current training step.
         """
-        current_metric_value = dev_result.get(self.eval_metric, None)
+        current_metric_value = val_result.get(self.eval_metric, None)
 
         if current_metric_value is not None:
             save_best = False

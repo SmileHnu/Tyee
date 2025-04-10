@@ -21,7 +21,7 @@ class KaggleERNTask(PRLTask):
         self.checkpoint = get_nested_field(cfg, 'model.upstream.checkpoint', default=None)
         
         self.train_subjects = get_nested_field(cfg, 'dataset.train_subjects', None)
-        self.dev_subjects = get_nested_field(cfg, 'dataset.dev_subjects', None)
+        self.val_subjects = get_nested_field(cfg, 'dataset.val_subjects', None)
         self.sessions = get_nested_field(cfg, 'dataset.sessions', None)
 
     def build_dataset(self, path, train, subjects=None, sessions=None):
@@ -33,10 +33,10 @@ class KaggleERNTask(PRLTask):
             self.train_dataset = self.build_dataset(self.dataset_root, train=True, subjects=self.train_subjects, sessions=self.sessions)
         return self.train_dataset
     
-    def get_dev_dataset(self):
-        if self.dev_dataset is None:
-            self.dev_dataset = self.build_dataset(self.dataset_root, train=False, subjects=self.dev_subjects, sessions=self.sessions)
-        return self.dev_dataset
+    def get_val_dataset(self):
+        if self.val_dataset is None:
+            self.val_dataset = self.build_dataset(self.dataset_root, train=False, subjects=self.val_subjects, sessions=self.sessions)
+        return self.val_dataset
 
     def get_test_dataset(self):
         return None

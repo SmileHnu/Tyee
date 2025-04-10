@@ -506,10 +506,8 @@ class BaseDataset(Dataset):
         else:
             # Original eager loading copy
             result.signal_io_router = {}
-            for record, signal_ios in self.signal_io_router.items():
-                result.signal_io_router[record] = {}
-                for signal_type, signal_io in signal_ios.items():
-                    result.signal_io_router[record][signal_type] = copy(signal_io)
+            for record, signal_io in self.signal_io_router.items():
+                result.signal_io_router[record] = copy(signal_io)
 
         # Deep copy info
         result.info = copy(self.info)
