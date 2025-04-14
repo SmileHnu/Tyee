@@ -143,8 +143,8 @@ class TUABTask(PRLTask):
             # 构造参数组
             param_groups.append({
                 'params': param, 
-                'lr_scale': scale,
-                'lr': lr,
+                # 'lr_scale': scale,
+                'lr': lr * scale,
                 'weight_decay': 0.0 if param.ndim <= 1 or name.endswith(".bias") or name in skip_list else weight_decay
             })
             print(f"Layer {layer_id}: {name}, lr_scale={scale}, lr={lr}, weight_decay={0.0 if param.ndim <= 1 or name.endswith('.bias') or name in skip_list else weight_decay}")

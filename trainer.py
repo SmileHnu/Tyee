@@ -15,7 +15,7 @@ import logging
 import torch.distributed as dist
 from utils import MetricEvaluator
 from torch.utils.tensorboard import SummaryWriter
-from utils import lazy_import_module, get_nested_field, get_grad_norm
+from utils import lazy_import_module, get_nested_field, get_grad_norm, format_value
 from torch.nn.parallel import DistributedDataParallel as DDP
 
 INT_MAX = 2**31 - 1
@@ -78,7 +78,7 @@ class Trainer:
         for fold, (train_dataset, val_dataset, eval_dataset) in enumerate(self.task.get_datasets()):
             self._init_components(fold, train_dataset, val_dataset, eval_dataset)
             self.logger.info(f"Start training for fold {fold + 1}")
-            self.train_loop()
+            self.run_loop()
             if self.best_metric_value is not None:
                 self.logger.info(f"Best {self.eval_metric}: {self.best_metric_value}")
 
@@ -160,7 +160,7 @@ class Trainer:
             self._load_checkpoint(resume_checkpoint)
             self.logger.info(f"Model loaded from checkpoint {resume_checkpoint}")
  
-    def train_loop(self):
+    def run_loop(self):
         """
         Run the training and evaluation loop, including logging and checkpointing.
         """
@@ -171,8 +171,9 @@ class Trainer:
             sample = self.task.load_sample(iterator, self.device)
 
         # Initialize accumulated metrics
-        accumulated_train_metrics = {}
-
+        train_metrics = {}
+        val_metrics = {}
+        test_metrics = {}
         for step in range(self.step, self._total_steps + 1):
             # Update epoch and iterator
             if step % len(self.train_loader) == 0:
@@ -180,33 +181,35 @@ class Trainer:
                 iterator = self.task.get_batch_iterator(self.train_loader)
 
             # Perform a single training step
-            train_result = self._train_step(iterator, step)
+            train_result = self._train_step(iterator, step, val_metrics)
 
             # Accumulate training metrics
             for metric, value in train_result.items():
-                accumulated_train_metrics[metric] = accumulated_train_metrics.get(metric, 0) + value
+                train_metrics[metric] = train_metrics.get(metric, 0) + value
 
             # Compute gradient norm before updating parameters
             grad_norm = get_grad_norm(self.model.parameters(), norm_type=2)
 
             # Log optimizer-related metrics
             if self.rank == 0:
-                self._log_optimizer_metrics(step, grad_norm)
+                min_lr, max_lr = self._log_optimizer_metrics(step, grad_norm)
+                train_metrics['min_lr'] = train_metrics.get('min_lr', 0) + min_lr
+                train_metrics['max_lr'] = train_metrics.get('max_lr', 0) + max_lr
 
             # Log training metrics
             if step % self._log_interval == 0 and self.rank == 0:
-                self._log_training_metrics(step, accumulated_train_metrics)
-                accumulated_train_metrics = {}
+                self._log_training_metrics(step, train_metrics)
+                train_metrics = {}
 
             # Evaluate on validation and test sets
             if step % self._eval_interval == 0:
-                self._evaluate(step)
+                val_metrics, test_metrics = self._evaluate(step)
 
             # Save checkpoints
             if step % self._save_interval == 0 and self.rank == 0:
                 self._save_checkpoint_step(step)
 
-    def _train_step(self, iterator, step):
+    def _train_step(self, iterator, step, val_metrics):
         """
         Perform a single training step, including forward pass, loss computation, backward pass, and parameter update.
 
@@ -238,7 +241,8 @@ class Trainer:
 
         # Update learning rate scheduler
         if self.lr_scheduler:
-            self.lr_scheduler.step()
+            val_metric = val_metrics.get(self.lr_scheduler.metric, None)
+            self.lr_scheduler.step(val_metric, step)
 
         # Update metrics
         if 'output' in result:
@@ -247,7 +251,8 @@ class Trainer:
         else:
             metrics = None
 
-        return self._aggregate_metrics(result['loss'].item(), metrics)
+        result = self._aggregate_metrics(result['loss'].item(), metrics)
+        return result
 
     def _update_parameters(self):
         """
@@ -285,6 +290,8 @@ class Trainer:
         self.writer.add_scalar('opt/weight_decay', weight_decay, step)
         self.writer.add_scalar('opt/grad_norm', grad_norm, step)
 
+        return min_lr, max_lr
+
     def _log_training_metrics(self, step, accumulated_train_metrics):
         """
         Log training metrics to the console and TensorBoard.
@@ -294,13 +301,13 @@ class Trainer:
             accumulated_train_metrics (dict): Accumulated training metrics.
         """
         avg_train_metrics = {
-            metric: round(value.item() / self._log_interval, 4) if isinstance(value, torch.Tensor) else round(value / self._log_interval, 4)
+            metric: format_value(value / self._log_interval) 
             for metric, value in accumulated_train_metrics.items()
         }
 
         self.logger.info(f"Train, Step {step}, Metrics: {avg_train_metrics}")
         for metric, value in avg_train_metrics.items():
-            self.writer.add_scalar(f'train/{metric}', value, step)
+            self.writer.add_scalar(f'train/{metric}', float(value), step)
     
     def _evaluate(self, step):
         """
@@ -309,6 +316,7 @@ class Trainer:
         Args:
             step (int): Current training step.
         """
+        val_result, test_result = {}, {}
         if self.val_loader is not None:
             val_result = self._eval_step(self.val_loader)
         if self.test_loader is not None:
@@ -316,16 +324,23 @@ class Trainer:
 
         if self.rank == 0:
             if self.val_loader is not None:
-                self.logger.info(f"Val, Step {step}, Metrics: {val_result}")
-                for metric, value in val_result.items():
-                    self.writer.add_scalar(f'val/{metric}', value, step)
+                formatted_val_result = {
+                    metric: format_value(value) for metric, value in val_result.items()
+                }
+                self.logger.info(f"Val, Step {step}, Metrics: {formatted_val_result}")
+                for metric, value in formatted_val_result.items():
+                    self.writer.add_scalar(f'val/{metric}', float(value), step)
 
             if self.test_loader is not None:
-                self.logger.info(f"Test, Step {step}, Metrics: {test_result}")
-                for metric, value in test_result.items():
-                    self.writer.add_scalar(f'test/{metric}', value, step)
+                formatted_test_result = {
+                    metric: format_value(value) for metric, value in test_result.items()
+                }
+                self.logger.info(f"Test, Step {step}, Metrics: {formatted_test_result}")
+                for metric, value in formatted_test_result.items():
+                    self.writer.add_scalar(f'test/{metric}', float(value), step)
 
             self._check_and_save_best(val_result, step)
+        return val_result, test_result
 
     def _eval_step(self, loader):
         """
@@ -385,17 +400,17 @@ class Trainer:
                     if isinstance(value, torch.Tensor):
                         dist.all_reduce(value, op=dist.ReduceOp.SUM)
                         value /= self.world_size
-                        metrics[metric] = round(value.item(), 4)
+                        metrics[metric] = value.item()
                     elif isinstance(value, (int, float)):
                         tensor_value = torch.tensor(value).to(self.device)
                         dist.all_reduce(tensor_value, op=dist.ReduceOp.SUM)
-                        metrics[metric] = round(tensor_value.item() / self.world_size, 4)
+                        metrics[metric] = tensor_value.item() / self.world_size
 
         # Average loss over total samples if provided
         if total is not None:
             loss /= total
 
-        result = {"loss": round(loss, 4)}
+        result = {"loss": loss}
         if metrics is not None:
             result.update(metrics)
 

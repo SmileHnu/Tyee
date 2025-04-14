@@ -45,11 +45,18 @@ dataset:
 
 
 lr_scheduler:
-  select: WarmupCosineScheduler
-  total_epochs: 1000
-  eta_min: 1e-6
-  warmup_start_lr: 0
-  warmup_epochs: 5
+  select: TriangularLRScheduler
+  # total_epochs: 1000
+  # eta_min: 1e-6
+  # epoch_size: 1
+  # metric: loss
+  # patience_epochs: 1
+  # warmup_start_lr: 0
+  # warmup_epochs: 1
+  # hold_epochs: 1
+  # decay_epochs: 1
+  period_epochs: 1
+  t_mult: 2
 
 model:
   select: conformer.Conformer

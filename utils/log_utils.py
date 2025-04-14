@@ -79,3 +79,20 @@ def create_experiment_directories(exp_dir: str):
     os.makedirs(checkpoint_dir, exist_ok=True)
 
     return tb_dir, checkpoint_dir
+
+def format_value(value):
+        """
+        Format a value to use fixed-point notation for larger values
+        and scientific notation for very small values.
+
+        Args:
+            value (float): The value to format.
+
+        Returns:
+            str: The formatted string.
+        """
+        # print(f"Formatting value: {value}")
+        if abs(value) >= 1e-3:  
+            return f"{value:.4f}"
+        else:  
+            return f"{value:.4e}"

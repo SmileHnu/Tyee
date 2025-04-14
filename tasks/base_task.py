@@ -198,10 +198,8 @@ class PRLTask(object):
         """ 构建学习率调度器 """
         if self.lr_scheduler_select is None:
             return None
-        try:
-            scheduler_cls = lazy_import_module('torch.optim.lr_scheduler', self.lr_scheduler_select)
-        except (ImportError, AttributeError):
-            scheduler_cls = lazy_import_module('optim.lr_scheduler', self.lr_scheduler_select)
+        
+        scheduler_cls = lazy_import_module('optim.lr_scheduler', self.lr_scheduler_select)
         
         # 从配置中获取调度器参数
         scheduler_params = {k: v for k, v in self.lr_scheduler_params.items() if k not in ['select']}
