@@ -10,8 +10,12 @@
 @Desc    : 
 """
 
+import os
+import logging
 from dataset import BaseDataset
-from typing import Generator, Tuple
+from typing import Generator, Tuple, List
+
+log = logging.getLogger('split')
 
 class BaseSplit:
     def __init__(
@@ -27,7 +31,26 @@ class BaseSplit:
         """
         self.split_path = split_path
         
-        
+    def check_split_path(self) -> bool:
+        """
+        Check if the split path exists and contains at least one CSV file.
+
+        Returns:
+            bool: True if the split path exists and contains at least one CSV file, False otherwise.
+        """
+        if not os.path.exists(self.split_path):
+            log.info(f"❌ | Split path '{self.split_path}' does not exist.")
+            return False
+
+        # Check if there are any .csv files in the directory
+        csv_files = [f for f in os.listdir(self.split_path) if f.endswith('.csv')]
+        if not csv_files:
+            log.info(f"❌ | No CSV files found in '{self.split_path}'.")
+            return False
+
+        log.info(f"✅ | Found CSV files in '{self.split_path}': {csv_files}")
+        return True
+
     def split(
         self, 
         dataset: BaseDataset,

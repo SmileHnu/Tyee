@@ -18,13 +18,11 @@ from dataset import BaseDataset
 from typing import Any, Callable, Union, Dict, Generator
 from dataset.constants.standard_channels import EEG_CHANNELS_ORDER
 
-
-
 class TUEVDataset(BaseDataset):
     def __init__(
         self,
-        root_path: str = './EEG_raw',
-        chunk_size: int = 800,
+        root_path: str = './tuh_eeg_events/v2.0.1/edf/train',
+        chunk_size: int = 2000,
         overlap: int = 0,
         num_channel: int = 62,
         online_transform: Union[None, Callable] = None,
@@ -40,9 +38,6 @@ class TUEVDataset(BaseDataset):
         num_worker: int = 0,
         verbose: bool = True,
     ) -> None:
-        # if io_path is None:
-        #     io_path = get_random_dir_path(dir_prefix='datasets')
-
         # pass all arguments to super class
         params = {
             'root_path': root_path,
@@ -95,11 +90,6 @@ class TUEVDataset(BaseDataset):
         # print(f'Channel names: {Rawdata.ch_names}')
         channel_names = Rawdata.ch_names
         # _, times = Rawdata[:]
-        # print(times)
-        # 封装
-        # Rawdata.filter(l_freq=0.1, h_freq=75.0)
-        # Rawdata.notch_filter(50.0)
-        # Rawdata.resample(200, n_jobs=5)
         
         info = Rawdata.info
         sampling_rate = info['sfreq']

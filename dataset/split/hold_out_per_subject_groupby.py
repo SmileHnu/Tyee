@@ -121,7 +121,7 @@ class HoldOutPerSubjectGroupby(BaseSplit):
         Yields:
             Tuple[BaseDataset, BaseDataset]: Train and val datasets for each subject.
         """
-        if not os.path.exists(self.split_path):
+        if not self.check_split_path():
             log.info('📊 | Creating the split of train and val sets.')
             log.info(
                 f'😊 | Please set \033[92msplit_path\033[0m to \033[92m{self.split_path}\033[0m '

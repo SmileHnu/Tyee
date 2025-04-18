@@ -145,6 +145,7 @@ class PRLTask(object):
         test_dataset = self.build_dataset(self.root_path.get('test', None), self.io_path.get('test', None))
 
         return train_dataset, val_dataset, test_dataset
+    
     def build_splitter(self):
         """
         构建数据集划分器的方法。
@@ -298,7 +299,7 @@ class PRLTask(object):
                                          batch_size=batch_size, 
                                          shuffle=shuffle, 
                                          num_workers=self.num_workers, 
-                                         collate_fn=self.collate_fn)
+                                         collate_fn=dataset.collate_fn)
             except Exception as e:
                 raise RuntimeError(f"Failed to create DataLoader: {e}")
 
@@ -308,7 +309,7 @@ class PRLTask(object):
                                          batch_size=batch_size, 
                                          sampler=sampler,
                                          num_workers=self.num_workers, 
-                                         collate_fn=self.collate_fn)
+                                         collate_fn=dataset.collate_fn)
             except Exception as e:
                 raise RuntimeError(f"Failed to create DataLoader: {e}")
         
@@ -331,61 +332,6 @@ class PRLTask(object):
         
         return sample
 
-    def collate_fn(self, batch: List[Dict[str, Any]]) -> Dict[str, Any]:
-        """
-        Custom collate function for batching data.
-
-        This function processes a batch of data, which is a list of dictionaries,
-        and combines them into a single dictionary with batched tensors or arrays.
-
-        Args:
-            batch (List[Dict[str, Any]]): A list of dictionaries, where each dictionary
-                                        represents a single data sample.
-
-        Returns:
-            Dict[str, Any]: A dictionary containing batched data.
-        """
-        # Initialize a dictionary to store batched signals
-        batch_signals = {key: [] for key in batch[0]}
-
-        # Collect data for each key
-        for item in batch:
-            for key, value in item.items():
-                batch_signals[key].append(value)
-
-        # Recursive function to process nested dictionaries
-        def recursive_collate(data: List[Any]) -> Any:
-            """
-            Recursively collate data into tensors or arrays.
-
-            Args:
-                data (List[Any]): A list of data items to be collated.
-
-            Returns:
-                Any: Collated data as tensors, arrays, or other supported types.
-            """
-            if isinstance(data[0], dict):
-                # Process nested dictionaries
-                return {key: recursive_collate([d[key] for d in data]) for key in data[0]}
-            elif isinstance(data[0], torch.Tensor):
-                # Stack tensors
-                return torch.stack(data)
-            elif isinstance(data[0], np.ndarray):
-                # Convert numpy arrays to tensors
-                return torch.tensor(np.stack(data))
-            elif isinstance(data[0], (int, float, list)):
-                # Convert scalars or lists to tensors
-                return torch.tensor(data)
-            else:
-                # Return data as-is for unsupported types
-                return data
-
-        # Apply recursive collation to each key
-        for key in batch_signals:
-            batch_signals[key] = recursive_collate(batch_signals[key])
-
-        return batch_signals  
-    
     def train_step(self, model: torch.nn.Module, sample: dict[str, torch.Tensor], *args, **kwargs):
         raise NotImplementedError
 

@@ -733,8 +733,9 @@ class BaseDataset(Dataset):
                 }
                 key = '1'
                 info = {
-                    'subject': '1',
-                    'session': '1',
+                    'subject_id': '1',
+                    'session_id': '1',
+                    'trial_id': '1',
                     'run': '1',
                     'label': '1'
                 }

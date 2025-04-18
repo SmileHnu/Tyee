@@ -41,22 +41,14 @@ dataset:
       # Normalize:
       #   method: zscore_per_channel
 
- 
-
-
 lr_scheduler:
-  select: TriangularLRScheduler
-  # total_epochs: 1000
-  # eta_min: 1e-6
-  # epoch_size: 1
-  # metric: loss
-  # patience_epochs: 1
-  # warmup_start_lr: 0
-  # warmup_epochs: 1
-  # hold_epochs: 1
-  # decay_epochs: 1
-  period_epochs: 1
-  t_mult: 2
+  # select: TriangularLRScheduler
+  # period_epochs: 1
+  # t_mult: 1
+
+  select: CosineLRScheduler
+  period_epochs: 30
+  warmup_epochs: 5
 
 model:
   select: conformer.Conformer
@@ -66,12 +58,7 @@ model:
   att_depth: 3
   att_heads: 4
 
-  # select: ECGCNN
-
-  # select: EcgResNet34
-  # num_classes: 4
-
-  # select: EEGNet
+  # select: eegnet.EEGNet
   # n_chans: 1
   # chunk_size: 300
   # num_classes: 4
@@ -80,8 +67,6 @@ model:
 optimizer:
   lr:  0.001
   select: Adam
-  # weight_decay: 0.05             # 权重衰减 (L2正则化)
-  # layer_decay: 0.65                # 层级学习率衰减
 
 task:
   loss:
