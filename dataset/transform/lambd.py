@@ -10,13 +10,13 @@
 @Desc    : 
 """
 
-from typing import Callable
+from typing import Callable, Optional
 from dataset.transform import BaseTransform
 
 class Lambda(BaseTransform):
-    def __init__(self, lambd: Callable):
-        super().__init__()
+    def __init__(self, lambd: Callable, source: Optional[str] = None, target: Optional[str] = None):
+        super().__init__(source, target)
         self.lambd = lambd
-    
+
     def transform(self, result):
         return self.lambd(result)

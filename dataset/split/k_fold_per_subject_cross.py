@@ -54,11 +54,11 @@ class KFoldPerSubjectCross(BaseSplit):
         Args:
             info (pd.DataFrame): DataFrame containing dataset information.
         """
-        subjects = list(set(info['subject_id']))
+        subjects = sorted(set(info['subject_id']))
 
         for subject in subjects:
             subject_info = info[info['subject_id'] == subject]
-            group_ids = list(set(subject_info[self.group_by]))
+            group_ids = sorted(set(subject_info[self.group_by]))
 
             for fold_id, (train_index_group_ids, val_index_group_ids) in enumerate(self.k_fold.split(group_ids)):
                 if len(train_index_group_ids) == 0 or len(val_index_group_ids) == 0:

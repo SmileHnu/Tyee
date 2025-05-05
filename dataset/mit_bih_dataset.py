@@ -107,8 +107,8 @@ class MITBIHDataset(BaseDataset):
             'labels': labels
         }
         
-    @staticmethod
     def process_record(
+        self,
         record, 
         result,
         signal_types,

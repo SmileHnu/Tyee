@@ -14,7 +14,8 @@ import logging
 import os
 import shutil
 import ast
-from copy import copy
+from copy import copy, deepcopy
+from collections import defaultdict, OrderedDict
 from typing import Any, Callable, Dict, Union, List, Tuple
 from sklearn.model_selection import KFold, train_test_split
 
@@ -27,7 +28,42 @@ from tqdm import tqdm
 from dataset.io import PhysioSignalIO
 from dataset.io import MetaInfoIO
 
+class SegmentCache:
+    def __init__(self, max_size=3):
+        self.cache = OrderedDict()
+        self.max_size = max_size
+
+    def get(self, key):
+        if key in self.cache:
+            self.cache.move_to_end(key)  # 标记为最近使用
+            return self.cache[key]
+        return None
+
+    def put(self, key, value):
+        if key in self.cache:
+            self.cache.move_to_end(key)
+        self.cache[key] = value
+        if len(self.cache) > self.max_size:
+            self.cache.popitem(last=False)  # 移除最久未用
+
 log = logging.getLogger('dataset')
+
+def merge_info(info_merged: List[Dict]) -> Dict[str, List]:
+    """
+    Merge a list of dictionaries into a single dictionary.
+
+    Args:
+        info_merged (List[Dict]): List of dictionaries to merge.
+
+    Returns:
+        Dict[List]: Merged dictionary with lists as values.
+    """
+    merged_info = defaultdict(list)
+    for info in info_merged:
+        for key, value in info.items():
+            merged_info[key].append(value)
+    merged_info = {k: pd.concat(v, ignore_index=True) for k,v in merged_info.items()}
+    return merged_info
 
 class BaseDataset(Dataset):
     """
@@ -46,12 +82,13 @@ class BaseDataset(Dataset):
         io_mode: str = 'lmdb',
         io_size: int = 1048576,
         lazy_threshold: int = 128,
+        start_offset: float = 0.0,
+        end_offset: float = 0.0,
         num_worker: int = 0,
         verbose: bool = True,
-        after_trial: Callable = None,
-        after_session: Callable = None,
-        after_subject: Callable = None,
-        signal_types: list = ['EEG'], 
+        # after_trial: Callable = None,
+        # after_session: Callable = None,
+        # after_subject: Callable = None,
         **kwargs
     ) -> None:
         """
@@ -74,17 +111,18 @@ class BaseDataset(Dataset):
         self.io_size = io_size
         self.io_mode = io_mode
         self.lazy_threshold = lazy_threshold
+        self.start_offset = start_offset
+        self.end_offset = end_offset
         self.num_worker = num_worker
         self.verbose = verbose
-        self.after_trial = after_trial
-        self.after_session = after_session
-        self.after_subject = after_subject
-        self.signal_types = [signal_type.lower() for signal_type in signal_types]
+        # self.after_trial = after_trial
+        # self.after_session = after_session
+        # self.after_subject = after_subject
         
         # Check if the dataset folder is empty or in memory mode
         if self.is_folder_empty(self.io_path) or self.io_mode == 'memory':
             log.info(
-                f'🔍 | No cached processing results found, processing {self.signal_types} data from {self.io_path}.')
+                f'🔍 | No cached processing results found, processing data from {self.io_path}.')
             os.makedirs(self.io_path, exist_ok=True)
 
             records = self.set_records(**kwargs)
@@ -98,15 +136,9 @@ class BaseDataset(Dataset):
                                                   position=0,
                                                   leave=None):
                         worker_results.append(
-                            self.handle_record(io_path=self.io_path,
-                                               io_size=self.io_size,
-                                               io_mode=self.io_mode,
+                            self.handle_record(
                                                record=record,
                                                record_id=record_id,
-                                               read_record=self.read_record,
-                                               process_record=self.process_record,
-                                               signal_types=self.signal_types,  
-                                               verbose=self.verbose,
                                                **kwargs))
                 except Exception as e:
                     # shutil to delete the database
@@ -117,15 +149,8 @@ class BaseDataset(Dataset):
                 try:
                     worker_results = Parallel(n_jobs=self.num_worker)(
                         delayed(self.handle_record)(
-                            io_path=io_path,
-                            io_size=io_size,
-                            io_mode=io_mode,
                             record_id=record_id,
                             record=record,
-                            read_record=self.read_record,
-                            process_record=self.process_record,
-                            signal_types=self.signal_types,  
-                            verbose=self.verbose,
                             **kwargs)
                         for record_id, record in tqdm(enumerate(records),
                                                       disable=not self.verbose,
@@ -140,7 +165,7 @@ class BaseDataset(Dataset):
 
             if not self.io_mode == 'memory':
                 log.info(
-                    f'✅ | All processed {self.signal_types} data has been cached to {io_path}.'
+                    f'✅ | All processed data has been cached to {io_path}.'
                 )
                 log.info(
                     f'😊 | Please set \033[92mio_path\033[0m to \033[92m{io_path}\033[0m for the next run, to directly read from the cache if you wish to skip the data processing step.'
@@ -151,17 +176,17 @@ class BaseDataset(Dataset):
                 io_size=self.io_size,
                 io_mode=self.io_mode)  
 
-            if self.after_trial is not None or self.after_session is not None or self.after_subject is not None:
-                # catch the exception
-                print("update_record")
-                try:
-                    self.update_record(after_trial=after_trial,
-                                       after_session=after_session,
-                                       after_subject=after_subject)
-                except Exception as e:
-                    # shutil to delete the database
-                    shutil.rmtree(self.io_path)
-                    raise e
+            # if self.after_trial is not None or self.after_session is not None or self.after_subject is not None:
+            #     # catch the exception
+            #     print("update_record")
+            #     try:
+            #         self.update_record(after_trial=after_trial,
+            #                            after_session=after_session,
+            #                            after_subject=after_subject)
+            #     except Exception as e:
+            #         # shutil to delete the database
+            #         shutil.rmtree(self.io_path)
+            #         raise e
         else:
             log.info(
                 f'🔍 | Detected cached processing results, reading cache from {self.io_path}.'
@@ -243,17 +268,16 @@ class BaseDataset(Dataset):
             f"The io_path, {io_path}, is corrupted. Please delete this folder and try again."
 
         info_merged = []
-
+        signals_info_merged = []
+        labels_info_merged = []
+        self.signal_cache = {}
+        self.label_cache = {}
         if len(records) > self.lazy_threshold:
             # Store paths instead of PhysioSignalIO instances
             self.signal_paths = {}
+            self.label_paths = {}
             for record in records:
                 meta_info_io_path = os.path.join(io_path, record, 'info.csv')
-                self.signal_paths[record] = {}
-            
-                signal_path = os.path.join(io_path, record)
-                self.signal_paths[record] = signal_path
-
                 info_io = MetaInfoIO(meta_info_io_path)
                 info_df = info_io.read_all()
                 # 检查 DataFrame 是否为空
@@ -266,19 +290,40 @@ class BaseDataset(Dataset):
                 info_df['record_id'] = record
                 info_merged.append(info_df)
 
+                self.signal_paths[record] = {}
+                signal_path = os.path.join(io_path, record, 'signals')
+                self.signal_paths[record] = signal_path
+                signal_info_df = {}
+                for signal_type in os.listdir(signal_path):
+                    signal_info_path = os.path.join(signal_path, signal_type, 'info.csv')
+                    signal_info_io = MetaInfoIO(signal_info_path)
+                    signal_info_df[signal_type] = signal_info_io.read_all()
+                    signals_info_merged.append(signal_info_df)
+                    
+                    if signal_type not in self.signal_cache:
+                        self.signal_cache[signal_type] = SegmentCache(max_size=3)
+
+
+                label_path = os.path.join(io_path, record, 'labels')
+                self.label_paths[record] = label_path
+                label_info_df = {}
+                for label_type in os.listdir(label_path):
+                    label_info_path = os.path.join(label_path, label_type, 'info.csv')
+                    label_info_io = MetaInfoIO(label_info_path)
+                    label_info_df[label_type] = label_info_io.read_all()
+                    labels_info_merged.append(label_info_df)
+
+                    if label_type not in self.label_cache:
+                        self.label_cache[label_type] = SegmentCache(max_size=3)
+
+
             self.signal_io_router = {}  # Not used in lazy mode
+            self.label_io_router = {}
         else:
             self.signal_io_router = {}
+            self.label_io_router = {}
             for record in records:
                 meta_info_io_path = os.path.join(io_path, record, 'info.csv')
-                self.signal_io_router[record] = {}
-                
-                signal_io_path = os.path.join(io_path, record)
-                signal_io = PhysioSignalIO(signal_io_path,
-                                        io_size=io_size,
-                                        io_mode=io_mode)
-                self.signal_io_router[record] = signal_io
-
                 info_io = MetaInfoIO(meta_info_io_path)
                 info_df = info_io.read_all()
                 if info_df.empty:
@@ -290,9 +335,45 @@ class BaseDataset(Dataset):
                 info_df['record_id'] = record
                 info_merged.append(info_df)
 
+                self.signal_io_router[record] = {}
+                signal_io_path = os.path.join(io_path, record, 'signals')
+                signal_io = PhysioSignalIO(signal_io_path,
+                                        io_size=io_size,
+                                        io_mode=io_mode)
+                self.signal_io_router[record] = signal_io
+                signal_info_df = {}
+                for signal_type in os.listdir(signal_io_path):
+                    signal_info_path = os.path.join(signal_io_path, signal_type, 'info.csv')
+                    signal_info_io = MetaInfoIO(signal_info_path)
+                    signal_info_df[signal_type] = signal_info_io.read_all()
+                    signals_info_merged.append(signal_info_df)
+
+                    if signal_type not in self.signal_cache:
+                        self.signal_cache[signal_type] = SegmentCache(max_size=3)
+
+                self.label_io_router[record] = {}
+                label_io_path = os.path.join(io_path, record, 'labels')
+                label_io = PhysioSignalIO(label_io_path,
+                                        io_size=io_size,
+                                        io_mode=io_mode)
+                self.label_io_router[record] = label_io
+                label_info_df = {}
+                for label_type in os.listdir(label_io_path):
+                    label_info_path = os.path.join(label_io_path, label_type, 'info.csv')
+                    label_info_io = MetaInfoIO(label_info_path)
+                    label_info_df[label_type] = label_info_io.read_all()
+                    labels_info_merged.append(label_info_df)
+
+                    if label_type not in self.label_cache:
+                        self.label_cache[label_type] = SegmentCache(max_size=3)
+
+
             self.signal_paths = {}  # Not used in eager mode
+            self.label_paths = {}
 
         self.info = pd.concat(info_merged, ignore_index=True)
+        self.signals_info = merge_info(signals_info_merged)
+        self.labels_info = merge_info(labels_info_merged)
 
     def is_lazy(self) -> bool:
         """
@@ -305,13 +386,92 @@ class BaseDataset(Dataset):
         """
         assert hasattr(self, 'signal_io_router') or hasattr(
             self, 'signal_paths'), "The dataset should contain signal_io_router or signal_paths."
-        if hasattr(self, 'signal_io_router') and len(self.signal_io_router) > 0:
+        if hasattr(self, 'signal_io_router') and self.signal_io_router is not None and len(self.signal_io_router) > 0:
             return False
-        if hasattr(self, 'signal_paths') and len(self.signal_paths) > 0:
+        if hasattr(self, 'signal_paths') and self.signal_paths is not None and len(self.signal_paths) > 0:
             return True
         raise ValueError("Both signal_io_router and signal_paths are empty.")
 
-    def read_signal(self, record: str, key: str, signal_type: str) -> Any:
+    def write_signal(self, record: str, key: str, signals: dict):
+        """
+        Write a signal to the dataset.
+
+        Args:
+            record (str): The record identifier.
+            key (str): The key of the signal to write.
+            signal (Any): The signal data to write.
+            signal_type (str): The type of signal to write.
+        """
+        for signal_type, signal in signals.items():
+            # 提取info
+            info = deepcopy(signal['info'])
+            del signal['info']
+            # write signal data
+            signal_path = os.path.join(self.io_path, record, 'signals')
+            signal_io = PhysioSignalIO(signal_path, io_size=self.io_size, io_mode=self.io_mode)
+            signal_io.write_signal(signal, signal_type, key)
+            # write info
+            info_path = os.path.join(signal_path, signal_type, 'info.csv')
+            info_io = MetaInfoIO(info_path)
+            for sample_id, win in zip(info['sample_ids'], info['windows']):
+                info_row = {
+                    'sample_id': sample_id,
+                    'segment_id': key,
+                    'start': win['start'],
+                    'end': win['end'],
+                }
+                info_io.write_info(info_row)
+
+    def write_label(self, record: str, key: str, labels: dict):
+        for label_type, label in labels.items():
+            # 提取info
+            info = deepcopy(label['info'])
+            del label['info']
+            # write signal data
+            signal_path = os.path.join(self.io_path, record, 'labels')
+            signal_io = PhysioSignalIO(signal_path, io_size=self.io_size, io_mode=self.io_mode)
+            signal_io.write_signal(label, label_type, key)
+            # write info
+            info_path = os.path.join(signal_path, label_type, 'info.csv')
+            info_io = MetaInfoIO(info_path)
+            if 'windows' not in info:
+                for sample_id in info['sample_ids']:
+                    info_row = {
+                        'sample_id': sample_id,
+                        'segment_id': key,
+                    }
+                    info_io.write_info(info_row)
+            else:
+                for sample_id, win in zip(info['sample_ids'], info['windows']):
+                    info_row = {
+                        'sample_id': sample_id,
+                        'segment_id': key,
+                        'start': win['start'],
+                        'end': win['end'],
+                    }
+                    info_io.write_info(info_row)
+    
+    def write_info(self, record: str, info: dict):
+        """
+        Write metadata information to MetaInfoIO.
+
+        Args:
+            record (str): The record identifier.
+            key (str): The key of the signal to write.
+            info (dict): The metadata information to write.
+        """
+        info_path = os.path.join(self.io_path, record, 'info.csv')
+        info_io = MetaInfoIO(info_path)
+        sample_ids = deepcopy(info['sample_ids'])
+        del info['sample_ids']
+        for sample_id in sample_ids:
+            info_row = {
+                'sample_id': sample_id
+            }
+            info_row.update(info)
+            info_io.write_info(info_row)
+
+    def read_signal(self, record: str, sample_id: str) -> dict:
         """
         Read a signal from the dataset.
 
@@ -330,33 +490,70 @@ class BaseDataset(Dataset):
                 io_size=self.io_size,
                 io_mode=self.io_mode
             )
-            return signal_io.read_signal(signal_type, key)
         else:
             signal_io = self.signal_io_router[record]
-            return signal_io.read_signal(signal_type, key)
-
-    def write_signal(self, record: str, key: str, signal: Any, signal_type: str):
+        signals = {}
+        for signal_type in signal_io.signal_types():
+            df = self.signals_info[signal_type]
+            info = df[df['sample_id'] == sample_id].iloc[0].to_dict()
+            key = str(info['segment_id'])
+            start = int(info['start'])
+            end = int(info['end'])
+            signal = self.signal_cache[signal_type].get(key)
+            if signal is None:
+                # Read the signal from the IO
+                signal = signal_io.read_signal(signal_type, key)
+                # Cache the signal
+                self.signal_cache[signal_type].put(key, signal)
+            # signal = signal_io.read_signal(signal_type, key)
+            signal_copy = copy(signal)
+            signal_copy['data'] = signal_copy['data'][..., start:end]
+            signals[signal_type] = signal_copy
+            
+        return signals
+    
+    def read_label(self, record: str, sample_id: str) -> dict:
         """
-        Write a signal to the dataset.
+        Read a label from the dataset.
 
         Args:
             record (str): The record identifier.
-            key (str): The key of the signal to write.
-            signal (Any): The signal data to write.
-            signal_type (str): The type of signal to write.
+            key (str): The key of the signal to read.
+            signal_type (str): The type of signal to read.
+
+        Returns:
+            Any: The signal data.
         """
         if self.is_lazy():
             # Create temporary PhysioSignalIO instance
-            signal_io = PhysioSignalIO(
-                self.signal_paths[record],
+            label_io = PhysioSignalIO(
+                self.label_paths[record],
                 io_size=self.io_size,
                 io_mode=self.io_mode
             )
-            signal_io.write_signal(signal=signal, signal_type=signal_type, key=key)
         else:
-            signal_io = self.signal_io_router[record]
-            signal_io.write_signal(signal=signal, signal_type=signal_type, key=key)
-
+            label_io = self.label_io_router[record]
+        labels = {}
+        for label_type in label_io.signal_types():
+            df = self.labels_info[label_type]
+            info = df[df['sample_id'] == sample_id].iloc[0].to_dict()
+            key = str(info['segment_id'])
+            label = self.label_cache[label_type].get(key)
+            if label is None:
+                label = label_io.read_signal(label_type, key)
+                self.label_cache[label_type].put(key, label)
+            # 再做拷贝和切片
+            if 'start' in info and 'end' in info:
+                start = int(info['start'])
+                end = int(info['end'])
+                label_copy = copy(label)
+                label_copy['data'] = label_copy['data'][..., start:end]
+                labels[label_type] = label_copy
+            else:
+                labels[label_type] = copy(label)
+                
+        return labels
+        
     def read_info(self, index: int) -> Dict:
         """
         Retrieve metadata information from MetaInfoIO based on the given index.
@@ -397,14 +594,17 @@ class BaseDataset(Dataset):
             Dict[str, Any]: A dictionary containing signal data and labels.
         """
         info = self.read_info(index)
-        signal_index = str(info['clip_id'])
-        signal_record = str(info['record_id'])
-        result = {}
-        for signal_type in self.signal_types:
-            result[signal_type] = self.read_signal(signal_record, signal_index, signal_type)
+        sample_id = str(info['sample_id'])
+        # print(sample_id)
+        record = str(info['record_id'])
+        # print(record, sample_id)
+        signals = self.read_signal(record, sample_id)
+        signals = self.apply_transform(self.online_signal_transform, signals)
 
-        result['label'] = info['label']
-        return result
+        labels = self.read_label(record, sample_id)
+        labels = self.apply_transform(self.online_label_transform, labels)
+
+        return self.assemble_sample(signals,labels)
 
     def get_labels(self) -> list:
         """
@@ -483,36 +683,6 @@ class BaseDataset(Dataset):
 
         return batch_signals  
 
-    def __copy__(self) -> 'BaseDataset':
-        """
-        Create a shallow copy of the dataset.
-
-        Returns:
-            BaseDataset: A shallow copy of the dataset.
-        """
-        cls = self.__class__
-        result = cls.__new__(cls)
-        # Copy basic attributes
-        result.__dict__.update({
-            k: v
-            for k, v in self.__dict__.items()
-            if k not in ['signal_io_router', 'info', 'signal_paths']
-        })
-
-        if self.is_lazy():
-            # Copy paths for lazy loading
-            result.signal_paths = self.signal_paths.copy()
-            result.signal_io_router = None
-        else:
-            # Original eager loading copy
-            result.signal_io_router = {}
-            for record, signal_io in self.signal_io_router.items():
-                result.signal_io_router[record] = copy(signal_io)
-
-        # Deep copy info
-        result.info = copy(self.info)
-        return result
-
     @staticmethod
     def get_subject_id(**kwargs) -> str:
         """
@@ -574,17 +744,10 @@ class BaseDataset(Dataset):
         raise NotImplementedError(
             "Method set_records is not implemented in class BaseDataset")
 
-    @staticmethod
     def handle_record(
-        io_path: Union[None, str] = None,
-        io_size: int = 1048576,
-        io_mode: str = 'lmdb',
+        self,
         record: Any = None,
         record_id: Union[int, str] = None,
-        read_record: Callable = None,
-        process_record: Callable = None,
-        signal_types: list = ['eeg'],  
-        verbose: bool = True,
         **kwargs
     ) -> Dict:
         """
@@ -607,22 +770,25 @@ class BaseDataset(Dataset):
         Returns:
             Dict: A dictionary containing the record identifier.
         """
-        _record_id = str(record_id)
-        meta_info_io_path = os.path.join(io_path, f'record_{_record_id}', 'info.csv')
-        info_io = MetaInfoIO(meta_info_io_path)
+        _record_id = f'record_{str(record_id)}'
+        # meta_info_io_path = os.path.join(io_path, f'record_{_record_id}', 'info.csv')
+        # info_io = MetaInfoIO(meta_info_io_path)
 
-        signal_io_path = os.path.join(io_path, f'record_{_record_id}')
-        signal_io = PhysioSignalIO(signal_io_path,
-                                    io_size=io_size,
-                                    io_mode=io_mode)
+        # signal_io_path = os.path.join(io_path, f'record_{_record_id}', 'signals')
+        # label_io_path = os.path.join(io_path, f'record_{_record_id}', 'labels')
+        # signal_io = PhysioSignalIO(signal_io_path,
+        #                             io_size=io_size,
+        #                             io_mode=io_mode)
+        # label_io = PhysioSignalIO(label_io_path,
+        #                             io_size=io_size,
+        #                             io_mode=io_mode)
 
         kwargs['record'] = record
-        kwargs['signal_types'] = signal_types
-        kwargs['result'] = read_record(record, **kwargs)
-        gen = process_record(**kwargs)
+        kwargs.update(self.read_record(**kwargs))
+        gen = self.process_record(**kwargs)
 
         if record_id == 0:
-            pbar = tqdm(disable=not verbose,
+            pbar = tqdm(disable=not self.verbose,
                         desc=f"[RECORD {record}]",
                         position=1,
                         leave=None)
@@ -635,21 +801,33 @@ class BaseDataset(Dataset):
             except StopIteration:
                 break
 
-            for signal_type in signal_types:
-                if obj and signal_type.lower() in obj and 'key' in obj:
-                    signal_io.write_signal(obj[signal_type.lower()], signal_type, obj['key'])
-            if obj and 'info' in obj:
-                info_io.write_info(obj['info'])
+            # for signal_type in signal_types:
+            #     if obj and signal_type.lower() in obj and 'key' in obj:
+            #         signal_io.write_signal(obj[signal_type.lower()], signal_type, obj['key'])
+            # if obj and 'info' in obj:
+            #     info_io.write_info(obj['info'])
+            if obj and 'key' in obj:
+                if 'signals' in obj:
+                    # write signal
+                    signals = obj['signals']
+                    self.write_signal(_record_id, obj['key'], signals)
+                if 'labels' in obj:
+                    # write label
+                    labels = obj['labels']
+                    self.write_label(_record_id, obj['key'], labels)
+                if 'info' in obj:
+                    # write info
+                    info = obj['info']
+                    self.write_info(_record_id, info)
 
         if record_id == 0:
             pbar.close()
 
         return {
-            'record': f'record_{_record_id}'
+            'record': _record_id
         }
     
-    @staticmethod
-    def read_record(record: str | tuple, **kwargs) -> Dict:
+    def read_record(self, record: str | tuple, **kwargs) -> Dict:
         """
         Read a record from the database.
 
@@ -708,8 +886,7 @@ class BaseDataset(Dataset):
             "Method read_record is not implemented in class BaseDataset"
         )
 
-    @staticmethod
-    def process_record(result: Dict, **kwargs) -> Dict:
+    def process_record(self, result: Dict, **kwargs) -> Dict:
         """
         Process a record to generate the database.
 
@@ -751,148 +928,130 @@ class BaseDataset(Dataset):
         raise NotImplementedError(
             "Method process_record is not implemented in class BaseDataset")
 
-    def update_record(
+    def segment_split(
         self,
-        after_trial: Callable = None,
-        after_session: Callable = None,
-        after_subject: Callable = None
-    ) -> None:
+        signals: Dict[str, Any],
+        labels: Dict[str, Any],
+    ) -> list:
         """
-        Apply post-processing hooks to the dataset.
+        对 signals 中所有信号类型按 label['segments'] 分段，返回每段的信号和标签。
+        label['segments'] 的 start/end 单位为秒。
+        """
+        segments = []
+        false = False
+        for seg in labels['segments']:
+            seg_dict = {'signals': {}, 'labels': seg['value'], 'info': {}}
+            start_time = seg['start'] + self.start_offset
+            end_time = seg['end'] + self.end_offset
+            seg_dict['info']= {
+                'start_time': start_time,
+                'end_time': end_time,
+            }
+            for sig_type, sig in signals.items():
+                freq = sig['freq']
+                data = sig['data']
+                start_idx = int(round(start_time * freq))
+                end_idx = int(round(end_time * freq))
+                if start_idx < 0 or end_idx > data.shape[-1] or start_idx > end_idx:
+                    false = True
+                    continue
+                # print(start_idx, end_idx)
+                seg_dict['signals'][sig_type] = {
+                    'data': data[..., start_idx:end_idx],
+                    'channels': sig.get('channels', []),
+                    'freq': freq,
+                }
+            if false:
+                false = False
+                continue
+            segments.append(seg_dict)
+        return segments
 
-        This method applies the provided hooks (`after_trial`, `after_session`, `after_subject`)
-        to process the dataset at different levels (trial, session, subject). The processed
-        data is written back to the dataset.
+    def apply_transform(self, transforms: List, signals: dict) -> dict:
+        """
+        Apply a list of transforms to the signals.
 
         Args:
-            after_trial (Callable, optional): A hook function to process data at the trial level.
-            after_session (Callable, optional): A hook function to process data at the session level.
-            after_subject (Callable, optional): A hook function to process data at the subject level.
+            transforms (List): A list of transform functions to apply.
+            signals (dict): The signals to transform.
+
+        Returns:
+            dict: The transformed signals.
         """
-        pbar = tqdm(total=len(self),
-                    disable=not self.verbose,
-                    desc="[POST-PROCESS]")
+        if transforms is not None:
+            for transform in transforms:
+                signals = transform(signals)
+                
+        return signals
 
-        if after_trial is None and after_session is None and after_subject is None:
-            return
-
-        if 'subject_id' in self.info.columns:
-            subject_df = self.info.groupby('subject_id')
-        else:
-            subject_df = [(None, self.info)]
-        if after_subject is None:
-            after_subject = {signal_type: lambda x: x for signal_type in self.signal_types}
-
-        for _, subject_info in subject_df:
-            subject_record_list = []
-            subject_index_list = []
-            subject_samples = {signal_type: [] for signal_type in self.signal_types}
-
-            if 'session_id' in subject_info.columns:
-                session_df = subject_info.groupby('session_id')
-            else:
-                session_df = [(None, subject_info)]
-            if after_session is None:
-                after_session = {signal_type: lambda x: x for signal_type in self.signal_types}
-
-            for _, session_info in session_df:
-                if 'trial_id' in session_info.columns:
-                    trial_df = session_info.groupby('trial_id')
-                else:
-                    trial_df = [(None, session_info)]
-                    if not after_trial is None:
-                        log.info(
-                            "No trial_id column found in info, after_trial hook is ignored."
-                        )
-                if after_trial is None:
-                    after_trial = {signal_type: lambda x: x for signal_type in self.signal_types}
-
-                session_samples = {signal_type: [] for signal_type in self.signal_types}
-                for _, trial_info in trial_df:
-                    trial_samples = {signal_type: [] for signal_type in self.signal_types}
-                    for i in range(len(trial_info)):
-                        signal_index = str(trial_info.iloc[i]['clip_id'])
-                        signal_record = str(trial_info.iloc[i]['record_id'])
-
-                        subject_record_list.append(signal_record)
-                        subject_index_list.append(signal_index)
-
-                        for signal_type in self.signal_types:
-                            signal = self.read_signal(signal_record, signal_index, signal_type)
-                            trial_samples[signal_type] += [signal]
-
-                        pbar.update(1)
-
-                    for signal_type in self.signal_types:
-                        trial_samples[signal_type] = self.hook_data_interface(
-                            after_trial[signal_type], trial_samples[signal_type])
-                        session_samples[signal_type] += trial_samples[signal_type]
-
-                for signal_type in self.signal_types:
-                    session_samples[signal_type] = self.hook_data_interface(
-                        after_session[signal_type], session_samples[signal_type])
-                    subject_samples[signal_type] += session_samples[signal_type]
-
-            for signal_type in self.signal_types:
-                subject_samples[signal_type] = self.hook_data_interface(after_subject[signal_type],
-                                                                        subject_samples[signal_type])
-
-            for i in range(len(subject_samples[self.signal_types[0]])):
-                signal_index = str(subject_index_list[i])
-                signal_record = str(subject_record_list[i])
-
-                for signal_type in self.signal_types:
-                    self.write_signal(signal_record, signal_index, subject_samples[signal_type][i], signal_type)
-
-        pbar.close()
-
-    @staticmethod
-    def hook_data_interface(hook: Callable, data: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    def assemble_segment(
+        self, 
+        key: str, 
+        signals: dict, 
+        labels: dict, 
+        info: dict
+    ) -> dict:
         """
-        Apply post-processing hooks to the dataset.
-
-        This method applies the provided hooks (`after_trial`, `after_session`, `after_subject`)
-        to process the dataset at different levels (trial, session, subject). The processed
-        data is written back to the dataset.
+        Build the result dictionary for a segment.
+        This function is used in the 'process_record' method to assemble the
+        final result for each segment.
 
         Args:
-            after_trial (Callable, optional): A hook function to process data at the trial level.
-            after_session (Callable, optional): A hook function to process data at the session level.
-            after_subject (Callable, optional): A hook function to process data at the subject level.
+            key (str): The segment identifier.
+            signals (dict): The signals for the segment.
+            labels (dict): The labels for the segment.
+            info(dict): The metadata information for the segment.
+
+        Returns:
+            dict: The result dictionary containing signals, labels, and metadata.
         """
-        # Initialize a dictionary to store stacked data
-        stacked_data = {key: [] for key in data[0].keys()}
 
-        # Stack data into tensors
-        for item in data:
-            for key, value in item.items():
-                stacked_data[key].append(value)
-
-        # Convert lists to tensors or arrays
-        for key, value in stacked_data.items():
-            if isinstance(value[0], np.ndarray):
-                stacked_data[key] = np.stack(value, axis=0)
-            elif isinstance(value[0], torch.Tensor):
-                stacked_data[key] = torch.stack(value, axis=0)
-
+        for sig_type, sig in signals.items():
+            if 'info' not in sig or sig['info'] is None:
+                sig['info'] = {}
+            if 'windows' not in sig['info'] or not sig['info']['windows']:
+                data_len = sig['data'].shape[-1]
+                sig['info']['windows'] = [{'start': 0, 'end': data_len}]
+            sig['info']['sample_ids'] = [f'{i}_{key}' for i in range(len(sig['info']['windows']))]
         
-        processed_data = hook(stacked_data)
+        window_lens = [len(sig['info']['windows']) for sig in signals.values()]
+        if not all(l == window_lens[0] for l in window_lens):
+            raise ValueError(f"All signals must have the same number of windows, got: {window_lens}")
+        sample_ids = [f'{i}_{key}' for i in range(window_lens[0])]
+        
+        for label_type, label in labels.items():
+            if 'info' not in label or label['info'] is None:
+                label['info'] = {}
+            label['info']['sample_ids'] = sample_ids
+        
+        info['sample_ids'] = sample_ids
 
-        # Split processed tensors back into individual items
-        result = []
-        for i in range(len(data)):
-            item = {}
-            for key, value in processed_data.items():
-                if isinstance(value, np.ndarray):
-                    value = np.split(value, value.shape[0], axis=0)
-                    item[key] = [np.squeeze(v, axis=0) for v in value]
-                elif isinstance(value, torch.Tensor):
-                    value = np.split(value, value.shape[0], dim=0)
-                    item[key] = [np.squeeze(v, axis=0) for v in value]
-                else:
-                    item[key] = value[i]
-            result.append(item)
+        result = {
+            'signals': signals,
+            'labels': labels,
+            'key': key,
+            'info': info
+        }
+        return result
+    
+    def assemble_sample(self, signals: dict, labels: dict) -> dict:
+        """
+        Build the result dictionary for a sample.
+        This function is used in the '__getitem__' method to assemble the
+        final result for each sample.
 
+        Args:
+            signals (dict): The signals for the sample.
+            labels (dict): The labels for the sample.
+
+        Returns:
+            dict: The result dictionary containing signals and labels.
+        """
+        result = {}
+        for sig_type, sig in signals.items():
+            result[sig_type] = sig['data']
+        for label_type, label in labels.items():
+            result[label_type] = label['data']
         return result
 
     @property
@@ -918,6 +1077,51 @@ class BaseDataset(Dataset):
             Dict: A dictionary containing additional attributes of the dataset.
         """
         return {'length': self.__len__()}
+
+    def __copy__(self) -> 'BaseDataset':
+        """
+        Create a shallow copy of the dataset.
+
+        Returns:
+            BaseDataset: A shallow copy of the dataset.
+        """
+        cls = self.__class__
+        result = cls.__new__(cls)
+        # Copy basic attributes
+        result.__dict__.update({
+            k: v
+            for k, v in self.__dict__.items()
+            if k not in [
+                'signal_io_router', 'label_io_router',
+                'info', 'signal_paths', 'label_paths',
+                'signal_cache', 'label_cache',
+                'signals_info', 'labels_info'
+            ]
+        })
+
+        if self.is_lazy():
+            # Copy paths for lazy loading
+            result.signal_paths = self.signal_paths.copy()
+            result.label_paths = self.label_paths.copy()
+            result.signal_io_router = None
+            result.label_io_router = None
+        else:
+            # Eager loading copy
+            result.signal_io_router = {}
+            for record, signal_io in self.signal_io_router.items():
+                result.signal_io_router[record] = copy(signal_io)
+            result.label_io_router = {}
+            for record, label_io in self.label_io_router.items():
+                result.label_io_router[record] = copy(label_io)
+
+        # Deep copy info和缓存
+        result.info = copy(self.info)
+        result.signals_info = copy(self.signals_info)
+        result.labels_info = copy(self.labels_info)
+        result.signal_cache = copy(self.signal_cache)
+        result.label_cache = copy(self.label_cache)
+        return result
+
 
     def __repr__(self) -> str:
         """

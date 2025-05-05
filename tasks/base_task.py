@@ -32,20 +32,18 @@ class PRLTask(object):
         self.num_workers = get_nested_field(cfg, 'dataset.num_workers', 4)
         self.other = get_nested_field(cfg, 'dataset.other', {})
         
-        offline_transform_cfg = get_nested_field(cfg, 'dataset.offline_transform', None)
-        self.offline_transform = self.build_transforms(offline_transform_cfg)
-        online_transform_cfg = get_nested_field(cfg, 'dataset.online_transform', None)
-        self.online_transform = self.build_transforms(online_transform_cfg)
-        label_transform_cfg = get_nested_field(cfg, 'dataset.label_transform', None)
-        self.label_transform = self.build_transforms(label_transform_cfg, is_label_transform=True)
-        before_trial_cfg = get_nested_field(cfg, 'dataset.before_trial', None)
-        self.before_trial = self.build_transforms(before_trial_cfg)
-        after_trial_cfg = get_nested_field(cfg, 'dataset.after_trial', None)
-        self.after_trial = self.build_transforms(after_trial_cfg)
-        after_session_cfg = get_nested_field(cfg, 'dataset.after_session', None)
-        self.after_session = self.build_transforms(after_session_cfg)
-        after_subject_cfg = get_nested_field(cfg, 'dataset.after_subject', None)
-        self.after_subject = self.build_transforms(after_subject_cfg)
+        before_segment_transform_cfg = get_nested_field(cfg, 'dataset.before_segment_transform', None)
+        self.before_segment_transform = self.build_transforms(before_segment_transform_cfg)
+        offline_signal_transform_cfg = get_nested_field(cfg, 'dataset.offline_signal_transform', None)
+        self.offline_signal_transform = self.build_transforms(offline_signal_transform_cfg)
+        offline_label_transform_cfg = get_nested_field(cfg, 'dataset.offline_label_transform', None)
+        self.offline_label_transform = self.build_transforms(offline_label_transform_cfg, is_label_transform=True)
+        online_signal_transform_cfg = get_nested_field(cfg, 'dataset.online_signal_transform', None)
+        self.online_signal_transform = self.build_transforms(online_signal_transform_cfg)
+        online_label_transform_cfg = get_nested_field(cfg, 'dataset.online_label_transform', None)
+        self.online_label_transform = self.build_transforms(online_label_transform_cfg, is_label_transform=True)
+
+        
 
         self.split_select = get_nested_field(cfg, 'dataset.split.select', 'NoSplit')
         self.split_init_params = get_nested_field(cfg, 'dataset.split.init_params', {})
@@ -123,14 +121,12 @@ class PRLTask(object):
         return Dataset(root_path=root_path, 
                        io_path=io_path, 
                        io_mode=self.io_mode, 
-                       num_worker=self.num_workers, 
-                       offline_transform=self.offline_transform,
-                       online_transform=self.online_transform,
-                       label_transform=self.label_transform,
-                       before_trial=self.before_trial,
-                       after_trial=self.after_trial,
-                       after_session=self.after_session,
-                       after_subject=self.after_subject,
+                       num_worker=self.num_workers,
+                       before_segment_transform=self.before_segment_transform,
+                       offline_signal_transform=self.offline_signal_transform,
+                       offline_label_transform=self.offline_label_transform,
+                       online_signal_transform=self.online_signal_transform,
+                       online_label_transform=self.online_label_transform,
                        **self.other)
     
     def build_datasets(self):

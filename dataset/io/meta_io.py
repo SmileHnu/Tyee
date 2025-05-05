@@ -76,9 +76,6 @@ class MetaInfoIO:
             int: 写入的描述信息在表格中的索引。
         '''
         
-        if 'channels' in obj and isinstance(obj['channels'], list):
-            obj['channels'] = ','.join(obj['channels'])
-
         with open(self.io_path, 'a+') as f:
             require_head = os.path.getsize(self.io_path) == 0  
             writer = csv.DictWriter(f, fieldnames=list(obj.keys()))  

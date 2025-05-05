@@ -1,62 +1,41 @@
 common:
-  seed: 2025
+  seed: 0
   verbose: true
   exp_dir: experiments
 
 dataset:
-  batch_size: 128
-  dataset: NinaproDB5Dataset
+  batch_size: 64
+  dataset: bciciv4_dataset.BCICIV4Dataset
   num_workers: 4
   root_path:
-    train: '/home/lingyus/data/NinaproDB5'
+    train: '/home/lingyus/data/BCICIV4/sub1'
     val:
     # test: 
   io_path:
-    train: "/home/lingyus/data/NinaproDB5/processed_40"
+    train: "/home/lingyus/data/BCICIV4/sub1/processed"
     val: 
     test: 
-  io_mode: pickle
   split: 
-    method: ninapro
-    split_by: stimulus_id
-    stratified: false
-    shuffle: true
-    seed: 7
-    # test_size: 0
-    # val_size: 0.33333
-    n_splits: 5
-  other:
-    chunk_size: 256
-    overlap: 255
-
-  offline_transform:
-    ecog:
-      Normalize:
-        method: zscore_per_channel
-        epsilon: 0
-      CAR:
-      Filter:
-        l_freq: 40
-        h_freq: 300
-      NotchFilter:
-        freqs: [50, 100, 150, 200, 250, 300, 350, 400, 450]
-      TFR:
-        freqs: [ 40. , 42.12088229,  44.35421812,  46.70597002,  49.18241664, 51.79016955, 54.53619088,  57.42781192,  60.47275265,  63.67914241,67.05554154,  70.61096431,  74.3549029,   78.29735282,  82.44883955,86.82044664,  91.42384534,  96.2713257,  101.37582945, 106.75098448,112.4111413,  118.37141127, 124.64770702, 131.25678488, 138.21628964,145.54480167, 153.26188648, 161.388147,   169.94527858, 178.95612687,188.44474888, 198.43647715, 208.95798741, 220.03736978, 231.70420381,243.98963737, 256.9264699,  270.5492399,  284.8943172,  300.]
-        output: 'power'
-        n_jobs: 6
+    select: HoldOutCross
+    init_params:
+      split_path: /home/lingyus/data/BCICIV4/sub1/split
+      group_by: trial_id
+      val_size: 0.5
+      random_state: 0
+      shuffle: true
 
  
 
 
-lr_scheduler:
-  select: WarmupCosineScheduler
-  total_epochs: 200
-  eta_min: 1e-6
-  warmup_start_lr: 0
-  warmup_epochs: 5
+# lr_scheduler:
+#   select: WarmupCosineScheduler
+#   total_epochs: 200
+#   eta_min: 1e-6
+#   warmup_start_lr: 0
+#   warmup_epochs: 5
 
 model:
-  select: AutoEncoder1D
+  select: fingerflex.AutoEncoder1D
   channels: [32, 32, 64, 64, 128, 128]
   kernel_sizes: [7, 7, 5, 5, 5]
   strides: [2, 2, 2, 2, 2]
@@ -80,23 +59,23 @@ task:
   loss:
     select: MSELoss
     # smoothing: 0.1
-  select: ninapro_db5_task.NinaproDB5Task
+  select: bciciv4_task.BCICIV4Task
 
 trainer:
   resume:  # 添加断点恢复配置
       enabled: false
       checkpoint: /home/lingyus/code/PRL/experiments/2025-01-10/14-27-21/checkpoint/checkpoint_step_8488.pt
-  fp16: true
+  fp16: false
   # total_steps: 31980
-  total_epochs: 200
+  total_epochs: 20
   update_interval: 1
   # save_interval: 1066
   # eval_interval: 1066
   log_interval: 20
   eval_metric:
-    select: r2
+    select: mean_cc
     mode: max
-  metrics: [r2, pea_cor, rmse,]
+  metrics: [mean_cc]
     
 
 distributed:

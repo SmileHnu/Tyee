@@ -75,7 +75,8 @@ class HoldOutCross(BaseSplit):
             4. Save the resulting DataFrames as CSV files (`train.csv` and `val.csv`) in the specified `split_path`.
         """
         # Step 1: Extract unique group IDs
-        group_ids = list(set(info[self.group_by]))
+        group_ids = sorted(set(info[self.group_by]))
+        
 
         # Step 2: Perform train-validation split on group IDs
         train_group_ids, val_group_ids = model_selection.train_test_split(

@@ -5,6 +5,7 @@ from .regression import (
     R2Score as r2,
     CosineSimilarity as cosine_similarity,
     PearsonCorrelation as pearson_correlation,
+    MeanCC as mean_cc,
 )
 
 from .classification import (
@@ -32,6 +33,7 @@ from .classification import (
     Recall_Weighted as recall_weighted,
     jaccard_Macro as jaccard_macro,
     jaccard_Micro as jaccard_micro,
-    jaccard_Weighted as jaccard_weighted    
+    jaccard_Weighted as jaccard_weighted,
+    
 
 )

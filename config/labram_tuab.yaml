@@ -89,7 +89,7 @@ trainer:
   # eval_interval: 1066
   log_interval: 20
   eval_metric:
-    select: blanced_accuracy
+    select: balanced_accuracy
     mode: max
   metrics: [balanced_accuracy, accuracy, pr_auc, roc_auc]
     

@@ -12,6 +12,7 @@
 
 import numpy as np
 import torch
+import scipy
 from abc import ABC, abstractmethod
 from sklearn.metrics import mean_squared_error, r2_score, mean_absolute_error
 from sklearn.metrics.pairwise import cosine_similarity
@@ -110,20 +111,38 @@ class PearsonCorrelation(RegressionMetric):
         r = np.corrcoef(all_targets, all_outputs)[0, 1]
         return r
 
-# class MeanCC(RegressionMetric):
-#     def __init__(self):
-#         self.name = 'mean_cc'
+class MeanCC(RegressionMetric):
+    def __init__(self):
+        self.name = 'mean_cc'
 
-#     def compute(self, results: list):
-#         """
-#         计算所有时间步长上的皮尔逊相关系数的平均值
-#         """
-#         all_targets, all_outputs = self.process_result(results)
+    def compute(self, results: list):
+        """
+        计算所有时间步长上的皮尔逊相关系数的平均值
+        """
+        # 拼接所有 batch，得到 (总样本数, 通道数, 样本数)
+        all_targets = []
+        all_outputs = []
+        for result in results:
+            # (batch, 通道数, 样本数)
+            label = result.get('label')
+            output = result.get('output')
+            if label is not None and output is not None:
+                all_targets.append(label)
+                all_outputs.append(output)
+        # 拼接 batch 维
+        all_targets = np.concatenate(all_targets, axis=0)  # (总batch, 通道数, 样本数)
+        all_outputs = np.concatenate(all_outputs, axis=0)
 
-#         # 对每个手指（通道）计算整体时间序列的皮尔逊相关系数
-#         correlations = [np.corrcoef(all_targets[i, :], all_outputs[i, :])[0, 1] for i in range(all_targets.shape[0])]
+        # 变成 (通道数, 总样本数)
+        # 先把 batch 和 样本数 合并
+        all_targets = np.concatenate(all_targets, axis=-1)  # (总batch, 通道数, 总样本数) -> (通道数, 总样本数)
+        all_outputs = np.concatenate(all_outputs, axis=-1)
 
-#         return np.mean(correlations)  # 取所有手指相关系数的平均值
+        corrs = []
+        for i in range(all_targets.shape[0]):
+            corr = np.corrcoef(all_outputs[i], all_targets[i])[0, 1]
+            corrs.append(corr)
+        return np.mean(corrs)
 
 if __name__ == "__main__":
     from pyhealth.metrics import regression_metrics_fn

@@ -10,29 +10,46 @@
 @Desc    : 
 """
 
-from typing import Dict, Any
+from typing import Dict, Any, List, Optional
 
 class BaseTransform:
-    def __call__(self, result: Dict[str, Any]) -> Dict[str, Any]:
+    def __init__(self, source: Optional[str] = None, target: Optional[str] = None):
         """
-        调用 transform 函数对 result 进行处理。
-
-        参数:
-            result (Dict[str, Any]): 包含信号数据、通道和标签的字典。
-
-        返回:
-            Dict[str, Any]: 处理后的 result 字典。
+        Args:
+            source (Optional[str]): The key of the source signal to transform.
+            target (Optional[str]): The key to store the transformed signal.
         """
-        return self.transform(result)
+        self.source = source
+        self.target = target
 
-    def transform(self, result: Dict[str, Any]) -> Dict[str, Any]:
+    def __call__(self, signals: Dict[str, Any]) -> Dict[str, Any]:
         """
-        子类需要实现的具体预处理逻辑。
+        Apply the transform to the specified source in signals and store the result in target.
 
-        参数:
-            result (Dict[str, Any]): 包含信号数据、通道和标签的字典。
+        Args:
+            signals (Dict[str, Any]): The input signals dictionary.
 
-        返回:
-            Dict[str, Any]: 处理后的 result 字典。
+        Returns:
+            Dict[str, Any]: The updated signals dictionary if target is set, otherwise the transformed result.
         """
-        raise NotImplementedError("子类需要实现这个方法")
+        # Read source data
+        signal = signals[self.source] if self.source else signals
+        # Apply transform
+        out = self.transform(signal)
+        # Write to target
+        if self.target:
+            signals[self.target] = out
+            return signals
+        return out
+
+    def transform(self, result: Any) -> Any:
+        """
+        The actual transform logic should be implemented in subclasses.
+
+        Args:
+            result (Any): The input data to transform.
+
+        Returns:
+            Any: The transformed data.
+        """
+        raise NotImplementedError("Subclasses must implement this method")

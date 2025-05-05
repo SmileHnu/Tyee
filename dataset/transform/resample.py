@@ -13,19 +13,24 @@ import mne
 import numpy as np
 from dataset.transform import BaseTransform
 from mne.filter import resample
+from typing import Optional
+
 mne.set_log_level('WARNING')
+
 class Resample(BaseTransform):
     def __init__(self,
-                desired_sampling_rate=None,
-                axis=-1,
-                window="auto",
-                n_jobs=None,
-                pad="auto",
-                npad='auto',
-                method="fft",
-                verbose=None,):
-        super().__init__()
-        self.desired_sampling_rate = desired_sampling_rate
+                 desired_freq: Optional[int] = None,
+                 axis: int = -1,
+                 window: str = "auto",
+                 n_jobs: Optional[int] = None,
+                 pad: str = "auto",
+                 npad: str = 'auto',
+                 method: str = "fft",
+                 verbose: Optional[bool] = None,
+                 source: Optional[str] = None,
+                 target: Optional[str] = None):
+        super().__init__(source, target)
+        self.desired_freq = desired_freq
         self.axis = axis
         self.method = method
         self.window = window
@@ -33,60 +38,52 @@ class Resample(BaseTransform):
         self.n_jobs = n_jobs
         self.pad = pad
         self.verbose = verbose
-    
+
     def transform(self, result):
-        # 获取信号和采样率
-        signal = result['signals']
-        sampling_rate = result['sampling_rate']
-        if len(signal.shape) == 2:
-            # 使用 mne 的 resample 函数进行重采样
-            signal = resample(signal, 
-                                up=self.desired_sampling_rate, 
-                                down=sampling_rate, 
-                                axis=self.axis,
-                                window=self.window,
-                                n_jobs=self.n_jobs,
-                                pad=self.pad,
-                                npad=self.npad,
-                                method=self.method,
-                                verbose=self.verbose)
-            
-        elif len(signal.shape) == 3:
-            # (通道数, 频率数, 降采样后的时间步数)
-            print('Resampling 3D signal')
-            # 获取原始形状
-            channels, freqs, time_steps = signal.shape  
+        # 兼容新数据结构，字段为 data 和 freq
+        signal = result['data']
+        freq = result['freq']
+        if self.desired_freq is None or freq == self.desired_freq:
+            # 不需要重采样
+            return result
 
-            # 变换维度，使时间步数位于第二维
-            signal = signal.reshape(channels * freqs, time_steps)
-            signal = resample(signal, 
-                            up=self.desired_sampling_rate, 
-                            down=sampling_rate, 
-                            axis=self.axis,
-                            window=self.window,
-                            n_jobs=self.n_jobs,
-                            pad=self.pad,
-                            npad=self.npad,
-                            method=self.method,
-                            verbose=self.verbose)
-            # 计算降采样后的时间步数
-            new_time_steps = spectrogramms_resampled.shape[1]
+        if signal.ndim <= 2:
+            # (通道数, 时间点)
+            signal_resampled = resample(
+                signal,
+                up=self.desired_freq,
+                down=freq,
+                axis=self.axis,
+                window=self.window,
+                n_jobs=self.n_jobs,
+                pad=self.pad,
+                npad=self.npad,
+                method=self.method,
+                verbose=self.verbose
+            )
+        elif signal.ndim == 3:
+            # (通道数, 频率数, 时间点)
+            channels, freqs, time_steps = signal.shape
+            signal_reshaped = signal.reshape(channels * freqs, time_steps)
+            signal_resampled = resample(
+                signal_reshaped,
+                up=self.desired_freq,
+                down=freq,
+                axis=1,
+                window=self.window,
+                n_jobs=self.n_jobs,
+                pad=self.pad,
+                npad=self.npad,
+                method=self.method,
+                verbose=self.verbose
+            )
+            new_time_steps = signal_resampled.shape[1]
+            signal_resampled = signal_resampled.reshape(channels, freqs, new_time_steps)
+        else:
+            raise ValueError("只支持3D以下信号重采样，当前shape: {}".format(signal.shape))
 
-            # 重新恢复成原来的形状
-            spectrogramms_resampled = spectrogramms_resampled.reshape(channels, freqs, new_time_steps)
+        # 更新采样率和信号
+        result['freq'] = self.desired_freq
+        result['data'] = signal_resampled
 
-        # 更新时间戳
-        if 'times' in result:
-            times = result['times']
-            start_time = times[0]
-            num_samples = result['signals'].shape[1]
-            times = np.linspace(start_time, 
-                                start_time + (num_samples) / self.desired_sampling_rate, 
-                                num_samples, 
-                                endpoint=True)
-            result['times'] = times
-        # 更新采样率
-        result['sampling_rate'] = self.desired_sampling_rate
-        result['signals'] = signal
-        
         return result

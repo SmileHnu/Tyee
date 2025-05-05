@@ -11,44 +11,44 @@
 """
 
 
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 import numpy as np
 from .base_transform import BaseTransform
 
 class CAR(BaseTransform):
-    def __init__(self):
+    def __init__(self, source: Optional[str] = None, target: Optional[str] = None):
         """
-        初始化 CAR 类，用于计算公共平均参考 (Common Average Referencing, CAR)。
+        Initialize the CAR class for Common Average Referencing (CAR).
         """
-        pass
+        super().__init__(source=source, target=target)
 
     def transform(self, result: Dict[str, Any]) -> Dict[str, Any]:
         """
-        对输入信号进行公共平均参考 (CAR) 转换。
+        Apply Common Average Referencing (CAR) to the input signal.
 
-        参数:
-            result (Dict[str, Any]): 包含信号数据的字典，必须包含 'signals' 键。
+        Args:
+            result (Dict[str, Any]): A dictionary containing the signal data, must include the 'data' key.
 
-        返回:
-            Dict[str, Any]: 包含经过 CAR 转换的信号的字典。
+        Returns:
+            Dict[str, Any]: The dictionary with the CAR-transformed signal.
         """
-        # 获取信号数据
-        signals = result.get("signals")
+        # Get signal data
+        signals = result.get("data")
         if signals is None:
-            raise ValueError("输入字典中必须包含 'signals' 键")
+            raise ValueError("The input dictionary must contain the 'data' key.")
 
-        # 检查信号维度是否为 2D 或 3D
+        # Check if the signal is 2D or 3D
         if signals.ndim == 2:
-            # 二维信号 (n_channels, n_times)
-            common_average = np.mean(signals, axis=0, keepdims=True)  # 计算每个时间点的平均值
-            signals = signals - common_average  # 每个通道减去公共平均值
+            # 2D signal (n_channels, n_times)
+            common_average = np.mean(signals, axis=0, keepdims=True)  # Average across channels for each time point
+            signals = signals - common_average  # Subtract common average from each channel
         elif signals.ndim == 3:
-            # 三维信号 (n_epochs, n_channels, n_times)
-            common_average = np.mean(signals, axis=1, keepdims=True)  # 对每个 epoch 的通道取平均
-            signals = signals - common_average  # 每个通道减去公共平均值
+            # 3D signal (n_epochs, n_channels, n_times)
+            common_average = np.mean(signals, axis=1, keepdims=True)  # Average across channels for each epoch
+            signals = signals - common_average  # Subtract common average from each channel
         else:
-            raise ValueError(f"不支持的信号维度: {signals.ndim}D，支持 2D 或 3D 信号")
+            raise ValueError(f"Unsupported signal dimension: {signals.ndim}D. Only 2D or 3D signals are supported.")
 
-        # 更新结果字典
-        result["signals"] = signals
+        # Update the result dictionary
+        result["data"] = signals
         return result

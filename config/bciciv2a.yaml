@@ -44,10 +44,10 @@ dataset:
 
 model:
 
-  # select: Conformer
-  # n_outputs: 4
-  # n_chans: 22
-  # n_times: 1000
+  select: Conformer
+  n_outputs: 4
+  n_chans: 22
+  n_times: 1000
 
   # select: VanillaTransformer
   # num_classes: 4
@@ -61,10 +61,10 @@ model:
   # t_patch_size: 250
   # num_classes: 4
 
-  select: eegnet.EEGNet
-  n_chans: 22
-  chunk_size: 1000
-  num_classes: 4
+  # select: eegnet.EEGNet
+  # n_chans: 22
+  # chunk_size: 1000
+  # num_classes: 4
   
 
 

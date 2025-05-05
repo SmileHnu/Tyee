@@ -12,8 +12,21 @@
 
 
 import torch
+import scipy
 from tasks import PRLTask
+from torch import nn
+import torch.nn.functional as F
 from utils import get_nested_field, lazy_import_module
+
+def correlation_metric(x, y):
+    """
+     Cosine distance calculation metric
+    """
+    cos_metric = nn.CosineSimilarity(dim=-1, eps=1e-08)
+
+    cos_sim = torch.mean(cos_metric(x, y))
+
+    return cos_sim
 
 class BCICIV4Task(PRLTask):
     def __init__(self, cfg):
@@ -29,34 +42,52 @@ class BCICIV4Task(PRLTask):
     def build_model(self):
         module_name, class_name = self.model_select.rsplit('.', 1)
         model_name = lazy_import_module(f'models.{module_name}', class_name)
+        print(self.model_params)
         model = model_name(**self.model_params)
         # print(model)
         return model
     
     def train_step(self, model: torch.nn.Module, sample: dict[str, torch.Tensor], *args, **kwargs):
-        x = sample['ecog']['signals']
+        x = sample['ecog']
         # 将信号沿着通道维度拼接起来
         x = x.float()
-        # print(x.shape)
-        label = sample['label']
+        # print(x)
+        label = sample['dg'].float()
         pred = model(x)
-        loss = self.loss(pred, label)
+        # print(pred)
+        # loss = self.loss(pred, label)
+        loss = F.mse_loss(pred, label)
+        corr = correlation_metric(pred, label)
+        # print(pred.shape,label.shape)
+        # print(loss,corr,0.5*loss + 0.5*(1. - corr))
         return{
-            'loss': loss,
+            'loss': 0.5*loss + 0.5*(1. - corr),
             'output': pred,
             'label': label
         }
 
     @torch.no_grad()
     def valid_step(self, model: torch.nn.Module, sample: dict[str, torch.Tensor], *args, **kwargs):
-        x= sample['ecog']['signals']
+        x = sample['ecog']
+        # 将信号沿着通道维度拼接起来
         x = x.float()
+        SIZE = 64
+        bounds = x.shape[-1] // SIZE * SIZE
+        x = x[..., :bounds]
         # print(x.shape)
-        label = sample['label']
+        label = sample['dg'].float()
+        label = label[...,:bounds]
         pred = model(x)
-        loss = self.loss(pred, label)
+        print(label.shape, pred.shape)
+        # 对每个样本的每个通道做高斯平滑
+        pred_np = pred.cpu().numpy()
+        pred_np = scipy.ndimage.gaussian_filter1d(pred_np, sigma=6, axis=-1)
+        pred_smooth = torch.from_numpy(pred_np).to(pred.device)
+        # loss = self.loss(pred, label)
+        loss = F.mse_loss(pred_smooth, label)
+        corr = correlation_metric(pred_smooth, label)
         return{
             'loss': loss,
-            'output': pred,
+            'output': pred_smooth,
             'label': label
         }

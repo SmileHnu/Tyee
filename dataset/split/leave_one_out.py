@@ -36,7 +36,7 @@ class LeaveOneOut(BaseSplit):
         Args:
             info (pd.DataFrame): DataFrame containing dataset information.
         """
-        groups = list(set(info[self.group_by]))
+        groups = sorted(set(info[self.group_by]))
 
         for val_group in groups:
             train_groups = groups.copy()

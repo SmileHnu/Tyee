@@ -81,7 +81,7 @@ class HoldOutGroupby(BaseSplit):
                                  must include the columns specified by `group_by` and `base_group`.
         """
         # Step 1: Extract all unique base groups
-        base_groups = list(set(info[self.base_group]))
+        base_groups = sorted(set(info[self.base_group]))
 
         # Initialize lists to store train and validation DataFrames
         train_infos = []
@@ -93,7 +93,7 @@ class HoldOutGroupby(BaseSplit):
             base_group_info = info[info[self.base_group] == base_group]
 
             # Extract unique secondary groups within the base group
-            group_ids = list(set(base_group_info[self.group_by]))
+            group_ids = sorted(set(base_group_info[self.group_by]))
 
             # Perform train-validation split on the secondary groups
             train_group_ids, val_group_ids = model_selection.train_test_split(

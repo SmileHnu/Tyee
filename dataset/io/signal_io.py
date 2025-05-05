@@ -63,6 +63,12 @@ class LMDBPhysioSignalIO(_PhysioSignalIO):
 
         # 为每个信号类型创建独立的 LMDB 数据库
         self._envs = {}  # 用于存储不同信号类型的 LMDB 环境
+        # 自动扫描已有的信号类型文件夹并连接 LMDB 环境
+        # for signal_type in os.listdir(io_path):
+        #     signal_db_path = os.path.join(io_path, signal_type)
+        #     if os.path.isdir(signal_db_path) and os.path.exists(os.path.join(signal_db_path, 'data.mdb')):
+        #         self._envs[signal_type] = lmdb.open(signal_db_path, map_size=self.io_size)
+        # print(self._envs.keys())
 
     def _get_env(self, signal_type: str):
         """
@@ -78,7 +84,7 @@ class LMDBPhysioSignalIO(_PhysioSignalIO):
             # 创建每种信号类型的独立数据库路径
             signal_db_path = os.path.join(self.io_path, signal_type)
             os.makedirs(signal_db_path, exist_ok=True)
-            self._envs[signal_type] = lmdb.open(signal_db_path, map_size=self.io_size)
+            self._envs[signal_type] = lmdb.open(signal_db_path, map_size=self.io_size, lock=False)
 
         return self._envs[signal_type]
 
@@ -183,7 +189,8 @@ class LMDBPhysioSignalIO(_PhysioSignalIO):
         返回:
         list: 包含所有信号类型的列表。
         """
-        return list(self._envs.keys())
+        return [d for d in os.listdir(self.io_path) if os.path.isdir(os.path.join(self.io_path, d))]
+
 
     def keys(self, signal_type: str):
         """

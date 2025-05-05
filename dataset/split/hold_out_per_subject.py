@@ -41,7 +41,7 @@ class HoldOutPerSubject(BaseSplit):
         Args:
             info (pd.DataFrame): DataFrame containing dataset information.
         """
-        subjects = list(set(info['subject_id']))
+        subjects = sorted(set(info['subject_id']))
         for subject in subjects:
             subject_info = info[info['subject_id'] == subject]
 

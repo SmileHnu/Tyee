@@ -83,7 +83,8 @@ class AutoEncoder1D(nn.Module):
                  channels = [8, 16, 32, 32],  # Number of features on each encoder layer
                  kernel_sizes=[3, 3, 3],
                  strides=[4, 4, 4],
-                 dilation=[1, 1, 1]
+                 dilation=[1, 1, 1],
+                 **kwargs
                  ):
         
         super(AutoEncoder1D, self).__init__()

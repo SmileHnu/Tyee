@@ -11,18 +11,20 @@
 """
 
 import numpy as np
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 from dataset.transform import BaseTransform
 
 class Scale(BaseTransform):
-    def __init__(self, scale_factor: float = 1.0):
+    def __init__(self, scale_factor: float = 1.0, source: Optional[str] = None, target: Optional[str] = None):
         """
         初始化放缩变换类。
 
         参数:
         - scale_factor: 放缩因子，用于对信号进行放缩。
+        - source: 输入信号字段名。
+        - target: 输出信号字段名。
         """
-        super().__init__()
+        super().__init__(source, target)
         self.scale_factor = scale_factor
 
     def transform(self, result: Dict[str, Any]) -> Dict[str, Any]:
@@ -30,12 +32,11 @@ class Scale(BaseTransform):
         对信号进行数值放缩处理。
 
         参数:
-        - result: 包含信号数据的字典。
+        - result: 包含信号数据的字典，字段为 'data'。
 
         返回:
         - 更新后的信号数据字典。
         """
-        signals = result['signals']
-        result['signals'] = signals * self.scale_factor
-        # print('Scale transform')
+        data = result['data']
+        result['data'] = data * self.scale_factor
         return result

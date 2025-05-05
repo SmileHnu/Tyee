@@ -22,13 +22,14 @@ class TUEVDataset(BaseDataset):
     def __init__(
         self,
         root_path: str = './tuh_eeg_events/v2.0.1/edf/train',
-        chunk_size: int = 2000,
-        overlap: int = 0,
-        num_channel: int = 62,
-        online_transform: Union[None, Callable] = None,
-        offline_transform: Union[None, Callable] = None,
-        label_transform: Union[None, Callable] = None,
-        before_trial: Union[None, Callable] = None,
+        start_offset: float = -2.0,
+        end_offset: float = 2.0,
+        signal_types: list = ['eeg'],
+        before_segment_transform: Union[None, Callable] = None,
+        offline_signal_transform: Union[None, Callable] = None,
+        offline_label_transform: Union[None, Callable] = None,
+        online_signal_transform: Union[None, Callable] = None,
+        online_label_transform: Union[None, Callable] = None,
         after_trial: Union[Callable, None] = None,
         after_session: Union[Callable, None] = None,
         after_subject: Union[Callable, None] = None,
@@ -41,13 +42,14 @@ class TUEVDataset(BaseDataset):
         # pass all arguments to super class
         params = {
             'root_path': root_path,
-            'chunk_size': chunk_size,
-            'overlap': overlap,
-            'num_channel': num_channel,
-            'online_transform': online_transform,
-            'offline_transform': offline_transform,
-            'label_transform': label_transform,
-            'before_trial': before_trial,
+            'start_offset': start_offset,
+            'end_offset': end_offset,
+            'signal_types': signal_types,
+            'before_segment_transform': before_segment_transform,
+            'offline_signal_transform': offline_signal_transform,
+            'offline_label_transform': offline_label_transform,
+            'online_signal_transform': online_signal_transform,
+            'online_label_transform': online_label_transform,
             'after_trial': after_trial,
             'after_session': after_session,
             'after_subject': after_subject,
@@ -57,9 +59,9 @@ class TUEVDataset(BaseDataset):
             'num_worker': num_worker,
             'verbose': verbose
         }
+        self.__dict__.update(params)
         super().__init__(**params)
         # save all arguments to __dict__
-        self.__dict__.update(params)
     
     def set_records(self, root_path: str = None, **kwargs):
         assert os.path.exists(
@@ -87,133 +89,130 @@ class TUEVDataset(BaseDataset):
 
         drop_channels = [ch for ch in Rawdata.ch_names if ch not in EEG_CHANNELS_ORDER]
         Rawdata.drop_channels(drop_channels)
-        # print(f'Channel names: {Rawdata.ch_names}')
         channel_names = Rawdata.ch_names
-        # _, times = Rawdata[:]
-        
         info = Rawdata.info
-        sampling_rate = info['sfreq']
-        
+        freq = info['sfreq']
         eeg_channels = info['ch_names']
         _, times = Rawdata[:]
-        # print(times)
-        signals = Rawdata.get_data(units='uV')
+        data = Rawdata.get_data(units='uV')
+        print(f"Data shape: {data.shape}")
         RecFile = record[0:-3] + "rec"
         eventData = np.genfromtxt(RecFile, delimiter=",")
         Rawdata.close()
-        # 转置
-        # signals = signals.T
         eeg = {
-            'signals': signals,
-            'times': times,
-            'sampling_rate': sampling_rate,
+            'data': data,
+            'freq': freq,
             'channels': eeg_channels,
         }
-        result = {
-            'eeg': eeg,
-            'eventData': eventData,
-        }
-        return result
-        
-    @staticmethod
-    def process_record(
-        record, 
-        signal_types,
-        result,
-        offline_transform,
-        **kwargs
-    ) -> Generator[Dict[str, Any], None, None]:
-        file_name = os.path.splitext(os.path.basename(record))[0]
-        # print(result['eeg']['signals'])
-        if not offline_transform is None:
-            try:
-                for signal_type in signal_types:
-                    if signal_type in offline_transform:
-                        result[signal_type] = offline_transform[signal_type](result[signal_type])
-            except (KeyError, ValueError) as e:
-                print(f'Error in processing record {file_name}: {e}')
-                return None
-        
-        fs = result['eeg']['sampling_rate']
-        
-        eeg_channels = result['eeg']['channels']
-        eventData = result['eventData']
-        eeg_signals = result['eeg']['signals']
-        # print(f'signals:{eeg_signals}')
-        times = result['eeg']['times']
-        # print(f'times:{times}')
-        # 删除 times
-        if 'times' in result['eeg']:
-            del result['eeg']['times']
-        # print(times)
         [numEvents, z] = eventData.shape
-        [numChan, numPoints] = eeg_signals.shape
-        features = np.zeros([numEvents, numChan, int(fs) * 5])
-        offending_channel = np.zeros([numEvents, 1])
-        labels = np.zeros([numEvents, 1])
-        offset = eeg_signals.shape[1]
-        eeg_signals = np.concatenate([eeg_signals, eeg_signals, eeg_signals], axis=1)
-        # print(eeg_signals)
-        # print(eventData)
+        [numChan, numPoints] = data.shape
+        segments = []
         for i in range(numEvents):
             chan = int(eventData[i, 0])
-            start = np.where((times) >= eventData[i, 1])[0][0]
-            end = np.where((times) >= eventData[i, 2])[0][0]
+            start = (np.where((times) >= eventData[i, 1])[0][0]) /freq
+            end = (np.where((times) >= eventData[i, 2])[0][0]) /freq
             # print(start, end)
-            features[i, :] = eeg_signals[:, offset + start - 2 * int(fs) : offset + end + 2 * int(fs)]
-            offending_channel[i, :] = int(chan)
-            labels[i, :] = int(eventData[i, 3])
-        # print(features)
-        for idx, (eeg_signal, offending_channel, label) in enumerate(zip(features, offending_channel, labels)):
-            clip_id = f'{idx}_{file_name}'
-            subject_id = file_name.split('_')[0]
-            label = int(label[0] - 1)
-            # print(eeg_signal)
-            result['eeg']['signals'] = eeg_signal
-
-            yield {
-                'eeg': result['eeg'],
-                'key': clip_id,
-                'info': {
-                    'signal_types': ['eeg'],
-                    'clip_id': clip_id,
-                    'subject_id': subject_id,
-                    'label': label
+            label = int(eventData[i, 3])
+            segments.append({
+                'start': start,
+                'end': end,
+                'value':{
+                    'event':{
+                        'data': label,
+                    },
                 }
+            })
+        return {
+            'signals':{
+                'eeg': eeg
+            },
+            'labels':{
+                'segments': segments,
+            },
+            'meta':{
+                'file_name': os.path.splitext(os.path.basename(record))[0],
             }
+        }
 
-    def __getitem__(self, index):
+    def process_record(
+        self,
+        signals,
+        labels,
+        meta,
+        **kwargs
+    ) -> Generator[Dict[str, Any], None, None]:
+        try:
+            signals = self.apply_transform(self.before_segment_transform, signals)
+        except (KeyError, ValueError) as e:
+            print(f'Error in processing record {meta["file_name"]}: {e}')
+            return None
+
+        for idx, segment in enumerate(self.segment_split(signals, labels)):
+            seg_signals = segment['signals']
+            seg_label = segment['labels']
+            seg_info = segment['info']
+            # print(signals['eeg']['data'].shape)
+            # print(label['label']['data'])
+            segment_id = self.get_segment_id(meta['file_name'], idx)
+            try:
+                seg_signals = self.apply_transform(self.offline_signal_transform, seg_signals)
+                seg_label = self.apply_transform(self.offline_label_transform, seg_label)
+            except (KeyError, ValueError) as e:
+                print(f'Error in processing record {meta["file_name"]}: {e}')
+                return None
+            
+            seg_info.update({
+                'subject_id': self.get_subject_id(meta['file_name']),
+                'session_id': self.get_session_id(),
+                'segment_id': self.get_segment_id(meta['file_name'], idx),
+                'trial_id': self.get_trial_id(idx),
+            })
+            yield self.assemble_segment(
+                key=segment_id,
+                signals=seg_signals,
+                labels=seg_label,
+                info=seg_info,
+            )
+
+    def __getitem__(self, index: int) -> Dict:
+        """
+        Retrieve a dataset item by index.
+
+        Args:
+            index (int): Index of the item to retrieve.
+
+        Returns:
+            Dict[str, Any]: A dictionary containing signal data and labels.
+        """
         info = self.read_info(index)
-        
-        signal_index = str(info['clip_id'])
-        signal_record = str(info['record_id'])
+        sample_id = str(info['sample_id'])
+        record = str(info['record_id'])
+        # print(record, sample_id)
+        signals = self.read_signal(record, sample_id)
+        signals = self.apply_transform(self.online_signal_transform, signals)
 
-        result = {}
-        for signal_type in self.signal_types:
-            result[signal_type] = self.read_signal(signal_record, signal_index, signal_type)
+        labels = self.read_label(record, sample_id)
+        labels = self.apply_transform(self.online_label_transform, labels)
 
-        # biot
-        # result['eeg']['signals'] = result['eeg']['signals'] / (
-        #     np.quantile(np.abs(result['eeg']['signals']), q=0.95, method="linear", axis=-1, keepdims=True)
-        #     + 1e-8
-        # )
-        result['label'] = info['label']
-        if self.label_transform is not None:
-            result['label'] = self.label_transform(result['label'])
-        if self.online_transform is not None:
-            for signal_type in self.signal_types:
-                if signal_type in self.online_transform:
-                    result[signal_type] = self.online_transform[signal_type](result[signal_type])
-                if 'ToIndexChannels' not in [transform.__class__.__name__ for transform in self.online_transform[signal_type].transforms]:
-                    if 'channels' in result[signal_type]:
-                        del result[signal_type]['channels']
-        else:
-            for signal_type in self.signal_types:
-                if 'channels' in result[signal_type]:
-                    del result[signal_type]['channels']
-        return result
+        return self.assemble_sample(signals,labels)
 
+    def get_subject_id(self, file_name) -> str:
+        # Extract the subject ID from the file name
+        # Assuming the file name format is like "subject_id_record_id.edf"
+        # You can modify this logic based on your actual file naming convention
+        return file_name.split('_')[0]
     
-# root_path = '/home/lingyus/data/TUEV/edf/train/aaaaaaar/'
-# io_path = "/home/lingyus/data/TUEV/edf/processed_data"
-# dataset = TUEVDataset(root_path=root_path, io_path='./processed_data', io_mode='lmdb', num_worker=4)
+    def get_segment_id(self, file_name, idx) -> str:
+        # Extract the segment ID from the file name
+        # Assuming the segment ID is the same as the file name in this case
+        return f'{idx}_{file_name}'
+    
+    def get_trial_id(self, idx) -> str:
+        # Extract the trial ID from the index
+        # Assuming the trial ID is the same as the index in this case
+        return str(idx)
+    
+    def get_sample_ids(self, segment_id, sample_len) -> str:
+        # Extract the sample ID from the file name and index
+        # Assuming the sample ID is a combination of the file name and index
+        return [f"{i}_{segment_id}" for i in range(sample_len)]

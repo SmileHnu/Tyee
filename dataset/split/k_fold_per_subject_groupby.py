@@ -53,14 +53,14 @@ class KFoldPerSubjectGroupby(BaseSplit):
         Args:
             info (pd.DataFrame): DataFrame containing dataset information.
         """
-        subjects = list(set(info['subject_id']))
+        subjects = sorted(set(info['subject_id']))
         for subject in subjects:
             subject_info = info[info['subject_id'] == subject]
 
             subject_train_infos = {}
             subject_val_infos = {}
 
-            group_ids = list(set(subject_info[self.group_by]))
+            group_ids = sorted(set(subject_info[self.group_by]))
             for group_id in group_ids:
                 group_info = subject_info[subject_info[self.group_by] == group_id]
 

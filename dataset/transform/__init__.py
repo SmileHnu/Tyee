@@ -3,7 +3,6 @@ from .channels import *
 from .compose import *
 from .filter import *
 from .resample import *
-from .hook import *
 from .convert_signal import *
 from .scale import *
 from .normalize import *

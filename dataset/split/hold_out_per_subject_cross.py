@@ -72,7 +72,7 @@ class HoldOutPerSubjectCross(BaseSplit):
                                  must include the columns `subject_id` and `group_by`.
         """
         # Step 1: Extract all unique subjects
-        subjects = list(set(info['subject_id']))
+        subjects = sorted(set(info['subject_id']))
 
         # Step 2: Process each subject
         for subject in subjects:
@@ -80,7 +80,7 @@ class HoldOutPerSubjectCross(BaseSplit):
             subject_info = info[info['subject_id'] == subject]
 
             # Extract unique groups within the subject
-            group_ids = list(set(subject_info[self.group_by]))
+            group_ids = sorted(set(subject_info[self.group_by]))
 
             # Perform train-validation split on the groups
             train_group_ids, val_group_ids = model_selection.train_test_split(

@@ -46,7 +46,7 @@ class HoldOutPerSubjectGroupby(BaseSplit):
         Args:
             info (pd.DataFrame): DataFrame containing dataset information.
         """
-        subjects = list(set(info['subject_id']))
+        subjects = sorted(set(info['subject_id']))
 
         for subject in subjects:
             subject_info = info[info['subject_id'] == subject]
@@ -54,7 +54,7 @@ class HoldOutPerSubjectGroupby(BaseSplit):
             train_infos = []
             val_infos = []
 
-            group_ids = list(set(subject_info[self.group_by]))
+            group_ids = sorted(set(subject_info[self.group_by]))
             train_group_ids, val_group_ids = model_selection.train_test_split(
                 group_ids,
                 test_size=self.val_size,

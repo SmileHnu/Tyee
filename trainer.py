@@ -245,13 +245,13 @@ class Trainer:
             self.lr_scheduler.step(val_metric, step)
 
         # Update metrics
-        if 'output' in result:
-            self._metrics_evaluator.update_metrics(result)
-            metrics = self._metrics_evaluator.calculate_metrics()
-        else:
-            metrics = None
+        # if 'output' in result:
+        #     self._metrics_evaluator.update_metrics(result)
+        #     metrics = self._metrics_evaluator.calculate_metrics()
+        # else:
+        #     metrics = None
 
-        result = self._aggregate_metrics(result['loss'].item(), metrics)
+        result = self._aggregate_metrics(result['loss'].item(), metrics= None)
         return result
 
     def _update_parameters(self):

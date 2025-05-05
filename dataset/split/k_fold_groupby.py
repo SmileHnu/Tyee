@@ -56,14 +56,14 @@ class KFoldGroupby(BaseSplit):
         Args:
             info (pd.DataFrame): DataFrame containing dataset information.
         """
-        base_groups = list(set(info[self.base_group]))
+        base_groups = sorted(set(info[self.base_group]))
 
         train_infos = {}
         val_infos = {}
 
         for base_group in base_groups:
             base_group_info = info[info[self.base_group] == base_group]
-            group_ids = list(set(base_group_info[self.group_by]))
+            group_ids = sorted(set(base_group_info[self.group_by]))
 
             for group_id in group_ids:
                 group_info = base_group_info[base_group_info[self.group_by] == group_id]

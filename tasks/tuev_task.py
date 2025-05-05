@@ -224,22 +224,22 @@ class TUEVTask(PRLTask):
         
     def train_step(self, model: nn.Module, sample: dict[str, torch.Tensor]):
         
-        eeg = sample["eeg"]['signals']
-        label = sample["label"]
+        eeg = sample["eeg"]
+        label = sample["event"]
         eeg = eeg.float() / 100
         eeg = rearrange(eeg, 'B N (A T) -> B N A T', T=200)
         pred = model(eeg, self.input_chans)
         loss = self.loss(pred, label)
         return {
-             "loss": loss,
+            "loss": loss,
             "output": pred,
             "label": label
         }
 
     @torch.no_grad()
     def valid_step(self, model, sample: dict[str, torch.Tensor]):
-        eeg = sample["eeg"]['signals']
-        label = sample["label"]
+        eeg = sample["eeg"]
+        label = sample["event"]
         eeg = eeg.float() / 100
         eeg = rearrange(eeg, 'B N (A T) -> B N A T', T=200)
         pred = model(eeg, self.input_chans)

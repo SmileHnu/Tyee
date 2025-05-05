@@ -10,7 +10,7 @@
 @Desc    : 
 """
 
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 import numpy as np
 from .base_transform import BaseTransform
 from mne.time_frequency import tfr_array_morlet
@@ -24,14 +24,15 @@ class TFR(BaseTransform):
         use_fft: bool = True,
         decim: int = 1,
         output: str = "complex",
-        n_jobs: int = None,
-        verbose = None,
+        n_jobs: Optional[int] = None,
+        verbose: Optional[bool] = None,
+        source: Optional[str] = None,
+        target: Optional[str] = None,
     ):
         """
-        初始化 TFRTransform 类，用于计算时间-频率表示 (TFR)。
+        初始化 TFR 类，用于计算时间-频率表示 (TFR)。
 
         参数:
-            sfreq (float): 数据的采样频率。
             freqs (np.ndarray): 要分析的频率数组。
             n_cycles (float): 每个频率的周期数，默认为 7.0。
             zero_mean (bool): 是否使小波均值为零，默认为 True。
@@ -39,7 +40,10 @@ class TFR(BaseTransform):
             decim (int): 下采样因子，默认为 1。
             output (str): 输出类型，默认为 "complex"。
             n_jobs (int): 并行处理的线程数，默认为 None。
+            source (str): 输入信号字段名，默认为 'data'。
+            target (str): 输出信号字段名，默认为 None（覆盖输入）。
         """
+        super().__init__(source, target)
         self.freqs = freqs
         self.n_cycles = n_cycles
         self.zero_mean = zero_mean
@@ -54,22 +58,27 @@ class TFR(BaseTransform):
         对输入数据计算时间-频率表示 (TFR)。
 
         参数:
-            result (Dict[str, Any]): 包含信号数据的字典，必须包含 "signals" 键。
+            result (Dict[str, Any]): 包含信号数据的字典，字段为 'data' 和 'freq'。
 
         返回:
             Dict[str, Any]: 包含 TFR 结果的字典。
         """
-        if "signals" not in result:
-            raise ValueError("输入字典中必须包含 'signals' 键")
+        if "data" not in result or "freq" not in result:
+            raise ValueError("输入字典中必须包含 'data' 和 'freq' 字段")
 
-        data = result["signals"]
-        sfreq = result['sampling_rate']
+        data = result["data"]
+        sfreq = result["freq"]
         if not isinstance(data, np.ndarray):
-            raise TypeError("'signals' 必须是一个 NumPy 数组")
-        num_of_channels = len(data)
-        data = data.reshape(1, num_of_channels, -1)
+            raise TypeError("'data' 必须是一个 NumPy 数组")
+        if data.ndim == 2:
+            # (channels, times) -> (1, channels, times)
+            data = data[np.newaxis, ...]
+        elif data.ndim == 3:
+            # (epochs, channels, times) 保持原样
+            pass
+        else:
+            raise ValueError("输入 'data' 必须为2维或3维数组，当前shape: {}".format(data.shape))
 
-        # 调用 tfr_array_morlet 计算 TFR
         tfr_result = tfr_array_morlet(
             data=data,
             sfreq=sfreq,
@@ -83,6 +92,7 @@ class TFR(BaseTransform):
             verbose=self.verbose,
         )
 
-        # 将结果存入字典并返回
-        result["signals"] = tfr_result
+        # 输出 shape: (epochs, channels, freqs, times)
+        result["data"] = tfr_result
+        result["freqs"] = self.freqs
         return result

@@ -59,7 +59,7 @@ class KFoldCross(BaseSplit):
         Args:
             info (pd.DataFrame): DataFrame containing dataset information.
         """
-        group_ids = list(set(info[self.group_by]))
+        group_ids = sorted(set(info[self.group_by]))
 
         for fold_id, (train_index_group_ids, val_index_group_ids) in enumerate(self.k_fold.split(group_ids)):
             if len(train_index_group_ids) == 0 or len(val_index_group_ids) == 0:

@@ -12,41 +12,10 @@
 
 import mne
 import numpy as np
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 from dataset.transform import BaseTransform
 from scipy.signal import cheby2, filtfilt
-from neurokit2 import signal_filter
 mne.set_log_level('WARNING')
-class NeurokitFilter(BaseTransform):
-    def __init__(self, 
-                 lowcut=None,
-                 highcut=None,
-                 method="butterworth",
-                 order=2,
-                 window_size="default",
-                 powerline=50,
-                 show=False,):
-        super().__init__()
-        self.lowcut = lowcut
-        self.highcut = highcut
-        self.method = method
-        self.order = order
-        self.window_size = window_size
-        self.powerline = powerline
-        self.show = show
-    
-    def transform(self, result: Dict[str, Any]) -> Dict[str, Any]:
-        
-        result['signals'] = signal_filter(result['signals'], 
-                                       result['sampling_rate'], 
-                                       self.lowcut, 
-                                       self.highcut, 
-                                       self.method, 
-                                       self.order, 
-                                       self.window_size, 
-                                       self.powerline, 
-                                       self.show)
-        return result
 
 class Filter(BaseTransform):
     def __init__(self, 
@@ -60,8 +29,10 @@ class Filter(BaseTransform):
                  phase="zero", 
                  fir_window="hamming", 
                  fir_design="firwin", 
-                 pad="reflect_limited"):
-        super().__init__()
+                 pad="reflect_limited",
+                 source: Optional[str] = None,
+                 target: Optional[str] = None):
+        super().__init__(source, target)
         self.l_freq = l_freq
         self.h_freq = h_freq
         self.filter_length = filter_length
@@ -75,20 +46,8 @@ class Filter(BaseTransform):
         self.pad = pad
 
     def transform(self, result: Dict[str, Any]) -> Dict[str, Any]:
-        # print('执行了Filter')
-        """
-        对信号进行滤波。
-        
-        参数:
-        - result: 包含信号数据的字典。
-        
-        返回:
-        - 更新后的信号数据字典。
-        """
-        
-        signal_data = result['signals']
-        sfreq = result['sampling_rate']
-        
+        signal_data = result['data']
+        sfreq = result['freq']
         filtered_signal = mne.filter.filter_data(
             data=signal_data,
             sfreq=sfreq,
@@ -104,10 +63,9 @@ class Filter(BaseTransform):
             fir_design=self.fir_design,
             pad=self.pad
         )
-        # print(filtered_signal)
-        result['signals'] = filtered_signal
+        result['data'] = filtered_signal
         return result
-    
+
 class NotchFilter(BaseTransform):
     def __init__(self, 
                  freqs: List[float], 
@@ -121,8 +79,10 @@ class NotchFilter(BaseTransform):
                  phase="zero", 
                  fir_window="hamming", 
                  fir_design="firwin", 
-                 pad="reflect_limited"):
-        super().__init__()
+                 pad="reflect_limited",
+                 source: Optional[str] = None,
+                 target: Optional[str] = None):
+        super().__init__(source, target)
         self.freqs = freqs
         self.filter_length = filter_length
         self.notch_widths = notch_widths
@@ -137,19 +97,8 @@ class NotchFilter(BaseTransform):
         self.pad = pad
 
     def transform(self, result: Dict[str, Any]) -> Dict[str, Any]:
-        # print('执行了NotchFilter')
-        """
-        对信号进行陷波滤波。
-        
-        参数:
-        - result: 包含信号数据的字典。
-        
-        返回:
-        - 更新后的信号数据字典。
-        """
-        signal_data = result['signals']
-        sfreq = result['sampling_rate']
-
+        signal_data = result['data']
+        sfreq = result['freq']
         filtered_signal = mne.filter.notch_filter(
             x=signal_data,
             Fs=sfreq,
@@ -166,8 +115,7 @@ class NotchFilter(BaseTransform):
             fir_design=self.fir_design,
             pad=self.pad
         )
-        # print(filtered_signal)
-        result['signals'] = filtered_signal
+        result['data'] = filtered_signal
         return result
 
 class Cheby2Filter(BaseTransform):
@@ -177,8 +125,10 @@ class Cheby2Filter(BaseTransform):
                  order=6, 
                  rp=0.1, 
                  rs=60, 
-                 btype='bandpass'):
-        super().__init__()
+                 btype='bandpass',
+                 source: Optional[str] = None,
+                 target: Optional[str] = None):
+        super().__init__(source, target)
         self.lowcut = lowcut
         self.highcut = highcut
         self.order = order
@@ -187,24 +137,12 @@ class Cheby2Filter(BaseTransform):
         self.btype = btype
 
     def transform(self, result: Dict[str, Any]) -> Dict[str, Any]:
-        # print('执行了Cheby2Filter')
-        """
-        对信号进行Chebyshev II滤波。
-        
-        参数:
-        - result: 包含信号数据的字典。
-        
-        返回:
-        - 更新后的信号数据字典。
-        """
-        signal_data = result['signals']
-        sfreq = result['sampling_rate']
+        signal_data = result['data']
+        sfreq = result['freq']
         nyquist = 0.5 * sfreq
         low = self.lowcut / nyquist
         high = self.highcut / nyquist
         b, a = cheby2(self.order, self.rs, [low, high], btype=self.btype)
-        
         filtered_signal = filtfilt(b, a, signal_data, axis=1)
-        # print(filtered_signal)
-        result['signals'] = filtered_signal
+        result['data'] = filtered_signal
         return result
