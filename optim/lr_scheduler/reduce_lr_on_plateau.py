@@ -25,6 +25,7 @@ class ReduceLROnPlateauScheduler(BaseLRScheduler):
         optimizer: torch.optim.Optimizer,
         niter_per_epoch: int,
         metric: Optional[str] = None,
+        metric_source: Optional[str] = None,
         patience_epochs: int = 10,
         patience_steps: Optional[int] = None,
         factor: float = 0.1,
@@ -73,7 +74,7 @@ class ReduceLROnPlateauScheduler(BaseLRScheduler):
             threshold=threshold,
             min_lr=min_lr,
         )
-        super().__init__(optimizer, last_step, metric)
+        super().__init__(optimizer, last_step, metric, metric_source)
 
     def get_lr(self) -> List[float]:
         """

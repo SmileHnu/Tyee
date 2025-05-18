@@ -28,23 +28,23 @@ from tqdm import tqdm
 from dataset.io import PhysioSignalIO
 from dataset.io import MetaInfoIO
 
-class SegmentCache:
-    def __init__(self, max_size=3):
-        self.cache = OrderedDict()
-        self.max_size = max_size
+# class SegmentCache:
+#     def __init__(self, max_size=3):
+#         self.cache = OrderedDict()
+#         self.max_size = max_size
 
-    def get(self, key):
-        if key in self.cache:
-            self.cache.move_to_end(key)  # 标记为最近使用
-            return self.cache[key]
-        return None
+#     def get(self, key):
+#         if key in self.cache:
+#             self.cache.move_to_end(key)  # 标记为最近使用
+#             return self.cache[key]
+#         return None
 
-    def put(self, key, value):
-        if key in self.cache:
-            self.cache.move_to_end(key)
-        self.cache[key] = value
-        if len(self.cache) > self.max_size:
-            self.cache.popitem(last=False)  # 移除最久未用
+#     def put(self, key, value):
+#         if key in self.cache:
+#             self.cache.move_to_end(key)
+#         self.cache[key] = value
+#         if len(self.cache) > self.max_size:
+#             self.cache.popitem(last=False)  # 移除最久未用
 
 log = logging.getLogger('dataset')
 
@@ -78,17 +78,22 @@ class BaseDataset(Dataset):
 
     def __init__(
         self,
-        io_path: Union[str, None] = None,
-        io_mode: str = 'lmdb',
-        io_size: int = 1048576,
-        lazy_threshold: int = 128,
+        root_path: str,
         start_offset: float = 0.0,
         end_offset: float = 0.0,
+        include_end: bool = False,
+        before_segment_transform: Union[None, Callable] = None,
+        offline_signal_transform: Union[None, Callable] = None,
+        offline_label_transform: Union[None, Callable] = None,
+        online_signal_transform: Union[None, Callable] = None,
+        online_label_transform: Union[None, Callable] = None,
+        io_path: Union[None, str] = None,
+        io_size: int = 1048576,
+        io_chunks: int = None,
+        io_mode: str = 'hdf5',
         num_worker: int = 0,
+        lazy_threshold: int = 128,
         verbose: bool = True,
-        # after_trial: Callable = None,
-        # after_session: Callable = None,
-        # after_subject: Callable = None,
         **kwargs
     ) -> None:
         """
@@ -107,17 +112,22 @@ class BaseDataset(Dataset):
             signal_types (List[str]): List of signal types to process.
             **kwargs: Additional arguments for dataset processing.
         """
+        self.root_path = root_path
+        self.before_segment_transform = before_segment_transform
+        self.offline_signal_transform = offline_signal_transform
+        self.offline_label_transform = offline_label_transform
+        self.online_signal_transform = online_signal_transform
+        self.online_label_transform = online_label_transform
         self.io_path = io_path
         self.io_size = io_size
+        self.io_chunks = io_chunks
         self.io_mode = io_mode
         self.lazy_threshold = lazy_threshold
         self.start_offset = start_offset
         self.end_offset = end_offset
+        self.include_end = include_end
         self.num_worker = num_worker
         self.verbose = verbose
-        # self.after_trial = after_trial
-        # self.after_session = after_session
-        # self.after_subject = after_subject
         
         # Check if the dataset folder is empty or in memory mode
         if self.is_folder_empty(self.io_path) or self.io_mode == 'memory':
@@ -125,7 +135,7 @@ class BaseDataset(Dataset):
                 f'🔍 | No cached processing results found, processing data from {self.io_path}.')
             os.makedirs(self.io_path, exist_ok=True)
 
-            records = self.set_records(**kwargs)
+            records = self.set_records(self.root_path, **kwargs)
             if self.num_worker == 0:
                 try:
                     worker_results = []
@@ -174,6 +184,7 @@ class BaseDataset(Dataset):
             self.init_io(
                 io_path=self.io_path,
                 io_size=self.io_size,
+                io_chunks=self.io_chunks,
                 io_mode=self.io_mode)  
 
             # if self.after_trial is not None or self.after_session is not None or self.after_subject is not None:
@@ -194,6 +205,7 @@ class BaseDataset(Dataset):
             self.init_io(
                 io_path=self.io_path,
                 io_size=self.io_size,
+                io_chunks=self.io_chunks,
                 io_mode=self.io_mode)
 
     def is_folder_empty(self, folder_path: str) -> bool:
@@ -248,7 +260,7 @@ class BaseDataset(Dataset):
 
         return not has_valid_record
 
-    def init_io(self, io_path: str, io_size: int, io_mode: str):
+    def init_io(self, io_path: str, io_size: int, io_chunks: int, io_mode: str):
         """
         Initialize IO for the dataset.
 
@@ -300,8 +312,8 @@ class BaseDataset(Dataset):
                     signal_info_df[signal_type] = signal_info_io.read_all()
                     signals_info_merged.append(signal_info_df)
                     
-                    if signal_type not in self.signal_cache:
-                        self.signal_cache[signal_type] = SegmentCache(max_size=3)
+                    # if signal_type not in self.signal_cache:
+                    #     self.signal_cache[signal_type] = SegmentCache(max_size=3)
 
 
                 label_path = os.path.join(io_path, record, 'labels')
@@ -313,8 +325,8 @@ class BaseDataset(Dataset):
                     label_info_df[label_type] = label_info_io.read_all()
                     labels_info_merged.append(label_info_df)
 
-                    if label_type not in self.label_cache:
-                        self.label_cache[label_type] = SegmentCache(max_size=3)
+                    # if label_type not in self.label_cache:
+                    #     self.label_cache[label_type] = SegmentCache(max_size=3)
 
 
             self.signal_io_router = {}  # Not used in lazy mode
@@ -339,7 +351,8 @@ class BaseDataset(Dataset):
                 signal_io_path = os.path.join(io_path, record, 'signals')
                 signal_io = PhysioSignalIO(signal_io_path,
                                         io_size=io_size,
-                                        io_mode=io_mode)
+                                        io_mode=io_mode,
+                                        io_chunks=io_chunks)
                 self.signal_io_router[record] = signal_io
                 signal_info_df = {}
                 for signal_type in os.listdir(signal_io_path):
@@ -348,14 +361,15 @@ class BaseDataset(Dataset):
                     signal_info_df[signal_type] = signal_info_io.read_all()
                     signals_info_merged.append(signal_info_df)
 
-                    if signal_type not in self.signal_cache:
-                        self.signal_cache[signal_type] = SegmentCache(max_size=3)
+                    # if signal_type not in self.signal_cache:
+                    #     self.signal_cache[signal_type] = SegmentCache(max_size=3)
 
                 self.label_io_router[record] = {}
                 label_io_path = os.path.join(io_path, record, 'labels')
                 label_io = PhysioSignalIO(label_io_path,
                                         io_size=io_size,
-                                        io_mode=io_mode)
+                                        io_mode=io_mode,
+                                        io_chunks=io_chunks)
                 self.label_io_router[record] = label_io
                 label_info_df = {}
                 for label_type in os.listdir(label_io_path):
@@ -364,8 +378,8 @@ class BaseDataset(Dataset):
                     label_info_df[label_type] = label_info_io.read_all()
                     labels_info_merged.append(label_info_df)
 
-                    if label_type not in self.label_cache:
-                        self.label_cache[label_type] = SegmentCache(max_size=3)
+                    # if label_type not in self.label_cache:
+                    #     self.label_cache[label_type] = SegmentCache(max_size=3)
 
 
             self.signal_paths = {}  # Not used in eager mode
@@ -408,7 +422,11 @@ class BaseDataset(Dataset):
             del signal['info']
             # write signal data
             signal_path = os.path.join(self.io_path, record, 'signals')
-            signal_io = PhysioSignalIO(signal_path, io_size=self.io_size, io_mode=self.io_mode)
+            signal_io = PhysioSignalIO(
+                signal_path, 
+                io_size=self.io_size, 
+                io_mode=self.io_mode, 
+                io_chunks=self.io_chunks)
             signal_io.write_signal(signal, signal_type, key)
             # write info
             info_path = os.path.join(signal_path, signal_type, 'info.csv')
@@ -429,7 +447,12 @@ class BaseDataset(Dataset):
             del label['info']
             # write signal data
             signal_path = os.path.join(self.io_path, record, 'labels')
-            signal_io = PhysioSignalIO(signal_path, io_size=self.io_size, io_mode=self.io_mode)
+            signal_io = PhysioSignalIO(
+                signal_path, 
+                io_size=self.io_size, 
+                io_mode=self.io_mode,
+                io_chunks=self.io_chunks
+                )
             signal_io.write_signal(label, label_type, key)
             # write info
             info_path = os.path.join(signal_path, label_type, 'info.csv')
@@ -488,7 +511,8 @@ class BaseDataset(Dataset):
             signal_io = PhysioSignalIO(
                 self.signal_paths[record],
                 io_size=self.io_size,
-                io_mode=self.io_mode
+                io_mode=self.io_mode,
+                io_chunks=self.io_chunks
             )
         else:
             signal_io = self.signal_io_router[record]
@@ -499,16 +523,16 @@ class BaseDataset(Dataset):
             key = str(info['segment_id'])
             start = int(info['start'])
             end = int(info['end'])
-            signal = self.signal_cache[signal_type].get(key)
-            if signal is None:
+            # signal = self.signal_cache[signal_type].get(sample_id)
+            # if signal is None:
                 # Read the signal from the IO
-                signal = signal_io.read_signal(signal_type, key)
+            signal = signal_io.read_signal(signal_type, key, start, end)
                 # Cache the signal
-                self.signal_cache[signal_type].put(key, signal)
+                # self.signal_cache[signal_type].put(sample_id, signal)
             # signal = signal_io.read_signal(signal_type, key)
-            signal_copy = copy(signal)
-            signal_copy['data'] = signal_copy['data'][..., start:end]
-            signals[signal_type] = signal_copy
+            # signal_copy = copy(signal)
+            # signal_copy['data'] = signal_copy['data'][..., start:end]
+            signals[signal_type] = signal
             
         return signals
     
@@ -529,7 +553,8 @@ class BaseDataset(Dataset):
             label_io = PhysioSignalIO(
                 self.label_paths[record],
                 io_size=self.io_size,
-                io_mode=self.io_mode
+                io_mode=self.io_mode,
+                io_chunks=self.io_chunks
             )
         else:
             label_io = self.label_io_router[record]
@@ -538,19 +563,14 @@ class BaseDataset(Dataset):
             df = self.labels_info[label_type]
             info = df[df['sample_id'] == sample_id].iloc[0].to_dict()
             key = str(info['segment_id'])
-            label = self.label_cache[label_type].get(key)
-            if label is None:
-                label = label_io.read_signal(label_type, key)
-                self.label_cache[label_type].put(key, label)
-            # 再做拷贝和切片
-            if 'start' in info and 'end' in info:
-                start = int(info['start'])
-                end = int(info['end'])
-                label_copy = copy(label)
-                label_copy['data'] = label_copy['data'][..., start:end]
-                labels[label_type] = label_copy
-            else:
-                labels[label_type] = copy(label)
+            start = info.get('start', None)
+            end = info.get('end', None)
+            # label = self.label_cache[label_type].get(sample_id)
+            # if label is None:
+            label = label_io.read_signal(label_type, key, start, end)
+                # self.label_cache[label_type].put(sample_id, label)
+            
+            labels[label_type] = copy(label)
                 
         return labels
         
@@ -661,6 +681,7 @@ class BaseDataset(Dataset):
             Returns:
                 Any: Collated data as tensors, arrays, or other supported types.
             """
+            # print('collate:', type(data[0]), data[0])
             if isinstance(data[0], dict):
                 # Process nested dictionaries
                 return {key: recursive_collate([d[key] for d in data]) for key in data[0]}
@@ -670,7 +691,7 @@ class BaseDataset(Dataset):
             elif isinstance(data[0], np.ndarray):
                 # Convert numpy arrays to tensors
                 return torch.tensor(np.stack(data))
-            elif isinstance(data[0], (int, float, list)):
+            elif isinstance(data[0], (int, float, list, np.integer)):
                 # Convert scalars or lists to tensors
                 return torch.tensor(data)
             else:
@@ -952,8 +973,11 @@ class BaseDataset(Dataset):
                 data = sig['data']
                 start_idx = int(round(start_time * freq))
                 end_idx = int(round(end_time * freq))
+                if self.include_end:
+                    end_idx += 1
                 if start_idx < 0 or end_idx > data.shape[-1] or start_idx > end_idx:
                     false = True
+                    print(f"Invalid segment: {sig_type}, {start_time}, {end_time}, {start_idx}, {end_idx}")
                     continue
                 # print(start_idx, end_idx)
                 seg_dict['signals'][sig_type] = {
@@ -980,8 +1004,13 @@ class BaseDataset(Dataset):
         """
         if transforms is not None:
             for transform in transforms:
-                signals = transform(signals)
-                
+                try:
+                    signals = transform(signals)
+                    # print(transform.__class__.__name__)
+                    # print(signals['eeg']['data'])
+                except Exception as e:
+                    print(f"[Transform Error] {transform.__class__.__name__}: {e}")
+                    return None
         return signals
 
     def assemble_segment(
@@ -1016,7 +1045,7 @@ class BaseDataset(Dataset):
         
         window_lens = [len(sig['info']['windows']) for sig in signals.values()]
         if not all(l == window_lens[0] for l in window_lens):
-            raise ValueError(f"All signals must have the same number of windows, got: {window_lens}")
+            raise ValueError(f"{info['segment_id']}All signals must have the same number of windows, got: {window_lens}")
         sample_ids = [f'{i}_{key}' for i in range(window_lens[0])]
         
         for label_type, label in labels.items():
@@ -1151,4 +1180,3 @@ class BaseDataset(Dataset):
             format_string += f'{k}={v}'
         return format_string
 
-        

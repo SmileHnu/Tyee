@@ -11,172 +11,10 @@
 """
 
 import os
-import copy
 import scipy.io as scio
-from scipy.ndimage import label
-from sklearn.preprocessing import MinMaxScaler
-from sklearn.preprocessing import RobustScaler
-from scipy.interpolate import interp1d
 import numpy as np
 from dataset import BaseDataset
 from typing import Any, Callable, Union, Dict, Generator, List
-
-import mne
-import scipy.interpolate
-from sklearn.preprocessing import MinMaxScaler
-from sklearn.preprocessing import RobustScaler
-L_FREQ, H_FREQ = 40, 300 # Lower and upper filtration bounds
-CHANNELS_NUM = 62        # Number of channels in ECoG data
-WAVELET_NUM = 40         # Number of wavelets in the indicated frequency range, with which the convolution is performed
-DOWNSAMPLE_FS = 100      # Desired sampling rate
-time_delay_secs = 0.2    # Time delay hyperparameter
-
-current_fs = DOWNSAMPLE_FS
-
-def reshape_column_ecog_data(multichannel_signal: np.ndarray):
-    return multichannel_signal.T # (time, features) -> (features, time)
-
-def filter_ecog_data(multichannel_signal: np.ndarray, fs=1000, powerline_freq=50):
-    """
-    Harmonics removal and frequency filtering
-    :param multichannel_signal: Initial multi-channel signal
-    :param fs: Sampling rate
-    :param powerline_freq: Grid frequency
-    :return: Filtered signal
-    """
-    harmonics = np.array([i * powerline_freq for i in range(1, (fs // 2) // powerline_freq)])
-
-    print("Starting...")
-    signal_filtered = mne.filter.filter_data(multichannel_signal,
-                                             fs, l_freq=L_FREQ, h_freq=H_FREQ)  # remove all frequencies between l and h
-    print("Noise frequencies removed...")
-    signal_removed_powerline_noise = mne.filter.notch_filter(signal_filtered,
-                                                             fs, freqs=harmonics)  # remove powerline  noise
-    print("Powerline noise removed...")
-    
-    return signal_removed_powerline_noise
-
-def normalize(multichannel_signal: np.ndarray, return_values = None):
-    """
-    standardization and removal of the median  from each channel
-    :param multichannel_signal: Multi-channel signal
-    :param return_values: Whether to return standardization parameters. By default - no
-    """
-    print("Normalizing...")
-    means = np.mean(multichannel_signal, axis=1, keepdims=True)
-    stds = np.std(multichannel_signal, axis=1, keepdims=True)
-    transformed_data = (multichannel_signal - means) / stds
-    common_average = np.median(transformed_data, axis=0, keepdims=True)
-    transformed_data = transformed_data - common_average
-    if return_values:
-        return transformed_data, (means, stds)
-    print("Normalized...")
-    return transformed_data
-
-def compute_spectrogramms(multichannel_signal : np.ndarray, fs=1000, freqs=np.logspace(np.log10(L_FREQ), np.log10(H_FREQ), WAVELET_NUM),
-                          output_type='power'):
-    """
-    Compute spectrogramms using wavelet transforms
-
-    :param freqs: wavelet frequencies to uses
-    :param fs: Sampling rate
-    :return: Signal spectogramms in shape (channels, wavelets, time)
-    """
-    
-    num_of_channels = len(multichannel_signal)
-
-    print("Computing wavelets...")
-    spectrogramms = mne.time_frequency.tfr_array_morlet(multichannel_signal.reshape(1, num_of_channels, -1), sfreq=fs,
-                                                        freqs=freqs, output=output_type, verbose=10, n_jobs=6)[0]
-    
-    
-    print("Wavelet spectrogramm computed...")
-    
-    return spectrogramms
-
-
-def downsample_spectrogramms(spectrogramms: np.ndarray, cur_fs=1000, needed_hz=H_FREQ, new_fs = None):
-    """
-    Reducing the sampling rate of spectrograms
-    :param spectrogramms: Original set of spectrograms
-    :param cur_fs: Current sampling rate
-    :param needed_hz: The maximum frequency that must be unambiguously preserved during compression
-    :param new_fs: The required sampling rate (interchangeable with needed_hz)
-    :return: Decimated signal
-    """
-    print("Downsampling spectrogramm...")
-    if new_fs == None:
-        new_fs = needed_hz * 2    
-    downsampling_coef = cur_fs // new_fs
-    assert downsampling_coef > 1
-    downsampled_spectrogramm = spectrogramms[:, :, ::downsampling_coef]
-    print("Spectrogramm downsampled...")
-    return downsampled_spectrogramm
-
-
-def normalize_spectrogramms_to_db(spectrogramms: np.ndarray, convert = False):
-    """
-    Optional conversion to db, not used in the final version
-    """
-    if convert:
-        return np.log10(spectrogramms+1e-12)
-    else:
-        return spectrogramms
-
-
-def interpolate_fingerflex(finger_flex, cur_fs=1000, true_fs=25, needed_hz=DOWNSAMPLE_FS, interp_type='cubic'):
-    
-    """
-    Interpolation of the finger motion recording to match the new sampling rate
-    :param finger_flex: Initial sequences with finger flexions data
-    :param cur_fs: ECoG sampling rate
-    :param true_fs: Actual finger motions recording sampling rate
-    :param needed_hz: Required sampling rate
-    :param interp_type: Type of interpolation. By default - cubic
-    :return: Returns an interpolated set of finger motions with the desired sampling rate
-    """
-    
-    print("Interpolating fingerflex...")
-    downscaling_ratio = cur_fs // true_fs
-    print("Computing true_fs values...")
-    finger_flex_true_fs = finger_flex[:, ::downscaling_ratio]
-    finger_flex_true_fs = np.c_[finger_flex_true_fs,
-        finger_flex_true_fs.T[-1]]  # Add as the last value on the interpolation edge the last recorded
-    # Because otherwise it is not clear how to interpolate the tail at the end
-
-    upscaling_ratio = needed_hz // true_fs
-    
-    ts = np.asarray(range(finger_flex_true_fs.shape[1])) * upscaling_ratio
-    
-    print("Making funcs...")
-    interpolated_finger_flex_funcs = [scipy.interpolate.interp1d(ts, finger_flex_true_fs_ch, kind=interp_type) for
-                                     finger_flex_true_fs_ch in finger_flex_true_fs]
-    ts_needed_hz = np.asarray(range(finger_flex_true_fs.shape[1] * upscaling_ratio)[
-                              :-upscaling_ratio])  # Removing the extra added edge
-    
-    print("Interpolating with needed frequency")
-    interpolated_finger_flex = np.array([[interpolated_finger_flex_func(t) for t in ts_needed_hz] for
-                                         interpolated_finger_flex_func in interpolated_finger_flex_funcs])
-    return interpolated_finger_flex
-
-
-def crop_for_time_delay(finger_flex : np.ndarray, spectrogramms : np.ndarray, time_delay_sec : float, fs : int):
-    """
-    Taking into account the delay between brain waves and movements
-    :param finger_flex: Finger flexions
-    :param spectrogramms: Computed spectrogramms
-    :param time_delay_sec: time delay hyperparameter
-    :param fs: Sampling rate
-    :return: Shifted series with a delay
-    """
-
-    time_delay = int(time_delay_sec*fs)
-
-    # the first motions do not depend on available data
-    finger_flex_cropped = finger_flex[..., time_delay:] 
-    # The latter spectrograms have no corresponding data
-    spectrogramms_cropped = spectrogramms[..., :spectrogramms.shape[2]-time_delay]
-    return finger_flex_cropped, spectrogramms_cropped
 
 
 class BCICIV4Dataset(BaseDataset):
@@ -185,6 +23,7 @@ class BCICIV4Dataset(BaseDataset):
         root_path: str = './BCICIV4',
         start_offset: float = 0.0,
         end_offset: float = 0.0,
+        include_end: bool = False,
         before_segment_transform: Union[None, List[Callable]] = None,
         offline_signal_transform: Union[None, List[Callable]] = None,
         offline_label_transform: Union[None, List[Callable]] = None,
@@ -192,7 +31,8 @@ class BCICIV4Dataset(BaseDataset):
         online_label_transform: Union[None, List[Callable]] = None,
         io_path: Union[None, str] = None,
         io_size: int = 1048576,
-        io_mode: str = 'lmdb',
+        io_chunks: int = None,
+        io_mode: str = 'hdf5',
         num_worker: int = 0,
         verbose: bool = True,
     ) -> None:
@@ -204,6 +44,7 @@ class BCICIV4Dataset(BaseDataset):
             'root_path': root_path,
             'start_offset': start_offset,
             'end_offset': end_offset,
+            'include_end': include_end,
             'before_segment_transform': before_segment_transform,
             'offline_signal_transform': offline_signal_transform,
             'offline_label_transform': offline_label_transform,
@@ -211,6 +52,7 @@ class BCICIV4Dataset(BaseDataset):
             'online_label_transform': online_label_transform,
             'io_path': io_path,
             'io_size': io_size,
+            'io_chunks': io_chunks,
             'io_mode': io_mode,
             'num_worker': num_worker,
             'verbose': verbose
@@ -240,12 +82,12 @@ class BCICIV4Dataset(BaseDataset):
         train_data = data['train_data'].astype(np.float64).T
         train_dg = {
             'data': data['train_dg'].astype(np.float64).T,
-            'freq': 25
+            'freq': 1000
         }
         test_data = data['test_data'].astype(np.float64).T
         test_dg = {
             'data': test_label['test_dg'].astype(np.float64).T,
-            'freq': 25
+            'freq': 1000
         }
         data = [train_data, test_data]
         data = np.concatenate(data, axis=1)
@@ -291,6 +133,9 @@ class BCICIV4Dataset(BaseDataset):
         **kwargs
     ) -> Generator[Dict[str, Any], None, None]:
         signals = self.apply_transform(self.before_segment_transform, signals)
+        if signals is None:
+            print(f"Skip file {meta['file_name']} due to transform error.")
+            return None
 
         for idx, segment in enumerate(self.segment_split(signals, labels)):
             seg_signals = segment['signals']
@@ -299,29 +144,12 @@ class BCICIV4Dataset(BaseDataset):
             # print(signals['eeg']['data'].shape)
             # print(label['label']['data'])
             segment_id = self.get_segment_id(meta['file_name'], idx)
-            seg_labels['dg']['data'] = interpolate_fingerflex(finger_flex= seg_labels['dg']['data'])
-
-            seg_signals['ecog']['data'] = normalize_spectrogramms_to_db(spectrogramms=
-                            downsample_spectrogramms(spectrogramms=
-                            compute_spectrogramms(multichannel_signal=
-                            filter_ecog_data(multichannel_signal=
-                            normalize(multichannel_signal=
-                            seg_signals['ecog']['data']))), new_fs = DOWNSAMPLE_FS))
-            seg_labels['dg']['data'], seg_signals['ecog']['data'] = crop_for_time_delay(seg_labels['dg']['data'],
-                                                                                seg_signals['ecog']['data'], time_delay_secs,
-                                                                                current_fs)
-            scaler = MinMaxScaler()
-            scaler.fit(seg_labels['dg']['data'].T)
-            seg_labels['dg']['data'] = scaler.transform(seg_labels['dg']['data'].T).T
-
-            transformer = RobustScaler(unit_variance=True, quantile_range=(0.1, 0.9))
-            transformer.fit(seg_signals['ecog']['data'].T.reshape(-1,WAVELET_NUM*CHANNELS_NUM))
-            seg_signals['ecog']['data'] = transformer.transform(seg_signals['ecog']['data'].T.reshape(-1,WAVELET_NUM*CHANNELS_NUM)).reshape(-1,\
-                                                                                            WAVELET_NUM, CHANNELS_NUM).T
             seg_signals = self.apply_transform(self.offline_signal_transform, seg_signals)
-            seg_labels = self.apply_transform(self.offline_label_transform, seg_labels)
+            seg_label = self.apply_transform(self.offline_label_transform, seg_label)
+            if seg_signals is None or seg_label is None:
+                print(f"Skip segment {segment_id} due to transform error.")
+                continue
 
-            
             seg_info.update({
                 'subject_id': self.get_subject_id(meta['file_name']),
                 'session_id': self.get_session_id(),
@@ -335,28 +163,24 @@ class BCICIV4Dataset(BaseDataset):
                 info=seg_info,
             )
 
-    def __getitem__(self, index: int) -> Dict:
-        """
-        Retrieve a dataset item by index.
-
-        Args:
-            index (int): Index of the item to retrieve.
-
-        Returns:
-            Dict[str, Any]: A dictionary containing signal data and labels.
-        """
-        info = self.read_info(index)
-        sample_id = str(info['sample_id'])
-        # print(sample_id)
-        record = str(info['record_id'])
-        # print(record, sample_id)
-        signals = self.read_signal(record, sample_id)
-        signals = self.apply_transform(self.online_signal_transform, signals)
-
-        labels = self.read_label(record, sample_id)
-        labels = self.apply_transform(self.online_label_transform, labels)
-
-        return self.assemble_sample(signals,labels)
+    # def __getitem__(self, index: int) -> Dict:
+    #     t0 = time.time()
+    #     info = self.read_info(index)
+    #     t1 = time.time()
+    #     sample_id = str(info['sample_id'])
+    #     record = str(info['record_id'])
+    #     signals = self.read_signal(record, sample_id)
+    #     t2 = time.time()
+    #     signals = self.apply_transform(self.online_signal_transform, signals)
+    #     t3 = time.time()
+    #     labels = self.read_label(record, sample_id)
+    #     t4 = time.time()
+    #     labels = self.apply_transform(self.online_label_transform, labels)
+    #     t5 = time.time()
+    #     result = self.assemble_sample(signals, labels)
+    #     t6 = time.time()
+    #     print(f"read_info: {t1-t0:.3f}s, read_signal: {t2-t1:.3f}s, signal_transform: {t3-t2:.3f}s, read_label: {t4-t3:.3f}s, label_transform: {t5-t4:.3f}s, assemble: {t6-t5:.3f}s")
+    #     return result
     
     def get_subject_id(self, file_name) -> str:
         # Extract the subject ID from the file name
@@ -378,4 +202,60 @@ class BCICIV4Dataset(BaseDataset):
         # Extract the sample ID from the file name and index
         # Assuming the sample ID is a combination of the file name and index
         return [f"{i}_{segment_id}" for i in range(sample_len)]
+
+
+
+# test /home/lingyus/data/BCICIV4/sub1_comp.mat
+# from dataset.bciciv4_dataset import BCICIV4Dataset
+# from dataset.transform import Compose, NotchFilter, Filter, ZScoreNormalize, RobustNormalize, Reshape,\
+#                               CWTSpectrum, Downsample, Crop, Interpolate, MinMaxNormalize, CommonAverageRef,\
+#                               Transpose
+# from dataset.transform.slide_window import SlideWindow
+
+
+# # 读取 MinMaxScaler 保存的参数
+# minmax_stats = np.load('/home/lingyus/data/BCICIV4/sub1/minmax_scaler_stats0.npz')
+# data_min_ = minmax_stats['data_min_']
+# data_max_ = minmax_stats['data_max_']
+
+# # 读取 RobustScaler 保存的参数
+# robust_stats = np.load('/home/lingyus/data/BCICIV4/sub1/robust_scaler_stats0.npz')
+# center_ = robust_stats['center_']
+# scale_ = robust_stats['scale_']
+# print(center_.shape, scale_.shape)
+# offline_signal_transform = [
     
+#     ZScoreNormalize(epsilon=0, axis=1, source='ecog', target='ecog'),
+#     CommonAverageRef(axis=0, source='ecog', target='ecog'),
+#     Filter(l_freq=40, h_freq=300, source='ecog', target='ecog'),
+#     NotchFilter(freqs=[50, 100, 150, 200, 250, 300, 350, 400, 450], source='ecog', target='ecog'),
+#     CWTSpectrum(freqs=np.logspace(np.log10(40), np.log10(300), 40), output_type='power', n_jobs=6, source='ecog', target='ecog'),
+#     Downsample(desired_freq=100, source='ecog', target='ecog'),
+#     Crop(crop_right=20, source='ecog', target='ecog'),
+#     Transpose(source='ecog', target='ecog'),
+#     Reshape(shape=(-1, 40*62), source='ecog', target='ecog'),
+#     RobustNormalize(
+#         median=center_, iqr=scale_, 
+#         unit_variance=False, quantile_range=(0.1, 0.9), epsilon=0, axis=0, source='ecog', target='ecog'),
+#     Reshape(shape=(-1, 40, 62), source='ecog', target='ecog'),
+#     Transpose(source='ecog', target='ecog'),
+#     SlideWindow(window_size=256, stride=1, source='ecog', target='ecog'),
+# ]
+# offline_label_transform = [
+#         Downsample(desired_freq=25, source='dg', target='dg'),
+#         Interpolate(desired_freq=100, kind='cubic', source='dg', target='dg'),
+#         Crop(crop_left=20, source='dg', target='dg'),
+#         Transpose(source='dg', target='dg'),
+#         MinMaxNormalize(
+#             min=data_min_, max=data_max_, 
+#             axis=0, source='dg', target='dg'),
+#         Transpose(source='dg', target='dg'),
+#         SlideWindow(window_size=256, stride=1, source='dg', target='dg'),
+# ]
+# dataset = BCICIV4Dataset(root_path='/home/lingyus/data/BCICIV4/sub1',
+#                         io_path='/home/lingyus/data/BCICIV4/sub1/processed_test',
+#                         offline_signal_transform=offline_signal_transform,
+#                         offline_label_transform=offline_label_transform,
+#                         io_mode='hdf5',
+#                         io_chunks=256,
+#                         num_worker=8)

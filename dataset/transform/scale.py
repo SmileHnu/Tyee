@@ -40,3 +40,30 @@ class Scale(BaseTransform):
         data = result['data']
         result['data'] = data * self.scale_factor
         return result
+
+class Offset(BaseTransform):
+    def __init__(self, offset: float | int = 0.0, source: Optional[str] = None, target: Optional[str] = None):
+        """
+        初始化偏移变换类。
+
+        参数:
+        - offset: 偏移量，用于对信号进行偏移。
+        - source: 输入信号字段名。
+        - target: 输出信号字段名。
+        """
+        super().__init__(source, target)
+        self.offset = offset
+
+    def transform(self, result: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        对信号进行数值偏移处理。
+
+        参数:
+        - result: 包含信号数据的字典，字段为 'data'。
+
+        返回:
+        - 更新后的信号数据字典。
+        """
+        data = result['data']
+        result['data'] = data + self.offset
+        return result

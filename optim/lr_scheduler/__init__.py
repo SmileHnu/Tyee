@@ -6,3 +6,4 @@ from .step_lr_scheduler import *
 from .reduce_lr_on_plateau import *
 from .tri_stage_lr_scheduler import *
 from .triangular_lr_scheduler import *
+from .one_cycle_lr_scheduler import *

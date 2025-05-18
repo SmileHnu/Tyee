@@ -5,28 +5,65 @@ common:
 
 dataset:
   batch_size: 64
-  dataset: KaggleERNDataset
-  num_workers: 0
-  path: /mnt/ssd/lingyus
-  train_subjects: [2,6,7,11,12,13,14,16,17,18,20,21]
-  val_subjects: [1,3,4,5,8,9,10,15,19,25]
-  sessions: [1,2,3,4,5]
+  dataset: kaggleern_dataset.KaggleERNDataset
+  num_workers: 4
+  root_path:
+    train: '/mnt/ssd/lingyus/KaggleERN/train'
+    val:
+    test: '/mnt/ssd/lingyus/KaggleERN/test'
+  io_path:
+    train: "/mnt/ssd/lingyus/tyee_kaggleern/train"
+    val:
+    test: "/mnt/ssd/lingyus/tyee_kaggleern/test"
+  io_mode: hdf5
+  io_chunks: 400
+  split: 
+    select: KFoldCross
+    init_params:
+      split_path: /mnt/ssd/lingyus/tyee_kaggleern/split
+      group_by: subject_id
+      n_splits: 4
+      shuffle: false
+
+  
+  offline_signal_transform:
+    - select: MinMaxNormalize
+      source: eeg
+      target: eeg
+    - select: Offset
+      offset: -0.5
+      source: eeg
+      target: eeg
+    - select: Scale
+      scale_factor: 2.0
+      source: eeg
+      target: eeg
+    - select: PickChannels
+      channels: ['FP1', 'FP2', 'F7', 'F3', 'FZ', 'F4', 'F8', 'T7', 'C3', 'CZ', 'C4', 'T8', 'P7', 'P3', 'PZ', 'P4', 'P8', 'O1', 'O2']
+      source: eeg
+      target: eeg
+    
+
 
 lr_scheduler:
-  select: OneCycleLR
-  total_steps: 6400
-  pct_start: 0.2
+  # select: CosineLRScheduler
+  # period_epochs: 100
+  # min_lr: 1.6e-9
+  # warmup_start_lr: 1.6e-5
+  # warmup_epochs: 20
+  select: OneCycleScheduler
   max_lr: 4e-4
+  epochs: 100
+  pct_start: 0.2
+
 model:
-  upstream:
-    select: EEGPT_KaggleERN
-    checkpoint: /home/lingyus/code/PRL/models/upstream/eegpt/checkpoint/eegpt_mcae_58chs_4s_large4E.ckpt
+  select: finetune_eegpt.linear_probe_EEGPT_KaggleERN.LitEEGPTCausal
+  load_path: /home/lingyus/code/PRL/models/finetune_eegpt/checkpoint/eegpt_mcae_58chs_4s_large4E.ckpt
 
 optimizer:
   lr: 4e-4
   select: AdamW
-  weight_decay: 0.01            # 权重衰减 (L2正则化)
-  
+  weight_decay: 0.01             # 权重衰减 (L2正则化)
 
 task:
   loss:
@@ -34,14 +71,20 @@ task:
   select: kaggleern_task.KaggleERNTask
 
 trainer:
+  resume:  # 添加断点恢复配置
+      enabled: false
+      checkpoint: /home/lingyus/code/PRL/experiments/2025-01-10/14-27-21/checkpoint/checkpoint_step_8488.pt
   fp16: true
-  total_steps: 6400
+  # total_steps: 31980
+  total_epochs: 100
   update_interval: 1
-  save_interval: 64
-  eval_interval: 64
-  log_interval: 4
-  eval_metric: balanced_accuracy
-  metrics: [ accuracy, balanced_accuracy, f1_weighted, cohen_kappa]
+  # save_interval: 1066
+  # eval_interval: 1066
+  log_interval: 20
+  eval_metric:
+    select: balanced_accuracy
+    mode: max
+  metrics: [balanced_accuracy, accuracy, f1_weighted, cohen_kappa, roc_auc]
     
 
 distributed:

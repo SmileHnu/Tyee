@@ -6,15 +6,17 @@ common:
 dataset:
   batch_size: 64
   dataset: bciciv4_dataset.BCICIV4Dataset
-  num_workers: 4
+  num_workers: 8
   root_path:
     train: '/home/lingyus/data/BCICIV4/sub1'
     val:
     # test: 
   io_path:
-    train: "/home/lingyus/data/BCICIV4/sub1/processed"
+    train: "/home/lingyus/data/BCICIV4/sub1/processed_test"
     val: 
     test: 
+  io_mode: hdf5
+  io_chunks: 256
   split: 
     select: HoldOutCross
     init_params:
@@ -43,10 +45,7 @@ model:
   n_electrodes: 62
   n_freqs: 40
   n_channels_out: 5
-  # select: EEGNet
-  # n_chans: 16
-  # chunk_size: 40
-  # num_classes: 52
+
     
 
 optimizer:

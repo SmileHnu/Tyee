@@ -103,7 +103,7 @@ class KFoldPerSubjectCross(BaseSplit):
             return match.group(1) if match else None
 
         # Filter and sort unique subject IDs
-        subjects = sorted(set(filter(None, map(indice_file_to_subject, indice_files))))
+        subjects = list(set(map(indice_file_to_subject, indice_files)))
         return subjects
 
     @property
@@ -122,7 +122,7 @@ class KFoldPerSubjectCross(BaseSplit):
             return int(match.group(1)) if match else None
 
         # Filter and sort unique fold IDs
-        fold_ids = sorted(set(filter(None, map(indice_file_to_fold_id, indice_files))))
+        fold_ids = list(set(map(indice_file_to_fold_id, indice_files)))
         return fold_ids
 
     def split(

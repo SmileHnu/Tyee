@@ -24,7 +24,7 @@ use_channels_names=[
 
 class LitEEGPTCausal(nn.Module):
 
-    def __init__(self, load_path="../checkpoint/eegpt_mcae_58chs_4s_large4E.ckpt"):
+    def __init__(self, load_path="../checkpoint/eegpt_mcae_58chs_4s_large4E.ckpt", **kwargs):
         super().__init__()    
         self.chans_num = len(use_channels_names)
         # init model

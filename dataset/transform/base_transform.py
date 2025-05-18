@@ -10,13 +10,13 @@
 @Desc    : 
 """
 
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, List, Optional, Union
 
 class BaseTransform:
-    def __init__(self, source: Optional[str] = None, target: Optional[str] = None):
+    def __init__(self, source: Optional[Union[str, List[str]]] = None, target: Optional[str] = None):
         """
         Args:
-            source (Optional[str]): The key of the source signal to transform.
+            source (Optional[Union[str, List[str]]]): The key of the source signal to transform.
             target (Optional[str]): The key to store the transformed signal.
         """
         self.source = source
@@ -32,8 +32,13 @@ class BaseTransform:
         Returns:
             Dict[str, Any]: The updated signals dictionary if target is set, otherwise the transformed result.
         """
-        # Read source data
-        signal = signals[self.source] if self.source else signals
+        # 支持 source 为字符串或列表
+        if isinstance(self.source, list):
+            signal = [signals[src] for src in self.source]
+        elif self.source is not None:
+            signal = signals[self.source]
+        else:
+            signal = signals
         # Apply transform
         out = self.transform(signal)
         # Write to target

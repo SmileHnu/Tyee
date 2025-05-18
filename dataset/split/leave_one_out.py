@@ -74,7 +74,7 @@ class LeaveOneOut(BaseSplit):
             match = re.search(pattern, indice_file)
             return match.group(1) if match else None
 
-        groups = list(set(filter(None, map(indice_file_to_group, indice_files))))
+        groups = list(set(map(indice_file_to_group, indice_files)))
         groups.sort()
         return groups
 

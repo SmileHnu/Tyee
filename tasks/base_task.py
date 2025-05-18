@@ -13,7 +13,6 @@ import os
 import torch
 import numpy as np
 from torch.utils.data import Dataset
-from dataset.transform import Compose
 from utils import lazy_import_module, get_nested_field
 from torch.utils.data import Dataset, Sampler, DataLoader, DistributedSampler
 from typing import Tuple, List, Dict, Any
@@ -37,11 +36,11 @@ class PRLTask(object):
         offline_signal_transform_cfg = get_nested_field(cfg, 'dataset.offline_signal_transform', None)
         self.offline_signal_transform = self.build_transforms(offline_signal_transform_cfg)
         offline_label_transform_cfg = get_nested_field(cfg, 'dataset.offline_label_transform', None)
-        self.offline_label_transform = self.build_transforms(offline_label_transform_cfg, is_label_transform=True)
+        self.offline_label_transform = self.build_transforms(offline_label_transform_cfg)
         online_signal_transform_cfg = get_nested_field(cfg, 'dataset.online_signal_transform', None)
         self.online_signal_transform = self.build_transforms(online_signal_transform_cfg)
         online_label_transform_cfg = get_nested_field(cfg, 'dataset.online_label_transform', None)
-        self.online_label_transform = self.build_transforms(online_label_transform_cfg, is_label_transform=True)
+        self.online_label_transform = self.build_transforms(online_label_transform_cfg)
 
         
 
@@ -51,8 +50,8 @@ class PRLTask(object):
 
         # 模型配置
         self.model_select = get_nested_field(cfg, 'model.select', '')
-        self.model_params = get_nested_field(cfg, 'model', {})
-        self.upstream_trainable = get_nested_field(cfg, 'model.trainable', False)
+        model_params = get_nested_field(cfg, 'model', {})
+        self.model_params = {k: v for k, v in model_params.items() if k not in ['select']}
 
         # 损失函数配置
         self.loss_select = get_nested_field(cfg, 'task.loss.select', '')
@@ -73,34 +72,27 @@ class PRLTask(object):
         self.test_dataset = None
         self.loss = self.build_loss()
 
-    def build_transforms(self, transform_cfg: dict, is_label_transform: bool = False):
+    def build_transforms(self, transform_cfg: list):
         """
         构建数据变换的方法。
 
         参数:
-            transform_cfg (dict): 变换配置字典。
-            is_label_transform (bool): 是否为标签变换。
+            transform_cfg (list): 变换配置列表。
 
         返回:
-            dict: 包含 Compose 对象的字典。
+            Compose: Compose对象或None。
         """
-        transforms = {}
-        if transform_cfg is not None:
-            if is_label_transform:
-                transform_objs = []
-                for transform_name, params in transform_cfg.items():
-                    transform_cls = lazy_import_module('dataset.transform', transform_name)
-                    transform_objs.append(transform_cls(**params))
-                return Compose(transform_objs)
-            else:
-                for key, transform_list in transform_cfg.items():
-                    transform_objs = []
-                    for transform_name, params in transform_list.items():
-                        transform_cls = lazy_import_module('dataset.transform', transform_name)
-                        transform_objs.append(transform_cls(**params))
-                    transforms[key] = Compose(transform_objs)
-                return transforms
-        return None
+        if not transform_cfg:
+            return None
+
+        def instantiate_transform(cfg):
+            cls = lazy_import_module('dataset.transform', cfg['select'])
+            params = {k: v for k, v in cfg.items() if k not in ['select', 'transforms']}
+            # 递归处理所有包含'transforms'字段的transform
+            if 'transforms' in cfg and isinstance(cfg['transforms'], list):
+                params['transforms'] = [instantiate_transform(sub_cfg) for sub_cfg in cfg['transforms']]
+            return cls(**params)
+        return [instantiate_transform(item) for item in transform_cfg]
 
     def build_dataset(self, root_path: str, io_path: str) -> Dataset:
         """
@@ -113,6 +105,8 @@ class PRLTask(object):
         返回:
             Dataset: 构建好的数据集对象。
         """
+        print("build_dataset root_path:", root_path)
+
         if root_path is None and io_path is None:
             return None
 
@@ -212,6 +206,7 @@ class PRLTask(object):
                             self.test_dataset, 
                             **self.split_run_params
         ))
+        print("splits:", len(splits))
         return splits
           
     def get_batch_iterator(self, dataloader: DataLoader):
@@ -335,5 +330,26 @@ class PRLTask(object):
     def valid_step(self, model: torch.nn.Module, sample: dict[str, torch.Tensor], *args, **kwargs):
         raise NotImplementedError
     
-    def momentum_update(self, model: torch.nn.Module, *args, **kwargs):
+    def on_train_start(self, trainer, *args, **kwargs):
+        # 每个训练流程开始前的处理
+        pass
+
+    def on_train_end(self, trainer, *args, **kwargs):
+        # 每个训练流程结束后的处理
+        pass
+
+    def on_train_epoch_start(self, trainer, step: int, *args, **kwargs):
+        # 每轮训练开始前的处理
+        pass
+
+    def on_train_epoch_end(self, trainer, step: int, *args, **kwargs):
+        # 每轮训练结束后的处理
+        pass
+
+    def on_valid_start(self, trainer, *args, **kwargs):
+        # 每个验证流程开始前的处理
+        pass
+
+    def on_valid_end(self, trainer, *args, **kwargs):
+        # 每个验证流程结束后的处理
         pass

@@ -53,6 +53,7 @@ class BCICIV4Task(PRLTask):
         x = x.float()
         # print(x)
         label = sample['dg'].float()
+        # print(label)
         pred = model(x)
         # print(pred)
         # loss = self.loss(pred, label)
@@ -79,15 +80,15 @@ class BCICIV4Task(PRLTask):
         label = label[...,:bounds]
         pred = model(x)
         print(label.shape, pred.shape)
-        # 对每个样本的每个通道做高斯平滑
-        pred_np = pred.cpu().numpy()
-        pred_np = scipy.ndimage.gaussian_filter1d(pred_np, sigma=6, axis=-1)
-        pred_smooth = torch.from_numpy(pred_np).to(pred.device)
+        # # 对每个样本的每个通道做高斯平滑
+        # pred_np = pred.cpu().numpy()
+        # pred_np = scipy.ndimage.gaussian_filter1d(pred_np, sigma=6, axis=-1)
+        # pred_smooth = torch.from_numpy(pred_np).to(pred.device)
         # loss = self.loss(pred, label)
-        loss = F.mse_loss(pred_smooth, label)
-        corr = correlation_metric(pred_smooth, label)
+        loss = F.mse_loss(pred, label)
+        corr = correlation_metric(pred, label)
         return{
             'loss': loss,
-            'output': pred_smooth,
+            'output': pred,
             'label': label
         }

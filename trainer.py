@@ -10,6 +10,7 @@
 @Desc    : 
 """
 import os
+import math
 import torch
 import logging
 import torch.distributed as dist
@@ -131,7 +132,7 @@ class Trainer:
         self.test_loader = self.task.build_dataloader(self.test_dataset, self._batch_size, sampler=self.test_sampler, shuffle=False) if self.test_dataset else None
 
         # Training steps and intervals
-        niter_per_epoch = len(self.train_dataset) // (self._batch_size * self.world_size)
+        niter_per_epoch = math.ceil(len(self.train_dataset) / (self._batch_size * self.world_size))
         self._total_steps = min(self._total_steps, self._total_epochs * niter_per_epoch)
         self._eval_interval = self._eval_interval or niter_per_epoch
         self._save_interval = self._save_interval or niter_per_epoch
@@ -141,7 +142,7 @@ class Trainer:
         self.model = self.task.build_model().to(self.device)
         self.optimizer = self.task.build_optimizer(self.model)
         self.lr_scheduler = self.task.build_lr_scheduler(self.optimizer, niter_per_epoch)
-        self.step = 1
+        self.start_step = 1
         self.best_metric_value = None
 
         # Distributed training
@@ -165,20 +166,23 @@ class Trainer:
         Run the training and evaluation loop, including logging and checkpointing.
         """
         iterator = self.task.get_batch_iterator(self.train_loader)
-
+        self.task.on_train_epoch_start(self, self.start_step)
         # Skip to the current step's batch
-        for _ in range((self.step - 1) % len(self.train_loader)):
+        for _ in range((self.start_step - 1) % len(self.train_loader)):
             sample = self.task.load_sample(iterator, self.device)
 
         # Initialize accumulated metrics
         train_metrics = {}
         val_metrics = {}
         test_metrics = {}
-        for step in range(self.step, self._total_steps + 1):
+        self.task.on_train_start(self)
+        for step in range(self.start_step, self._total_steps + 1):
             # Update epoch and iterator
             if step % len(self.train_loader) == 0:
+                self.task.on_train_epoch_end(self, step-1)
                 self.train_sampler.set_epoch(step // len(self.train_loader))
                 iterator = self.task.get_batch_iterator(self.train_loader)
+                self.task.on_train_epoch_start(self, step)
 
             # Perform a single training step
             train_result = self._train_step(iterator, step, val_metrics)
@@ -208,6 +212,7 @@ class Trainer:
             # Save checkpoints
             if step % self._save_interval == 0 and self.rank == 0:
                 self._save_checkpoint_step(step)
+        self.task.on_train_end(self)
 
     def _train_step(self, iterator, step, val_metrics):
         """
@@ -222,7 +227,6 @@ class Trainer:
         """
         sample = self.task.load_sample(iterator, self.device)
         self.model.train()
-
         # Use automatic mixed precision (AMP)
         with torch.amp.autocast('cuda', enabled=self.fp16):
             result = self.task.train_step(self.model, sample)
@@ -241,16 +245,17 @@ class Trainer:
 
         # Update learning rate scheduler
         if self.lr_scheduler:
-            val_metric = val_metrics.get(self.lr_scheduler.metric, None)
-            self.lr_scheduler.step(val_metric, step)
-
-        # Update metrics
-        # if 'output' in result:
-        #     self._metrics_evaluator.update_metrics(result)
-        #     metrics = self._metrics_evaluator.calculate_metrics()
-        # else:
-        #     metrics = None
-
+            metric = None
+            if self.lr_scheduler.metric_source == 'train':
+                metric = result.get(self.lr_scheduler.metric, None)
+                if isinstance(metric, torch.Tensor):
+                    metric = metric.item()
+            elif self.lr_scheduler.metric_source == 'val':
+                metric = val_metrics.get(self.lr_scheduler.metric, None)
+                if isinstance(metric, torch.Tensor):
+                    metric = metric.item()
+            self.lr_scheduler.step(metric, step)
+        
         result = self._aggregate_metrics(result['loss'].item(), metrics= None)
         return result
 
@@ -262,8 +267,22 @@ class Trainer:
             self.scaler.unscale_(self.optimizer)
             if self._max_grad_norm is not None:
                 torch.nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=self._max_grad_norm)
+
+            # # 测试——保存参数副本
+            # old_params = {name: param.clone().detach() for name, param in self.model.named_parameters()}
+            # for name, param in self.model.named_parameters():
+            #     if param.grad is not None:
+            #         print(f"{name}: grad norm = {param.grad.norm().item()}")
+            #     else:
+            #         print(f"{name}: grad is None")
+
             self.scaler.step(self.optimizer)
             self.scaler.update()
+
+            # # 测试——检查参数是否更新
+            # for name, param in self.model.named_parameters():
+            #     diff = (param.detach() - old_params[name]).abs().sum().item()
+            #     print(f"{name}: param change sum = {diff}")
         else:
             if self._max_grad_norm is not None:
                 torch.nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=self._max_grad_norm)
@@ -356,10 +375,9 @@ class Trainer:
         with torch.no_grad():
             total_loss = 0
             iterator = self.task.get_batch_iterator(loader)
-
+            self.task.on_valid_start(self)
             for _ in range(len(loader)):
                 sample = self.task.load_sample(iterator, self.device)
-
                 # Use automatic mixed precision (AMP)
                 with torch.amp.autocast('cuda', enabled=self.fp16):
                     result = self.task.valid_step(self.model, sample)
@@ -371,6 +389,7 @@ class Trainer:
             # Calculate final metrics
             metrics = self._metrics_evaluator.calculate_metrics()
 
+            self.task.on_valid_end(self)
         # Aggregate and average loss and metrics
         result = self._aggregate_metrics(total_loss, metrics, len(loader))
         return result

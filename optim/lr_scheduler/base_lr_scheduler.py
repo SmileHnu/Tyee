@@ -28,6 +28,7 @@ class BaseLRScheduler(LRScheduler):
         optimizer: Optimizer,
         last_step: int = -1,
         metric: Optional[str] = None,
+        metric_source: Optional[str] = None,
     ):
         """
         Initialize the learning rate scheduler.
@@ -39,6 +40,7 @@ class BaseLRScheduler(LRScheduler):
         """
         self.optimizer = optimizer
         self.last_step = last_step
+        self.metric_source = metric_source
         self.metric = metric
         super().__init__(optimizer, last_epoch=last_step)
 

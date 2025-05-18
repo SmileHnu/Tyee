@@ -18,192 +18,276 @@ from dataset import BaseDataset
 from typing import Any, Callable, Union, Generator, Dict, List
 
 class BCICIV2ADataset(BaseDataset):
+    """
+    BCICIV2A dataset class for EEG data processing.
+    root_path中包含原始数据.gdf和标签数据.mat
+    """
     def __init__(
         self,
-        root_path: str = './BCICIV_2a_mat',
-        offset: int = 0,
-        chunk_size: int = 7 * 250,
-        overlap: int = 0,
-        num_channel: int = 22,
-        skip_trial_with_artifacts: bool = False,
-        online_transform: Union[None, Callable] = None,
-        offline_transform: Union[None, Callable] = None,
-        label_transform: Union[None, Callable] = None,
-        before_trial: Union[None, Callable] = None,
-        after_trial: Union[Callable, None] = None,
-        after_session: Union[Callable, None] = None,
-        after_subject: Union[Callable, None] = None,
+        root_path: str = './BCICIV_2a',
+        start_offset: float = 2.0,
+        end_offset: float = 6.0,
+        include_end: bool = False,
+        before_segment_transform: Union[None, Callable] = None,
+        offline_signal_transform: Union[None, Callable] = None,
+        offline_label_transform: Union[None, Callable] = None,
+        online_signal_transform: Union[None, Callable] = None,
+        online_label_transform: Union[None, Callable] = None,
         io_path: Union[None, str] = None,
         io_size: int = 1048576,
-        io_mode: str = 'lmdb',
+        io_chunks: int = None,
+        io_mode: str = 'hdf5',
         num_worker: int = 0,
-        verbose: bool = True
+        lazy_threshold: int = 128,
+        verbose: bool = True,
     ) -> None:
+        # pass all arguments to super class
         params = {
             'root_path': root_path,
-            'offset': offset,
-            'chunk_size': chunk_size,
-            'overlap': overlap,
-            'num_channel': num_channel,
-            'skip_trial_with_artifacts': skip_trial_with_artifacts,
-            'online_transform': online_transform,
-            'offline_transform': offline_transform,
-            'label_transform': label_transform,
-            'before_trial': before_trial,
-            'after_trial': after_trial,
-            'after_session': after_session,
-            'after_subject': after_subject,
+            'start_offset': start_offset,
+            'end_offset': end_offset,
+            'include_end': include_end,
+            'before_segment_transform': before_segment_transform,
+            'offline_signal_transform': offline_signal_transform,
+            'offline_label_transform': offline_label_transform,
+            'online_signal_transform': online_signal_transform,
+            'online_label_transform': online_label_transform,
             'io_path': io_path,
             'io_size': io_size,
+            'io_chunks': io_chunks,
             'io_mode': io_mode,
             'num_worker': num_worker,
+            'lazy_threshold': lazy_threshold,
             'verbose': verbose
         }
         super().__init__(**params)
-        # save all arguments to __dict__
-        self.__dict__.update(params)
 
-    def set_records(self, root_path: str = './BCICIV_2a_mat', **kwargs) -> List:
+    def set_records(self, root_path: str = './BCICIV_2a', **kwargs) -> List:
         assert os.path.exists(
             root_path
         ), f'root_path ({root_path}) does not exist. Please download the dataset and set the root_path to the downloaded path.'
 
-        file_list = os.listdir(root_path)
-        file_list = [
-            os.path.join(root_path, file) for file in file_list
-            if file.endswith('.mat')
-        ]
+        files = os.listdir(root_path)
+        gdf_files = []
+        mat_files = []
 
-        return file_list
+        for file in files:
+            if file.endswith('.gdf'):
+                gdf_files.append(os.path.join(root_path, file))
+            if file.endswith('.mat'):
+                mat_files.append(os.path.join(root_path, file))
+
+        gdf_files.sort()
+        mat_files.sort()
+
+        record_pairs = []
+        for gdf_file, mat_file in zip(gdf_files, mat_files):
+            # 比较前缀（不含扩展名）
+            if os.path.splitext(os.path.basename(gdf_file))[0] == os.path.splitext(os.path.basename(mat_file))[0]:
+                record_pairs.append([gdf_file, mat_file])
+
+        print(record_pairs)
+        return record_pairs
     
-    @staticmethod
-    def read_record(record: str, **kwargs) -> Dict:
-        a_data = scio.loadmat(record)['data']
-
-        result = {
-            'a_data': a_data,
+    def read_record(self, record: tuple, **kwargs) -> Dict:
+        gdf_file, mat_file = record
+        # Read the gdf file
+        gdf_data = mne.io.read_raw_gdf(gdf_file, preload=True)
+        # eog
+        eog_gdf_data = gdf_data.copy()
+        eog_gdf_data.pick_channels(['EOG-left', 'EOG-central', 'EOG-right'])
+        eog_data = eog_gdf_data.get_data(units='uV')
+        eog_freq = eog_gdf_data.info['sfreq']
+        eog_channels = eog_gdf_data.info['ch_names']
+        eog_channels = [ch.split('-')[-1] for ch in eog_channels]
+        eog = {
+            'data': eog_data,
+            'freq': eog_freq,
+            'channels': eog_channels,
         }
-        return result
+        # eeg
+        gdf_data.drop_channels(['EOG-left', 'EOG-central', 'EOG-right'])
+        eeg_data = gdf_data.get_data(units='uV')
+        freq = gdf_data.info['sfreq']
+        eeg_channels = gdf_data.info['ch_names']
+        eeg_channels = [ch.split('-')[-1] for ch in eeg_channels]
+        eeg = {
+            'data': eeg_data,
+            'freq': freq,
+            'channels': eeg_channels,
+        }
+        # event
+        events, event_ids = mne.events_from_annotations(gdf_data)
+        start_id = ['768']
+        wanted_ids = [event_ids[k] for k in start_id if k in event_ids]
+        filtered_events = mne.pick_events(events, include=wanted_ids)
+        # Read the mat file
+        mat_data = scio.loadmat(mat_file)
+        labels = mat_data['classlabel']
+        # print(labels)
+        # print(len(mat_data['classlabel']))
+        segments = []
+        for i in range(len(labels)):
+            label = labels[i][0] - 1 # 0-left, 1-right, 2-foot, 3-tongue
+            # print(label)
+            start = filtered_events[i][0]
+            end = filtered_events[i][0]
+            # print(start, end, filtered_events[i][2])
+            segments.append({
+                'start': start / freq,
+                'end': end / freq,
+                'value': {
+                    'event': {
+                        'data': label,
+                    },
+                }
+            })
+        
+        return {
+            'signals':{
+                'eeg': eeg,
+                'eog': eog,
+            },
+            'labels':{
+                'segments': segments,
+            },
+            'meta':{
+                'file_name': os.path.splitext(os.path.basename(gdf_file))[0],
+            }
+        }
+
     
-    @staticmethod
     def process_record(
-        record: str,
-        result: Dict,
-        signal_types: list,
-        offset: int = 0,
-        chunk_size: int = 7 * 250,
-        overlap: int = 0,
-        num_channel: int = 22,
-        skip_trial_with_artifacts: bool = False,
-        before_trial: Union[None, Callable] = None,
-        offline_transform: Union[None, Callable] = None,
+        self,
+        signals,
+        labels,
+        meta,
         **kwargs
     ) -> Generator[Dict[str, Any], None, None]:
-
-        if chunk_size <= 0:
-            dynamic_chunk_size = 7 * 250
-        else:
-            dynamic_chunk_size = int(chunk_size)
-
-        # get file name without extension
-        file_name = os.path.splitext(os.path.basename(record))[0]
-        # the last letter of the file name is the session, the rest is the subject
-        subject = file_name[:-1]
-        session = file_name[-1]
-        write_pointer = 0
-        a_data = result['a_data'].copy()
-        for run_id in range(0, a_data.size):
-            # a_data: (1, 9) struct, 1-3: 25 channel EOG test (eyes open, eyes closed, movement), 4-9: 6 runs
-
-            a_data1 = a_data[0, run_id]
-            a_data2 = [a_data1[0, 0]]
-            a_data3 = a_data2[0]
-            a_X = a_data3[0]
-            a_trial = a_data3[1]
-            a_y = a_data3[2]
-            a_artifacts = a_data3[5]
-            a_X = np.transpose(a_X)  # to channel number, data point number
+        signals = self.apply_transform(self.before_segment_transform, signals)
+        if signals is None:
+            print(f"Skip file {meta['file_name']} due to transform error.")
+            return None
+        for idx, segment in enumerate(self.segment_split(signals, labels)):
+            seg_signals = segment['signals']
+            seg_label = segment['labels']
+            seg_info = segment['info']
+            # print(signals['eeg']['data'].shape)
+            # print(label['label']['data'])
+            segment_id = self.get_segment_id(meta['file_name'], idx)
+            seg_signals = self.apply_transform(self.offline_signal_transform, seg_signals)
+            seg_label = self.apply_transform(self.offline_label_transform, seg_label)
+            if seg_signals is None or seg_label is None:
+                print(f"Skip segment {segment_id} due to transform error.")
+                continue
             
-            # for EOG test, a_trial is []
-            for trial_id in range(0, a_trial.size):
-                trial_meta_info = {
-                    'subject_id': subject,
-                    'session': f'{subject}_{session}',
-                    'run_id': f'{subject}_{session}_{run_id}',
-                    'trial_id': f'{subject}_{session}_{run_id}_{trial_id}',
-                }
+            seg_info.update({
+                'subject_id': self.get_subject_id(meta['file_name']),
+                'session_id': self.get_session_id(meta['file_name']),
+                'segment_id': self.get_segment_id(meta['file_name'], idx),
+                'run_id': self.get_run_id(meta['file_name'], idx),
+                'trial_id': self.get_trial_id(idx),
+            })
+            yield self.assemble_segment(
+                key=segment_id,
+                signals=seg_signals,
+                labels=seg_label,
+                info=seg_info,
+            )
 
-                if (a_artifacts[trial_id] != 0 and skip_trial_with_artifacts):
-                    continue
-
-                start_at = int(a_trial[trial_id] + offset)
-                end_at = start_at + dynamic_chunk_size
-                step = dynamic_chunk_size - overlap
-
-                if trial_id < a_trial.size - 1:
-                    trial_end_at = int(a_trial[trial_id + 1])
-                else:
-                    trial_end_at = a_X.shape[1]
-
-                while end_at <= trial_end_at:
-                    clip_id = f'{write_pointer}_{file_name}'
-
-                    record_info = {
-                        'signal_types': ['eeg'],
-                        'start_at': start_at,
-                        'end_at': end_at,
-                        'clip_id': clip_id
-                    }
-                    record_info.update(trial_meta_info)
-
-                    t_eeg = a_X[:num_channel, start_at:end_at]
-                    result['eeg'] = {
-                        'signals': t_eeg,
-                        'sampling_rate': 250,
-                        }
-                    if not offline_transform is None:
-                        try:
-                            for signal_type in signal_types:
-                                if signal_type in offline_transform:
-                                    result[signal_type] = offline_transform[signal_type](result[signal_type])
-                        except (KeyError, ValueError) as e:
-                            print(f'Error in processing record {file_name}: {e}')
-                            return None
-                    
-                    
-                    record_info['label'] = int(a_y[trial_id])
-                    eeg = {
-                        'signals': result['eeg']['signals'] ,
-                        'sampling_rate': result['eeg']['sampling_rate'],
-                    }
-                    yield {'eeg': eeg, 
-                           'key': clip_id, 
-                           'info': record_info}
-                   
-
-                    write_pointer += 1
-
-                    start_at = start_at + step
-                    end_at = start_at + dynamic_chunk_size
+    def get_subject_id(self, file_name) -> str:
+        # Extract the subject ID from the file name
+        # Assuming the file name format is like "subject_id_record_id.edf"
+        # You can modify this logic based on your actual file naming convention
+        return file_name[0:3]
     
-    def __getitem__(self, index) -> Dict:
-        info = self.read_info(index)
-        
-        signal_index = str(info['clip_id'])
-        signal_record = str(info['record_id'])
+    def get_session_id(self, file_name) -> str:
+        # Extract the session ID from the file name
+        # Assuming the session ID is the same as the file name in this case
+        if file_name[3:] == 'T':
+            return '0'
+        elif file_name[3:] == 'E':
+            return '1'
+    
+    def get_run_id(self, file_name, idx) -> str:
+        # Extract the run ID from the file name
+        # Assuming the run ID is the same as the file name in this case
+        run_idx = idx % 48
+        return f'{run_idx}'
+    def get_segment_id(self, file_name, idx) -> str:
+        # Extract the segment ID from the file name
+        # Assuming the segment ID is the same as the file name in this case
+        return f'{idx}_{file_name}'
+    
+    def get_trial_id(self, idx) -> str:
+        # Extract the trial ID from the index
+        # Assuming the trial ID is the same as the index in this case
+        return str(idx)
+    
+    def get_sample_ids(self, segment_id, sample_len) -> str:
+        # Extract the sample ID from the file name and index
+        # Assuming the sample ID is a combination of the file name and index
+        return [f"{i}_{segment_id}" for i in range(sample_len)]
+    
 
-        result = {}
-        for signal_type in self.signal_types:
-            result[signal_type] = self.read_signal(signal_record, signal_index, signal_type)
+# from dataset.bciciv2a_dataset import BCICIV2ADataset
+# from dataset.transform import Cheby2Filter
 
-        result['label'] = info['label']-1
-        if self.label_transform is not None:
-            result['label'] = self.label_transform(result['label'])
-        if self.online_transform is not None:
-            for signal_type in self.signal_types:
-                if signal_type in self.online_transform:
-                    result[signal_type] = self.online_transform[signal_type](result[signal_type])
-                if 'ToIndexChannels' not in [transform.__class__.__name__ for transform in self.online_transform[signal_type].transforms]:
-                    if 'channels' in result[signal_type]:
-                        del result[signal_type]['channels']
-        return result
+# offline_signal_transform = [
+#     Cheby2Filter(l_freq=4, h_freq=40, source='eeg', target='eeg'),
+# ]
+# for i in range(3, 10):
+#     dataset = BCICIV2ADataset(
+#         root_path=f'/mnt/ssd/lingyus/BCICIV_2a/A0{i}',
+#         io_path=f'/mnt/ssd/lingyus/tyee_bciciv2a/A0{i}',
+#         io_mode='hdf5',
+#         io_chunks=750,
+#         offline_signal_transform=offline_signal_transform
+#     )
+#     print(dataset[0])
+#     # 获取 session_id=0 的所有索引
+#     indices = dataset.info[dataset.info['session_id'] == 0].index.tolist()
+
+#     # 收集所有 eeg 数据
+#     all_eeg = []
+#     for idx in indices:
+#         eeg = dataset[idx]['eeg']  # 假设 shape 为 (channels, time)
+#         all_eeg.append(eeg)
+
+#     # 拼接为一个大数组
+#     all_eeg = np.concatenate(all_eeg, axis=-1)  # 按时间拼接
+
+#     # 计算全局均值和标准差
+#     mean = np.mean(all_eeg)
+#     std = np.std(all_eeg)
+#     print(f'A0{i}')
+#     print('mean:', mean)
+#     print('std:', std)
+
+# A01
+# mean: -0.004770609852039078
+# std: 5.314540361031272
+# A02
+# mean: 0.0016582006705953179
+# std: 5.428212821911444
+# A03
+# mean: 0.00350088778759517
+# std: 6.730600925489113
+# A04
+# mean: -0.0004827520189063491
+# std: 4.942236152492034
+# A05
+# mean: -0.0002760650782005268
+# std: 4.155209908726351
+# A06
+# mean: -0.004262571623786904
+# std: 7.5902684030035585
+# A07
+# mean: 2.6756102459528735e-05
+# std: 4.758070863930625
+# A08
+# mean: 0.003387182489560944
+# std: 9.08903875408772
+# A09
+# mean: -0.000831605672567208
+# std: 9.915488018511994

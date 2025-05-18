@@ -16,6 +16,7 @@ import scipy
 from abc import ABC, abstractmethod
 from sklearn.metrics import mean_squared_error, r2_score, mean_absolute_error
 from sklearn.metrics.pairwise import cosine_similarity
+import scipy.ndimage
 class RegressionMetric(ABC):
     def __init__(self):
         self.name = self.__class__.__name__
@@ -46,7 +47,7 @@ class RegressionMetric(ABC):
         all_targets = np.concatenate(all_targets, axis=0)
         # all_outputs = all_outputs.flatten()
         # all_targets = all_targets.flatten()
-        print(all_outputs, all_targets)
+        # print(all_outputs, all_targets)
         return all_targets, all_outputs
     @abstractmethod
     def compute(self, results: list):
@@ -138,6 +139,7 @@ class MeanCC(RegressionMetric):
         all_targets = np.concatenate(all_targets, axis=-1)  # (总batch, 通道数, 总样本数) -> (通道数, 总样本数)
         all_outputs = np.concatenate(all_outputs, axis=-1)
 
+        all_outputs = scipy.ndimage.gaussian_filter1d(all_outputs, sigma=6, axis=-1)
         corrs = []
         for i in range(all_targets.shape[0]):
             corr = np.corrcoef(all_outputs[i], all_targets[i])[0, 1]

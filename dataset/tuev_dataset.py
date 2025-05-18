@@ -24,19 +24,18 @@ class TUEVDataset(BaseDataset):
         root_path: str = './tuh_eeg_events/v2.0.1/edf/train',
         start_offset: float = -2.0,
         end_offset: float = 2.0,
-        signal_types: list = ['eeg'],
+        include_end: bool = False,
         before_segment_transform: Union[None, Callable] = None,
         offline_signal_transform: Union[None, Callable] = None,
         offline_label_transform: Union[None, Callable] = None,
         online_signal_transform: Union[None, Callable] = None,
         online_label_transform: Union[None, Callable] = None,
-        after_trial: Union[Callable, None] = None,
-        after_session: Union[Callable, None] = None,
-        after_subject: Union[Callable, None] = None,
         io_path: Union[None, str] = None,
         io_size: int = 1048576,
-        io_mode: str = 'lmdb',
+        io_chunks: int = None,
+        io_mode: str = 'hdf5',
         num_worker: int = 0,
+        lazy_threshold: int = 128,
         verbose: bool = True,
     ) -> None:
         # pass all arguments to super class
@@ -44,22 +43,20 @@ class TUEVDataset(BaseDataset):
             'root_path': root_path,
             'start_offset': start_offset,
             'end_offset': end_offset,
-            'signal_types': signal_types,
+            'include_end': include_end,
             'before_segment_transform': before_segment_transform,
             'offline_signal_transform': offline_signal_transform,
             'offline_label_transform': offline_label_transform,
             'online_signal_transform': online_signal_transform,
             'online_label_transform': online_label_transform,
-            'after_trial': after_trial,
-            'after_session': after_session,
-            'after_subject': after_subject,
             'io_path': io_path,
             'io_size': io_size,
+            'io_chunks': io_chunks,
             'io_mode': io_mode,
             'num_worker': num_worker,
+            'lazy_threshold': lazy_threshold,
             'verbose': verbose
         }
-        self.__dict__.update(params)
         super().__init__(**params)
         # save all arguments to __dict__
     
@@ -77,8 +74,7 @@ class TUEVDataset(BaseDataset):
         file_list = sorted(file_list)
         return file_list
 
-    @staticmethod
-    def read_record(record: str, **kwargs):
+    def read_record(self, record: str, **kwargs):
         # print(f'Processing record: {record}')
         Rawdata = mne.io.read_raw_edf(record, preload=True)
         channel_names = Rawdata.ch_names
@@ -107,6 +103,7 @@ class TUEVDataset(BaseDataset):
         [numEvents, z] = eventData.shape
         [numChan, numPoints] = data.shape
         segments = []
+        offset = data.shape[1] / freq
         for i in range(numEvents):
             chan = int(eventData[i, 0])
             start = (np.where((times) >= eventData[i, 1])[0][0]) /freq
@@ -114,8 +111,8 @@ class TUEVDataset(BaseDataset):
             # print(start, end)
             label = int(eventData[i, 3])
             segments.append({
-                'start': start,
-                'end': end,
+                'start': start + offset,
+                'end': end + offset,
                 'value':{
                     'event':{
                         'data': label,
@@ -141,12 +138,13 @@ class TUEVDataset(BaseDataset):
         meta,
         **kwargs
     ) -> Generator[Dict[str, Any], None, None]:
-        try:
-            signals = self.apply_transform(self.before_segment_transform, signals)
-        except (KeyError, ValueError) as e:
-            print(f'Error in processing record {meta["file_name"]}: {e}')
+        signals = self.apply_transform(self.before_segment_transform, signals)
+        if signals is None:
+            print(f"Skip file {meta['file_name']} due to transform error.")
             return None
-
+        signals['eeg']['data'] = np.concatenate(
+            [signals['eeg']['data'], signals['eeg']['data'], signals['eeg']['data']], 
+             axis=1)
         for idx, segment in enumerate(self.segment_split(signals, labels)):
             seg_signals = segment['signals']
             seg_label = segment['labels']
@@ -154,12 +152,11 @@ class TUEVDataset(BaseDataset):
             # print(signals['eeg']['data'].shape)
             # print(label['label']['data'])
             segment_id = self.get_segment_id(meta['file_name'], idx)
-            try:
-                seg_signals = self.apply_transform(self.offline_signal_transform, seg_signals)
-                seg_label = self.apply_transform(self.offline_label_transform, seg_label)
-            except (KeyError, ValueError) as e:
-                print(f'Error in processing record {meta["file_name"]}: {e}')
-                return None
+            seg_signals = self.apply_transform(self.offline_signal_transform, seg_signals)
+            seg_label = self.apply_transform(self.offline_label_transform, seg_label)
+            if seg_signals is None or seg_label is None:
+                print(f"Skip segment {segment_id} due to transform error.")
+                continue
             
             seg_info.update({
                 'subject_id': self.get_subject_id(meta['file_name']),
@@ -216,3 +213,34 @@ class TUEVDataset(BaseDataset):
         # Extract the sample ID from the file name and index
         # Assuming the sample ID is a combination of the file name and index
         return [f"{i}_{segment_id}" for i in range(sample_len)]
+
+# from dataset.tuev_dataset import TUEVDataset
+# from dataset.transform.lambd import Lambda
+# from dataset.transform.slide_window import SlideWindow
+# from dataset.transform import Resample, Compose, Filter, NotchFilter,PickChannels, Offset
+# from dataset.transform.select import Select
+
+# chanels = ['FP1', 'FP2', 'F3', 'F4', 'C3', 'C4', 'P3', 'P4', 'O1', 'O2', 'F7', 'F8', 'T3', 'T4', 'T5', 'T6', 'A1', 'A2', 'FZ', 'CZ', 'PZ', 'T1', 'T2']
+# offline_signal_transform = [
+#     SlideWindow(window_size=1000,stride=1000,source='eeg', target='eeg'),
+# ]
+# before_segment_transform = [
+#     Compose([
+#         PickChannels(channels=chanels),
+#         Filter(l_freq=0.1, h_freq=75.0),
+#         NotchFilter(freqs=[50.0]),
+#         Resample(desired_freq=200),
+#         ], source='eeg', target='eeg'
+#     ),
+# ]
+# offline_label_transform = [
+#     Offset(offest=-1,source='event', target='event'),
+#     Select(key='event')
+# ]
+# dataset = TUEVDataset(root_path='/mnt/ssd/lingyus/tuev_test',
+#                     io_path='/mnt/ssd/lingyus/tuev_test/processed',
+#                     before_segment_transform=before_segment_transform,
+#                     offline_signal_transform=offline_signal_transform,
+#                     offline_label_transform=offline_label_transform,
+#                     # label_transform=label_transform,
+#                     num_worker=8)

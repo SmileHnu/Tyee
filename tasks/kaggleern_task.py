@@ -18,38 +18,32 @@ class KaggleERNTask(PRLTask):
     def __init__(self, cfg):
         super().__init__(cfg)
 
-        self.checkpoint = get_nested_field(cfg, 'model.upstream.checkpoint', default=None)
-        
-        self.train_subjects = get_nested_field(cfg, 'dataset.train_subjects', None)
-        self.val_subjects = get_nested_field(cfg, 'dataset.val_subjects', None)
-        self.sessions = get_nested_field(cfg, 'dataset.sessions', None)
-
-    def build_dataset(self, path, train, subjects=None, sessions=None):
-        Dataset = lazy_import_module('dataset', self.dataset)
-        return Dataset(path, train, subjects, sessions)
-
-    def get_train_dataset(self):
-        if self.train_dataset is None:
-            self.train_dataset = self.build_dataset(self.dataset_root, train=True, subjects=self.train_subjects, sessions=self.sessions)
-        return self.train_dataset
-    
-    def get_val_dataset(self):
-        if self.val_dataset is None:
-            self.val_dataset = self.build_dataset(self.dataset_root, train=False, subjects=self.val_subjects, sessions=self.sessions)
-        return self.val_dataset
-
-    def get_test_dataset(self):
-        return None
-
     def build_model(self):
-        model = lazy_import_module('models.upstream', self.upstream_select)
-        return model(load_path = self.checkpoint)
-    
-    def build_optimizer(self, model: torch.nn.Module):
-        return model.optimizer
+        module_name, class_name = self.model_select.rsplit('.', 1)
+        model_name = lazy_import_module(f'models.{module_name}', class_name)
+        model = model_name(**self.model_params)
+        return model
 
+    def set_optimizer_params(self, model: torch.nn.Module, lr: float, layer_decay: float, weight_decay: float = 1e-5):
+        """
+        根据 lr 和 layer_decay 设置模型每一层的学习率，构造对应的参数组
+        :param model: 需要设置学习率的模型
+        :param lr: 基础学习率
+        :param layer_decay: 学习率衰减率
+        :return: 参数组列表，用于 optimizer 的创建
+        """
+        params = (
+            list(model.chan_conv.parameters()) +
+            list(model.linear_probe1.parameters()) +
+            list(model.linear_probe2.parameters())
+        )
+        param_groups = [
+            {'params': params, 'lr': lr, 'weight_decay': weight_decay},
+        ]
+        return param_groups
+    
     def train_step(self, model: torch.nn.Module, sample: dict[str, torch.Tensor], *args, **kwargs):
-        x = sample['x']
+        x = sample['eeg'].float()
         label = sample['label']
         x, pred = model(x)
         loss = self.loss(pred, label)
@@ -62,7 +56,7 @@ class KaggleERNTask(PRLTask):
 
     @torch.no_grad()
     def valid_step(self, model: torch.nn.Module, sample: dict[str, torch.Tensor], *args, **kwargs):
-        x = sample['x']
+        x = sample['eeg'].float()
         label = sample['label']
         x, pred = model(x)
         loss = self.loss(pred, label)

@@ -90,7 +90,7 @@ class KFold(BaseSplit):
             return int(match.group(1)) if match else -1
 
         # Get unique fold IDs and sort them
-        fold_ids = sorted(set(filter(lambda x: x != -1, map(indice_file_to_fold_id, indice_files))))
+        fold_ids = list(set(map(indice_file_to_fold_id, indice_files)))
         return fold_ids
 
     def split(

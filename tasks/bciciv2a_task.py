@@ -12,7 +12,6 @@
 import torch
 from torch import nn
 from pathlib import Path
-from models import WrappedMode
 from tasks.base_task import PRLTask
 from utils import lazy_import_module, get_nested_field
 
@@ -34,9 +33,9 @@ class BCICIV2aTask(PRLTask):
         return model
         
     def train_step(self, model: nn.Module, sample: dict[str, torch.Tensor]):
-        x = sample["eeg"]["signals"].float()
+        x = sample["eeg"].float()
         # print(x.shape)
-        label = sample["label"]
+        label = sample["event"]
         # x = x.unsqueeze(1)
         pred = model(x)
         # print(pred.shape)
@@ -50,9 +49,9 @@ class BCICIV2aTask(PRLTask):
 
     @torch.no_grad()
     def valid_step(self, model, sample: dict[str, torch.Tensor]):
-        x = sample["eeg"]["signals"].float()
+        x = sample["eeg"].float()
         # print(x.shape)
-        label = sample["label"]
+        label = sample["event"]
         # x = x.unsqueeze(1)
         pred = model(x)
         loss = self.loss(pred, label)

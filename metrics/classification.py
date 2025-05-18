@@ -109,16 +109,45 @@ class PR_AUC(ClassMetric):
     def __init__(self):
         self.name = 'pr_auc'
     def compute(self, results: list):
-        all_targets, all_outputs = self.process_result(results)
-        return average_precision_score(all_targets, all_outputs)
-
+        all_targets = []
+        all_probs = []
+        for result in results:
+            label = result.get('label')
+            output = result.get('output')
+            # 取概率分数
+            if output.ndim == 2 and output.shape[1] == 1:
+                prob = output[:, 0]
+            elif output.ndim == 2 and output.shape[1] > 1:
+                # 假设正类为1
+                prob = output[:, 1]
+            else:
+                prob = output
+            all_targets.append(label)
+            all_probs.append(prob)
+        all_targets = np.concatenate(all_targets, axis=0)
+        all_probs = np.concatenate(all_probs, axis=0)
+        return average_precision_score(all_targets, all_probs)
 
 class ROC_AUC(ClassMetric):
     def __init__(self):
         self.name = 'roc_auc'
     def compute(self, results: list):
-        all_targets, all_outputs = self.process_result(results)
-        return roc_auc_score(all_targets, all_outputs)
+        all_targets = []
+        all_probs = []
+        for result in results:
+            label = result.get('label')
+            output = result.get('output')
+            if output.ndim == 2 and output.shape[1] == 1:
+                prob = output[:, 0]
+            elif output.ndim == 2 and output.shape[1] > 1:
+                prob = output[:, 1]
+            else:
+                prob = output
+            all_targets.append(label)
+            all_probs.append(prob)
+        all_targets = np.concatenate(all_targets, axis=0)
+        all_probs = np.concatenate(all_probs, axis=0)
+        return roc_auc_score(all_targets, all_probs)
 
 class Precision(ClassMetric):
     def __init__(self):

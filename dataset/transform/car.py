@@ -15,40 +15,32 @@ from typing import Dict, Any, Optional
 import numpy as np
 from .base_transform import BaseTransform
 
-class CAR(BaseTransform):
-    def __init__(self, source: Optional[str] = None, target: Optional[str] = None):
-        """
-        Initialize the CAR class for Common Average Referencing (CAR).
-        """
-        super().__init__(source=source, target=target)
+import numpy as np
+from dataset.transform import BaseTransform
 
-    def transform(self, result: Dict[str, Any]) -> Dict[str, Any]:
+class CommonAverageRef(BaseTransform):
+    """
+    对每个时间点做 common average referencing（减去所有通道的参考值）。
+    支持 median、mean 等多种参考方式。
+    """
+    def __init__(self, axis=0, mode='median', source=None, target=None):
         """
-        Apply Common Average Referencing (CAR) to the input signal.
-
-        Args:
-            result (Dict[str, Any]): A dictionary containing the signal data, must include the 'data' key.
-
-        Returns:
-            Dict[str, Any]: The dictionary with the CAR-transformed signal.
+        axis: 对哪个轴做CAR，通常是通道轴（如0）
+        mode: 'median'（中位数）、'mean'（均值），可扩展
         """
-        # Get signal data
-        signals = result.get("data")
-        if signals is None:
-            raise ValueError("The input dictionary must contain the 'data' key.")
+        super().__init__(source, target)
+        self.axis = axis
+        self.mode = mode
 
-        # Check if the signal is 2D or 3D
-        if signals.ndim == 2:
-            # 2D signal (n_channels, n_times)
-            common_average = np.mean(signals, axis=0, keepdims=True)  # Average across channels for each time point
-            signals = signals - common_average  # Subtract common average from each channel
-        elif signals.ndim == 3:
-            # 3D signal (n_epochs, n_channels, n_times)
-            common_average = np.mean(signals, axis=1, keepdims=True)  # Average across channels for each epoch
-            signals = signals - common_average  # Subtract common average from each channel
+    def transform(self, result):
+        data = result['data']
+        if self.mode == 'median':
+            common = np.median(data, axis=self.axis, keepdims=True)
+        elif self.mode == 'mean':
+            common = np.mean(data, axis=self.axis, keepdims=True)
         else:
-            raise ValueError(f"Unsupported signal dimension: {signals.ndim}D. Only 2D or 3D signals are supported.")
-
-        # Update the result dictionary
-        result["data"] = signals
+            raise ValueError(f"Unknown mode '{self.mode}' for CommonAverageRef. 支持 'median' 或 'mean'")
+        data_car = data - common
+        result = result.copy()
+        result['data'] = data_car
         return result

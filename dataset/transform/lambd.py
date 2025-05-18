@@ -19,4 +19,7 @@ class Lambda(BaseTransform):
         self.lambd = lambd
 
     def transform(self, result):
-        return self.lambd(result)
+        data = self.lambd(result['data'])
+        result = result.copy()
+        result['data'] = data
+        return result

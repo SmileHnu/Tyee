@@ -14,7 +14,7 @@ import mne
 import numpy as np
 from typing import Dict, Any, List, Optional
 from dataset.transform import BaseTransform
-from scipy.signal import cheby2, filtfilt
+from scipy.signal import cheby2, filtfilt, detrend
 mne.set_log_level('WARNING')
 
 class Filter(BaseTransform):
@@ -120,8 +120,8 @@ class NotchFilter(BaseTransform):
 
 class Cheby2Filter(BaseTransform):
     def __init__(self, 
-                 lowcut, 
-                 highcut,  
+                 l_freq, 
+                 h_freq,  
                  order=6, 
                  rp=0.1, 
                  rs=60, 
@@ -129,8 +129,8 @@ class Cheby2Filter(BaseTransform):
                  source: Optional[str] = None,
                  target: Optional[str] = None):
         super().__init__(source, target)
-        self.lowcut = lowcut
-        self.highcut = highcut
+        self.l_freq = l_freq
+        self.h_freq = h_freq
         self.order = order
         self.rp = rp
         self.rs = rs
@@ -140,9 +140,20 @@ class Cheby2Filter(BaseTransform):
         signal_data = result['data']
         sfreq = result['freq']
         nyquist = 0.5 * sfreq
-        low = self.lowcut / nyquist
-        high = self.highcut / nyquist
+        low = self.l_freq / nyquist
+        high = self.h_freq / nyquist
         b, a = cheby2(self.order, self.rs, [low, high], btype=self.btype)
         filtered_signal = filtfilt(b, a, signal_data, axis=1)
         result['data'] = filtered_signal
+        return result
+
+class Detrend(BaseTransform):
+    def __init__(self, axis=-1, source = None, target = None):
+        self.axis = axis
+        super().__init__(source, target)
+
+    def transform(self, result: Dict[str, Any]) -> Dict[str, Any]:
+        signal_data = result['data']
+        detrended_signal = detrend(signal_data, axis=self.axis)
+        result['data'] = detrended_signal
         return result

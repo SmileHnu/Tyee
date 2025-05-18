@@ -8,32 +8,39 @@ dataset:
   dataset: bciciv2a_dataset.BCICIV2ADataset
   num_workers: 4
   root_path:
-    # train: '/home/lingyus/data/BCICIV2a/processed'
+    train: '/mnt/ssd/lingyus/BCICIV_2a/A09'
     val:
-    # test: '/home/lingyus/data/tuh_eeg_events/v2.0.1/edf/eval/'
-  io_path:
-    train: "/home/lingyus/data/BCICIV2a/1/train/processed"
-    val: "/home/lingyus/data/BCICIV2a/1/eval/processed"
     test: 
-  io_mode: pickle
+  io_path:
+    train: "/mnt/ssd/lingyus/tyee_bciciv2a/A09"
+    val: 
+    test: 
+  io_mode: hdf5
+  io_chunks: 750
   split: 
-    method: none
-    split_by: clip_id
-    seed: 4523
-    val: 0.2
-  other:
-    chunk_size: 1000,
-    offset: 500,
- 
-  online_transform:
-    eeg:
-      Normalize:
-        method: zscore
-        mean: -0.004217920410355097
-        std: 5.3160046572911135
+    select: HoldOutCross
+    init_params:
+      split_path: '/mnt/ssd/lingyus/tyee_bciciv2a/split/A09'
+      group_by: session_id
+      val_size: 0.5
+      random_state: 4523
+      shuffle: false
+  
+  offline_signal_transform:
+    - select: Cheby2Filter
+      l_freq: 4
+      h_freq: 40
+      source: eeg
+      target: eeg
+
+  online_signal_transform:
+    - select: ZScoreNormalize
+      mean: -0.000831605672567208
+      std: 9.915488018511994
+      epsilon: 0
+      source: eeg
+      target: eeg
         
-
-
 
 # lr_scheduler:
 #   select: WarmupCosineScheduler
@@ -43,8 +50,7 @@ dataset:
 #   warmup_epochs: 5
 
 model:
-
-  select: Conformer
+  select: conformer.Conformer
   n_outputs: 4
   n_chans: 22
   n_times: 1000
@@ -88,8 +94,8 @@ trainer:
   # total_steps: 31980
   total_epochs: 2000
   update_interval: 1
-  save_interval: 40
-  eval_interval: 40
+  # save_interval: 40
+  # eval_interval: 40
   log_interval: 20
   eval_metric:
     select: accuracy

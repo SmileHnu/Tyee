@@ -104,7 +104,7 @@ class KFoldPerSubjectGroupby(BaseSplit):
             match = re.search(r'subject_(.*?)_fold_\d+.csv', indice_file)
             return match.group(1) if match else None
 
-        subjects = sorted(set(filter(None, map(indice_file_to_subject, indice_files))))
+        subjects = list(set(map(indice_file_to_subject, indice_files)))
         return subjects
 
     @property
@@ -121,7 +121,7 @@ class KFoldPerSubjectGroupby(BaseSplit):
             match = re.search(r'subject_.*?_fold_(\d+).csv', indice_file)
             return int(match.group(1)) if match else None
 
-        fold_ids = sorted(set(filter(None, map(indice_file_to_fold_id, indice_files))))
+        fold_ids = list(set(map(indice_file_to_fold_id, indice_files)))
         return fold_ids
 
     def split(

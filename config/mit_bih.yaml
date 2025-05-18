@@ -58,11 +58,6 @@ model:
   att_depth: 3
   att_heads: 4
 
-  # select: eegnet.EEGNet
-  # n_chans: 1
-  # chunk_size: 300
-  # num_classes: 4
-    
 
 optimizer:
   lr:  0.001

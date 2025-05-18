@@ -16,6 +16,9 @@ from typing import Union
 
 import torch
 import lmdb
+import h5py
+import numpy as np
+
 
 class _PhysioSignalIO:
     def get_total_length(self):
@@ -158,7 +161,7 @@ class LMDBPhysioSignalIO(_PhysioSignalIO):
             return self.write_signal(signal=signal, signal_type=signal_type, key=key)
         return key
 
-    def read_signal(self, signal_type: str, key: str) -> any:
+    def read_signal(self, signal_type: str, key: str, start: int, end: int) -> any:
         """
         从 LMDB 数据库中读取信号。
         
@@ -180,7 +183,14 @@ class LMDBPhysioSignalIO(_PhysioSignalIO):
         if signal is None:
             raise RuntimeError(f'Unable to index the {signal_type} signal sample with key {key}!')
 
-        return pickle.loads(signal)
+       
+        signal = pickle.loads(signal)
+        axis = signal.get('axis', -1)
+        if start is not None or end is not None:
+            slicer = [slice(None)] * signal['data'].ndim
+            slicer[axis] = slice(start, end)
+            signal['data'] = signal['data'][tuple(slicer)]
+        return signal
 
     def signal_types(self):
         """
@@ -311,7 +321,7 @@ class MemoryPhysioSignalIO(_PhysioSignalIO):
             raise RuntimeError(f"Signal type {signal_type} does not exist!")
         return list(self._memory[signal_type].values())
 
-    def read_signal(self, signal_type: str, key: str) -> any:
+    def read_signal(self, signal_type: str, key: str, start: int, end: int) -> any:
         """
         从内存中读取指定类型和键的信号。
 
@@ -328,7 +338,13 @@ class MemoryPhysioSignalIO(_PhysioSignalIO):
         if key not in self._memory[signal_type]:
             raise RuntimeError(f"Unable to index the {signal_type} signal sample with key {key}!")
 
-        return self._memory[signal_type][key]
+        signal = self._memory[signal_type][key]
+        axis = signal.get('axis', -1)
+        if start is not None or end is not None:
+            slicer = [slice(None)] * signal['data'].ndim
+            slicer[axis] = slice(start, end)
+            signal['data'] = signal['data'][tuple(slicer)]
+        return signal
 
     def write_signal(self, signal: Union[any, torch.Tensor], signal_type: str, key: Union[str, None] = None) -> str:
         """
@@ -447,7 +463,7 @@ class PicklePhysioSignalIO(_PhysioSignalIO):
         """
         return [self.read_signal(signal_type, key) for key in self.keys(signal_type)]
 
-    def read_signal(self, signal_type: str, key: str) -> any:
+    def read_signal(self, signal_type: str, key: str, start: int, end: int) -> any:
         """
         从 Pickle 文件中读取指定信号类型和键的信号。
         
@@ -466,6 +482,12 @@ class PicklePhysioSignalIO(_PhysioSignalIO):
 
         with open(signal_path, 'rb') as f:
             signal = pickle.load(f)
+        
+        axis = signal.get('axis', -1)
+        if start is not None or end is not None:
+            slicer = [slice(None)] * signal['data'].ndim
+            slicer[axis] = slice(start, end)
+            signal['data'] = signal['data'][tuple(slicer)]
         return signal
 
     def write_signal(self, signal: Union[any, torch.Tensor], signal_type: str, key: Union[str, None] = None) -> str:
@@ -511,15 +533,116 @@ class PicklePhysioSignalIO(_PhysioSignalIO):
         result.__dict__.update(self.__dict__)
         return result
     
+class HDF5PhysioSignalIO(_PhysioSignalIO):
+    def __init__(self, io_path: str, io_chunks: int = None):
+        self.io_path = io_path
+        self.io_chunks = io_chunks
+        self._file_handlers = {}  # 缓存每个 signal_type 的 h5py.File handler
+
+    def _get_file_path(self, signal_type: str):
+        folder = os.path.join(self.io_path, signal_type)
+        os.makedirs(folder, exist_ok=True)
+        return os.path.join(folder, 'data.h5')
+
+    def _get_file(self, signal_type: str, mode='r'):
+        # 每个 signal_type 单独缓存 handler，适合单进程/单worker
+        if (signal_type, mode) not in self._file_handlers or not self._file_handlers[(signal_type, mode)].id:
+            file_path = self._get_file_path(signal_type)
+            self._file_handlers[(signal_type, mode)] = h5py.File(file_path, mode)
+        return self._file_handlers[(signal_type, mode)]
+
+    def close(self):
+        for f in self._file_handlers.values():
+            try:
+                f.close()
+            except Exception:
+                pass
+        self._file_handlers.clear()
+
+    def __del__(self):
+        self.close()
+
+    def write_signal(self, signal: dict, signal_type: str, key: str = None) -> str:
+        f = self._get_file(signal_type, mode='a')
+        group = f.require_group('signals')
+        if key is None:
+            key = str(len(group))
+        if key in group:
+            raise RuntimeError(f"Key {key} already exists in {signal_type}!")
+        data = signal['data']
+        axis = signal.get('axis', -1)
+        if self.io_chunks is not None and isinstance(data, np.ndarray):
+            chunks = list(data.shape)
+            chunks[axis] = self.io_chunks
+            chunks = tuple(chunks)
+        else:
+            chunks = None
+        dset = group.create_dataset(key, data=data, chunks=chunks)
+        dset.attrs['freq'] = signal.get('freq', -1)
+        dset.attrs['channels'] = np.array(signal.get('channels', []), dtype='S')
+        dset.attrs['axis'] = axis
+        f.flush()
+        return key
+
+    def read_signal(self, signal_type: str, key: str, start: int = None, end: int = None) -> dict:
+        f = self._get_file(signal_type, mode='r')
+        group = f['signals']
+        if key not in group:
+            raise RuntimeError(f"Unable to index the {signal_type} signal sample with key {key}!")
+        dset = group[key]
+        axis = dset.attrs.get('axis', -1)
+        if start is not None or end is not None:
+            slicer = [slice(None)] * dset.ndim
+            slicer[axis] = slice(start, end)
+            data = dset[tuple(slicer)]
+        else:
+            data = dset[()]
+        if isinstance(data, bytes):
+            data = data.decode()
+        freq = dset.attrs['freq']
+        channels = [ch.decode() for ch in dset.attrs['channels']]
+        return {'data': data, 'freq': freq, 'channels': channels}
+
+    def get_signal_length(self, signal_type: str) -> int:
+        f = self._get_file(signal_type, mode='r')
+        return len(f['signals'])
+
+    def signal_types(self):
+        return [d for d in os.listdir(self.io_path) if os.path.isdir(os.path.join(self.io_path, d))]
+
+    def keys(self, signal_type: str):
+        f = self._get_file(signal_type, mode='r')
+        return list(f['signals'].keys())
+
+    def signals(self, signal_type: str):
+        f = self._get_file(signal_type, mode='r')
+        result = []
+        for key in f['signals'].keys():
+            dset = f['signals'][key]
+            data = dset[()]
+            freq = dset.attrs['freq']
+            channels = [ch.decode() for ch in dset.attrs['channels']]
+            result.append({'data': data, 'freq': freq, 'channels': channels})
+        return result
+
+    def __copy__(self):
+        cls = self.__class__
+        result = cls.__new__(cls)
+        result.io_path = self.io_path
+        result._file_handlers = {}
+        return result
 
 class PhysioSignalIO:
     """
     生理信号输入输出类，根据不同的存储模式（LMDB、内存、Pickle）进行信号的读写操作。
     """
-    def __init__(self,
-                 io_path: str,
-                 io_size: int = 1048576,
-                 io_mode: str = 'lmdb'):
+    def __init__(
+        self,
+        io_path: str,
+        io_size: int = 1048576,
+        io_mode: str = 'lmdb',
+        io_chunks: int = None
+    ):
         """
         初始化 PhysioSignalIO 实例。
         
@@ -531,6 +654,7 @@ class PhysioSignalIO:
         self.io_mode = io_mode
         self.io_path = io_path
         self.io_size = io_size
+        self.io_chunks = io_chunks
 
         if self.io_mode == 'lmdb':
             self._io = LMDBPhysioSignalIO(io_path=self.io_path, io_size=self.io_size)
@@ -538,6 +662,8 @@ class PhysioSignalIO:
             self._io = MemoryPhysioSignalIO()
         elif self.io_mode == 'pickle':
             self._io = PicklePhysioSignalIO(io_path=self.io_path)
+        elif self.io_mode == 'hdf5':
+            self._io = HDF5PhysioSignalIO(io_path=self.io_path, io_chunks=self.io_chunks)
         else:
             raise ValueError(f'Unsupported IO mode: {self.io_mode}')
     
@@ -589,7 +715,7 @@ class PhysioSignalIO:
         """
         return self._io.signals(signal_type)
     
-    def read_signal(self, signal_type: str, key: str) -> any:
+    def read_signal(self, signal_type: str, key: str, start: int, end:int) -> any:
         """
         读取指定类型和键的信号。
         
@@ -600,7 +726,7 @@ class PhysioSignalIO:
         返回:
         any: 读取的信号。
         """
-        return self._io.read_signal(signal_type, key)
+        return self._io.read_signal(signal_type, key, start, end)
     
     def write_signal(self, signal: Union[any, torch.Tensor], signal_type: str, key: Union[str, None] = None) -> str:
         """
@@ -632,54 +758,55 @@ class PhysioSignalIO:
         result._io = self._io.__copy__()
         return result
     
-    def to_lmdb(self, io_path: str, io_size: int = 1048576):
-        """
-        将当前存储模式转换为 LMDB 模式。
+    # def to_lmdb(self, io_path: str, io_size: int = 1048576):
+    #     """
+    #     将当前存储模式转换为 LMDB 模式。
         
-        参数:
-        io_path (str): LMDB 存储路径。
-        io_size (int): LMDB 存储大小，默认为 1048576。
-        """
-        _io = LMDBPhysioSignalIO(io_path=io_path, io_size=io_size)
+    #     参数:
+    #     io_path (str): LMDB 存储路径。
+    #     io_size (int): LMDB 存储大小，默认为 1048576。
+    #     """
+    #     _io = LMDBPhysioSignalIO(io_path=io_path, io_size=io_size)
 
-        for signal_type in self.signal_types():
-            for key in self.keys(signal_type):
-                signal = self.read_signal(signal_type, key)
-                _io.write_signal(signal, signal_type, key)
+    #     for signal_type in self.signal_types():
+    #         for key in self.keys(signal_type):
+    #             signal = self.read_signal(signal_type, key)
+    #             _io.write_signal(signal, signal_type, key)
         
-        self.io_path = io_path
-        self.io_size = io_size
-        self.io_mode = 'lmdb'
-        self._io = _io
+    #     self.io_path = io_path
+    #     self.io_size = io_size
+    #     self.io_mode = 'lmdb'
+    #     self._io = _io
     
-    def to_memory(self):
-        """
-        将当前存储模式转换为内存模式。
-        """
-        _io = MemoryPhysioSignalIO()
+    # def to_memory(self):
+    #     """
+    #     将当前存储模式转换为内存模式。
+    #     """
+    #     _io = MemoryPhysioSignalIO()
 
-        for signal_type in self.signal_types():
-            for key in self.keys(signal_type):
-                signal = self.read_signal(signal_type, key)
-                _io.write_signal(signal, signal_type, key)
+    #     for signal_type in self.signal_types():
+    #         for key in self.keys(signal_type):
+    #             signal = self.read_signal(signal_type, key)
+    #             _io.write_signal(signal, signal_type, key)
         
-        self.io_mode = 'memory'
-        self._io = _io
+    #     self.io_mode = 'memory'
+    #     self._io = _io
     
-    def to_pickle(self, io_path: str):
-        """
-        将当前存储模式转换为 Pickle 模式。
+    # def to_pickle(self, io_path: str):
+    #     """
+    #     将当前存储模式转换为 Pickle 模式。
         
-        参数:
-        io_path (str): Pickle 存储路径。
-        """
-        _io = PicklePhysioSignalIO(io_path=io_path)
+    #     参数:
+    #     io_path (str): Pickle 存储路径。
+    #     """
+    #     _io = PicklePhysioSignalIO(io_path=io_path)
 
-        for signal_type in self.signal_types():
-            for key in self.keys(signal_type):
-                signal = self.read_signal(signal_type, key)
-                _io.write_signal(signal, signal_type, key)
+    #     for signal_type in self.signal_types():
+    #         for key in self.keys(signal_type):
+    #             signal = self.read_signal(signal_type, key)
+    #             _io.write_signal(signal, signal_type, key)
         
-        self.io_path = io_path
-        self.io_mode = 'pickle'
-        self._io = _io
+    #     self.io_path = io_path
+    #     self.io_mode = 'pickle'
+    #     self._io = _io
+

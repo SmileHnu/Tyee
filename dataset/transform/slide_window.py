@@ -44,4 +44,30 @@ class SlideWindow(BaseTransform):
         if 'info' not in result or result['info'] is None:
             result['info'] = {}
         result['info']['windows'] = indices
+        result['axis'] = self.axis
+        return result
+
+class WindowExtract(BaseTransform):
+    """
+    根据 result['info']['windows'] 的 start/end 切片拼接数据，
+    输出 shape: (num_windows, channels, window_size)
+    """
+    def __init__(self, source: Optional[str] = None, target: Optional[str] = None):
+        super().__init__(source, target)
+
+    def transform(self, result: Dict[str, Any]) -> Dict[str, Any]:
+        data = result['data']
+        axis = result.get('axis', -1)
+        windows_info = result['info']['windows']
+        windows = []
+        for win in windows_info:
+            start, end = win['start'], win['end']
+            if axis == -1 or axis == data.ndim - 1:
+                windows.append(data[..., start:end])
+            else:
+                slicer = [slice(None)] * data.ndim
+                slicer[axis] = slice(start, end)
+                windows.append(data[tuple(slicer)])
+        result = result.copy()
+        result['data'] = np.stack(windows, axis=0)
         return result
