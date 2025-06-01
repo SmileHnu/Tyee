@@ -187,7 +187,7 @@ class TUABDataset(BaseDataset):
 # from dataset.tuab_dataset import TUABDataset
 # from dataset.transform.lambd import Lambda
 # from dataset.transform.slide_window import SlideWindow
-# from dataset.transform import Resample, Compose, Filter, NotchFilter,PickChannels
+# from dataset.transform import Resample, Compose, Filter, NotchFilter,PickChannels, Mapping
 # from dataset.transform.select import Select
 
 # chanels = ['FP1', 'FP2', 'F3', 'F4', 'C3', 'C4', 'P3', 'P4', 'O1', 'O2', 'F7', 'F8', 'T3', 'T4', 'T5', 'T6', 'A1', 'A2', 'FZ', 'CZ', 'PZ', 'T1', 'T2']
@@ -204,6 +204,10 @@ class TUABDataset(BaseDataset):
 #     ),
 # ]
 # offline_label_transform = [
+#     Mapping(mapping={
+#         'abnormal': 1,
+#         'normal': 0,
+#     }, source='label', target='label'),
 #     Select(key='label')
 # ]
 

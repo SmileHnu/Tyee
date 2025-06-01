@@ -160,6 +160,10 @@ class PRLTask(object):
         
         # 从配置中获取损失函数参数
         loss_params = {k: v for k, v in self.loss_params.items() if k not in ['select']}
+        # 特殊处理weight参数
+        if 'weight' in loss_params and loss_params['weight'] is not None:
+            if isinstance(loss_params['weight'], (list, tuple)):
+                loss_params['weight'] = torch.tensor(loss_params['weight'], dtype=torch.float32)
         return loss_cls(**loss_params)
 
     def build_optimizer(self,model: torch.nn.Module):
@@ -234,7 +238,9 @@ class PRLTask(object):
         :raises ValueError: 如果 world_size 或 rank 的值不合法。
         :raises RuntimeError: 如果创建 DistributedSampler 失败。
         """
-
+        if world_size == 1:
+            # 如果只有一个进程，则不需要分布式采样器
+            return None
         # 检查dataset类型
         if not isinstance(dataset, Dataset):
             raise TypeError(f"Expected 'dataset' to be of type Dataset, but got {type(dataset)}")

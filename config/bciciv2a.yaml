@@ -32,6 +32,8 @@ dataset:
       h_freq: 40
       source: eeg
       target: eeg
+    - select: Select
+      key: ['eeg']
 
   online_signal_transform:
     - select: ZScoreNormalize

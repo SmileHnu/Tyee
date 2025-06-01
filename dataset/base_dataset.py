@@ -875,21 +875,16 @@ class BaseDataset(Dataset):
                     },
                     ...,
                     'labels':{
-                        'taskA':{
-                            'type': 'event',
-                            'data': [
-                                {'start': 0.5, 'end': 2.3, 'value': 'stimulus'},
-                                {'start': 3.0, 'end': 4.0, 'value': 'response'}
-                            ],
-                        },
-                        'taskB':{
-                            'type': 'point',
-                            'data': [
-                                {'index': 1024, 'value': 'N'},  
-                                {'index': 2048, 'value': 'V'},
-                                {'index': 3072, 'value': 'A'}
-                            ]
-                        },
+                        'segments':[{
+                            'start': 0.5,
+                            'end': 2.3, 
+                            'value': {
+                                'label':{
+                                    'data': 1,
+                                }
+                            }
+                        }]
+                        
                         ...,
                     },
                     'meta':{
@@ -918,30 +913,6 @@ class BaseDataset(Dataset):
             result (Any): The result to process. It is an Dict returned by `read_records`.
             **kwargs: Parameters derived from the class `__init__`.
 
-        Example:
-            def process_record(record: Any = None, chunk_size: int = 128, **kwargs):
-                # Process the record
-                eeg_signal = np.ndarray(62,chunk_size),dtype=np.float32)
-                eeg_channel = ['1','2',....]
-                eeg_freq = 200
-                eeg = {
-                    'signal': signal,
-                    'channels': eeg_channel,
-                    'freq': eeg_freq
-                }
-                key = '1'
-                info = {
-                    'subject_id': '1',
-                    'session_id': '1',
-                    'trial_id': '1',
-                    'run': '1',
-                    'label': '1'
-                }
-                yield {
-                    'eeg': eeg,
-                    'key': key,
-                    'info': info
-                }
 
         Raises:
             NotImplementedError: If the method is not implemented in the subclass.

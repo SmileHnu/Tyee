@@ -16,8 +16,7 @@ import mne
 import torch
 import numpy as np
 from dataset import BaseDataset
-from typing import Any, Callable, Union, Dict, List, Tuple
-from dataset.constants.standard_channels import EEG_CHANNELS_ORDER
+from typing import Any, Callable, Union, Dict, List, Tuple, Generator
 
 def list_records(root_path):
     recording_files = []
@@ -41,268 +40,652 @@ def list_records(root_path):
 
     return recording_scoring_pairs
 
-def interploate(raw: mne.io.BaseRaw, channels: List = ['EEG Fpz-Cz', 'EEG Pz-Oz']):
-    missing_channels = list(set(channels) - set(raw.ch_names))
-    if missing_channels:
-        info = mne.create_info(missing_channels, raw.info['sfreq'], 'eeg')
-        zero_data = np.zeros((len(missing_channels), len(raw.times)))
-        raw_missing = mne.io.RawArray(zero_data, info)
-        raw.add_channels([raw_missing], force_update_info=True)
-
-    # raw = raw.pick_channels(channels)
-    return raw
-
-def filter(raw: mne.io.BaseRaw, l_freq: float = 0.5, h_freq: float = 30):
-    raw = raw.filter(l_freq=l_freq, h_freq=h_freq, fir_design='firwin')
-    return raw
-
-
-def downsample(epochs: mne.Epochs, sfreq: int = 100):
-    epochs = epochs.resample(sfreq)
-    return epochs
 
 # telemetry ['EEG Fpz-Cz', 'EEG Pz-Oz', 'EOG horizontal', 'EMG submental', 'Marker']
 # cassette ['EEG Fpz-Cz', 'EEG Pz-Oz', 'EOG horizontal', 'Resp oro-nasal', 'EMG submental', 'Temp rectal', 'Event marker']
-class SleepEDFxDataset(BaseDataset):
-    def __init__(self,
-                 root_path: str = './sleep-edf-database-expanded-1.0.0/',
-                 studies: List = ['cassette', 'telemetry'],
-                 channels: List = ['EEG Fpz-Cz',
-                                   'EEG Pz-Oz'],
-                signal_types: List = ['eeg','eog','emg','rsp','temp'],
-                 l_freq: float = 0.5,
-                 h_freq: float = 30,
-                 sfreq: int = 100,
-                 crop_wake_mins: int = 30,
-                 online_transform: Union[None, Callable] = None,
-                 offline_transform: Union[None, Callable] = None,
-                 label_transform: Union[None, Callable] = None,
-                 io_path: Union[None, str] = None,
-                 io_size: int = 1048576,
-                 io_mode: str = 'lmdb',
-                 num_worker: int = 0,
-                 verbose: bool = True,
-                 **kwargs):
-        # if io_path is None:
-        #     io_path = get_random_dir_path(dir_prefix='datasets')
-        print(studies)
-        assert 'cassette' in studies or 'telemetry' in studies, 'studies must contain either "cassette" or "telemetry"'
-
+class SleepEDFCassetteDataset(BaseDataset):
+    def __init__(
+        self,
+        # Cassette dataset parameters
+        crop_wake_mins: int = 30,
+        # common parameters
+        root_path: str = './sleep-edf-database-expanded-1.0.0/sleep-cassette',
+        start_offset: float = 0.0,
+        end_offset: float = 0.0,
+        include_end: bool = False,
+        before_segment_transform: Union[None, Callable] = None,
+        offline_signal_transform: Union[None, Callable] = None,
+        offline_label_transform: Union[None, Callable] = None,
+        online_signal_transform: Union[None, Callable] = None,
+        online_label_transform: Union[None, Callable] = None,
+        io_path: Union[None, str] = None,
+        io_size: int = 1048576,
+        io_chunks: int = None,
+        io_mode: str = 'hdf5',
+        num_worker: int = 0,
+        lazy_threshold: int = 128,
+        verbose: bool = True,
+    ) -> None:
+        # pass all arguments to super class
         params = {
             'root_path': root_path,
-            'studies': studies,
-            'channels': channels,
-            'signal_types': signal_types,
-            'l_freq': l_freq,
-            'h_freq': h_freq,
-            'sfreq': sfreq,
-            'crop_wake_mins': crop_wake_mins,
-            'online_transform': online_transform,
-            'offline_transform': offline_transform,
-            'label_transform': label_transform,
+            'start_offset': start_offset,
+            'end_offset': end_offset,
+            'include_end': include_end,
+            'before_segment_transform': before_segment_transform,
+            'offline_signal_transform': offline_signal_transform,
+            'offline_label_transform': offline_label_transform,
+            'online_signal_transform': online_signal_transform,
+            'online_label_transform': online_label_transform,
             'io_path': io_path,
             'io_size': io_size,
+            'io_chunks': io_chunks,
             'io_mode': io_mode,
             'num_worker': num_worker,
+            'lazy_threshold': lazy_threshold,
             'verbose': verbose
         }
-        self.__dict__.update(params)
+        self.crop_wake_mins = crop_wake_mins
         super().__init__(**params)
-        # save all arguments to __dict__
+
     def set_records(self, root_path, **kwargs):
         recording_scoring_pairs = []
 
-        if 'cassette' in self.studies:
-            recording_scoring_pairs += list_records(
-                os.path.join(root_path, 'sleep-cassette'))
-
-        if 'telemetry' in self.studies:
-            recording_scoring_pairs += list_records(
-                os.path.join(root_path, 'sleep-telemetry'))
+        recording_scoring_pairs = list_records(root_path)
 
         return recording_scoring_pairs
 
-    @staticmethod
-    def read_record(record: Tuple,
-                    channels: List = ['EEG Fpz-Cz',
-                                      'EEG Pz-Oz'],
-                    l_freq: float = 0.5,
-                    h_freq: float = 30,
-                    sfreq: int = 100,
-                    crop_wake_mins: int = 30,
-                     **kwargs) -> Dict:
+    def read_record(self, record: Tuple, **kwargs) -> Dict:
         recording_file, scoring_file = record
 
         raw = mne.io.read_raw_edf(recording_file, preload=True)
-        montage = mne.channels.make_standard_montage('standard_1020')
-        raw.set_montage(montage, on_missing='ignore')
-        raw = filter(raw, l_freq, h_freq)
-        raw = downsample(raw, sfreq)
-        raw = interploate(raw, channels)
         annotation = mne.read_annotations(scoring_file)
         raw.set_annotations(annotation, emit_warning=False)
-        if crop_wake_mins > 0:
+        data = raw.get_data(units='uV')
+        channels = ['Fpz-Cz', 'Pz-Oz', 'horizontal', 'oro-nasal', 'submental', 'rectal']
+        if self.crop_wake_mins > 0:
             # Find first and last sleep stages
             mask = [x[-1] in ["1", "2", "3", "4", "R"] for x in annotation.description]
             sleep_event_inds = np.where(mask)[0]
 
             # Crop raw
-            tmin = annotation[int(sleep_event_inds[0])]["onset"] - crop_wake_mins * 60
-            tmax = annotation[int(sleep_event_inds[-1])]["onset"] + crop_wake_mins * 60
+            tmin = annotation[int(sleep_event_inds[0])]["onset"] - self.crop_wake_mins * 60
+            tmax = annotation[int(sleep_event_inds[-1])]["onset"] + self.crop_wake_mins * 60
             raw.crop(tmin=max(tmin, raw.times[0]), tmax=min(tmax, raw.times[-1]))
+        print(data.shape)
+        freq = raw.info['sfreq']
+        eeg = {
+            'data': data[0:2, :],
+            'freq': freq,
+            'channels': ['Fpz-Cz', 'Pz-Oz']
+        }
+        eog = {
+            'data': data[2:3, :],
+            'freq': freq,
+            'channels': ['horizontal']
+        }
+        rsp = {
+            'data': data[3:4, :],
+            'freq': freq,
+            'channels': ['oro-nasal']
+        }
+        emg = {
+            'data': data[4:5, :],
+            'freq': freq,
+            'channels': ['submental']
+        }
+        temp = {
+            'data': data[5:6, :],
+            'freq': freq,
+            'channels': ['rectal']
+        }
         events, event_id = mne.events_from_annotations(
             raw, chunk_duration=30.)
-
+        print(f"Number of events: {len(events)}")
+        print(events)
         if 'Sleep stage ?' in event_id.keys():
             event_id.pop('Sleep stage ?')
         if 'Movement time' in event_id.keys():
             event_id.pop('Movement time')
-
-        tmax = 30. - 1. / raw.info['sfreq']
-        epochs = mne.Epochs(raw=raw, events=events,
-                            event_id=event_id, tmin=0., tmax=tmax, baseline=None)
-
-        epochs_data = epochs.get_data(units='uV')
-        print(epochs_data.shape)
-        epochs_channel = epochs.ch_names
-        epochs_label = []
-        for epoch_annotation in epochs.get_annotations_per_epoch():
-            epochs_label.append(epoch_annotation[0][2])
-
+        # 睡眠阶段映射
+        stage_mapping = {
+            'W': 0,  # Wake
+            '1': 1,  # NREM Stage 1
+            '2': 2,  # NREM Stage 2
+            '3': 3,  # NREM Stage 3
+            '4': 4,  # NREM Stage 4
+            'R': 5,  # REM
+        }
+        id_to_event = {v: k for k, v in event_id.items()}
+        segments = []
+        for i in range(len(events)):
+            stim = events[i][2]
+            if stim not in id_to_event:
+                continue
+            start = events[i][0] / freq
+            end = start + 30.0
+            stage_char = str(id_to_event[stim][-1])
+            stage_numeric = stage_mapping.get(stage_char, -1)
+            segments.append({
+                'start': start,
+                'end': end,
+                'value': {
+                    'stage': {
+                        'data': stage_numeric
+                    }
+                }
+            })
         return {
-            'epochs_data': epochs_data,
-            'epochs_label': epochs_label,
-            'epochs_channel': epochs_channel
+            'signals': {
+                'eeg': eeg,
+                'eog': eog,
+                'rsp': rsp,
+                'emg': emg,
+                'temp': temp
+            },
+            'labels': {
+                'segments': segments,
+            },
+            'meta': {
+                'file_name': os.path.splitext(os.path.basename(recording_file))[0],
+            }
         }
         
-    @staticmethod
-    def process_record(record: Tuple,
-                       result: Dict,
-                       before_trial: Union[None, Callable] = None,
-                       offline_transform: Union[None, Callable] = None,
-                       **kwargs):
-
-        epochs_data = result['epochs_data'].copy()
-        epochs_label = result['epochs_label'].copy()
-        epoch_channel = result['epochs_channel'].copy()
-        recording_file, scoring_file = record
-        basename = os.path.splitext(os.path.basename(recording_file))[0]
-        subject_id = basename[3:5]
-        session_id = basename[5]
-        # if before_trial:
-        #     epochs_data = before_trial(epochs_data)
-
-        label2id = {'Sleep stage W': 0,
-                    'Sleep stage 1': 1,
-                    'Sleep stage 2': 2,
-                    'Sleep stage 3': 3,
-                    'Sleep stage 4': 3,
-                    'Sleep stage R': 4}
-
-        for i, (epoch_data, epoch_label) in enumerate(zip(epochs_data, epochs_label)):
+    def process_record(
+        self,
+        signals,
+        labels,
+        meta,
+        **kwargs
+    ) -> Generator[Dict[str, Any], None, None]:
+        signals = self.apply_transform(self.before_segment_transform, signals)
+        if signals is None:
+            print(f"Skip file {meta['file_name']} due to transform error.")
+            return None
+        for idx, segment in enumerate(self.segment_split(signals, labels)):
+            seg_signals = segment['signals']
+            seg_label = segment['labels']
+            seg_info = segment['info']
+            # print(signals['eeg']['data'].shape)
+            # print(label['label']['data'])
+            segment_id = self.get_segment_id(meta['file_name'], idx)
+            seg_signals = self.apply_transform(self.offline_signal_transform, seg_signals)
+            seg_label = self.apply_transform(self.offline_label_transform, seg_label)
+            if seg_signals is None or seg_label is None:
+                print(f"Skip segment {segment_id} due to transform error.")
+                continue
             
-            result = {}
-            if len(epoch_channel) == 7:
-                # print('执行了')
-                signal_types = ['eeg', 'eog', 'rsp', 'emg', 'temp']
-                result = {
-                    'eeg': {
-                        'signals': epoch_data[0:2],
-                        'sampling_rate': 100,
-                        'channels': ['EEG Fpz-Cz', 'EEG Pz-Oz']
-                    },
-                    'eog': {
-                        'signals': epoch_data[2:3],
-                        'sampling_rate': 100,
-                        'channels': ['EOG horizontal']
-                    },
-                    'rsp': {
-                        'signals': epoch_data[3:4],
-                        'sampling_rate': 100,
-                        'channels': ['Resp oro-nasal']
-                    },
-                    'emg': {
-                        'signals': epoch_data[4:5],
-                        'sampling_rate': 100,
-                        'channels': ['EMG submental']
-                    },
-                    'temp': {
-                        'signals': epoch_data[5:6],
-                        'sampling_rate': 100,
-                        'channels': ['Temp rectal']
-                    }
-                }
-            elif len(epoch_channel) == 5:
-                signal_types = ['eeg', 'eog', 'emg']
-                result = {
-                    'eeg': {
-                        'signals': epoch_data[0:2],
-                        'sampling_rate': 100,
-                        'channels': ['EEG Fpz-Cz', 'EEG Pz-Oz']
-                    },
-                    'eog': {
-                        'signals': epoch_data[2:3],
-                        'sampling_rate': 100,
-                        'channels': ['EOG horizontal']
-                    },
-                    'emg': {
-                        'signals': epoch_data[3:4],
-                        'sampling_rate': 100,
-                        'channels': ['EMG submental']
-                    }
-                }
-            if not offline_transform is None:
-                try:
-                    for signal_type in signal_types:
-                        if signal_type in offline_transform:
-                            result[signal_type] = offline_transform[signal_type](result[signal_type])
-                except (KeyError, ValueError) as e:
-                    print(f'Error in processing record {basename}: {e}')
-                return None
-
-            clip_id = f"{i}_{subject_id}"
-
-            record_info = {
-                'clip_id': clip_id,
-                'label': label2id[epoch_label],
-                'start_at': i * 30,
-                'end_at': (i + 1) * 30,
-                'subject_id': subject_id,
-                'session_id': f'{subject_id}_{session_id}',
-                'signal_types': signal_types
-            }
-            combined_result = {signal_type: result[signal_type] for signal_type in signal_types if signal_type in result}
-            # print(combined_result)
-            combined_result.update({
-                'key': clip_id,
-                'info': record_info
+            seg_info.update({
+                'subject_id': self.get_subject_id(meta['file_name']),
+                'session_id': self.get_session_id(),
+                'segment_id': self.get_segment_id(meta['file_name'], idx),
+                'trial_id': self.get_trial_id(),
             })
-            yield combined_result
-
-    def __getitem__(self, index):
-        info = self.read_info(index)
+            yield self.assemble_segment(
+                key=segment_id,
+                signals=seg_signals,
+                labels=seg_label,
+                info=seg_info,
+            )
+    
+    def segment_split(
+        self,
+        signals: Dict[str, Any],
+        labels: Dict[str, Any],
+    ) -> list:
+        """
+        对 signals 中所有信号类型按 label['segments'] 分段，将所有段按信号类型和标签类型分别堆叠，
+        返回堆叠后的信号和标签。
+        label['segments'] 的 start/end 单位为秒。
+        """
+        # 存储每种信号类型的所有段
+        stacked_signals = {}
+        stacked_labels = {}
+        valid_segments_info = []
+        segments = []
+        # 初始化每种信号类型的列表
+        for sig_type in signals.keys():
+            stacked_signals[sig_type] = []
         
-        signal_index = str(info['clip_id'])
-        signal_record = str(info['record_id'])
+        # 初始化标签类型的列表（从第一个segment中获取标签类型）
+        if len(labels['segments']) > 0:
+            sample_labels = labels['segments'][0]['value']
+            for label_type in sample_labels.keys():
+                stacked_labels[label_type] = []
+        
+        for seg_idx, seg in enumerate(labels['segments']):
+            start_time = seg['start']
+            end_time = seg['end']
+            
+            # 检查这个段是否对所有信号类型都有效
+            segment_valid = True
+            temp_seg_signals = {}
+            
+            for sig_type, sig in signals.items():
+                freq = sig['freq']
+                data = sig['data']
+                start_idx = int(round(start_time * freq))
+                end_idx = int(round(end_time * freq))
+                
+                if self.include_end:
+                    end_idx += 1
+                    
+                # 检查索引是否有效
+                if start_idx < 0 or end_idx > data.shape[-1] or start_idx >= end_idx:
+                    print(f"Invalid segment {seg_idx}: {sig_type}, {start_time}-{end_time}s, "
+                        f"indices {start_idx}-{end_idx}, data_shape={data.shape}")
+                    segment_valid = False
+                    break
+                
+                # 临时存储这个段的信号
+                temp_seg_signals[sig_type] = {
+                    'data': data[..., start_idx:end_idx],
+                    'channels': sig.get('channels', []),
+                    'freq': freq,
+                }
+            
+            # 如果这个段对所有信号类型都有效，则添加到堆叠列表中
+            if segment_valid:
+                # 添加信号段到各自的列表
+                for sig_type, seg_signal in temp_seg_signals.items():
+                    stacked_signals[sig_type].append(seg_signal['data'])
+                
+                # 添加标签段到各自的列表
+                for label_type, label_info in seg['value'].items():
+                    if 'data' in label_info:
+                        stacked_labels[label_type].append(label_info['data'])
+                
+                # 记录段信息
+                valid_segments_info.append({
+                    'segment_idx': seg_idx,
+                    'start_time': start_time,
+                    'end_time': end_time,
+                    'duration': end_time - start_time,
+                })
+                
+                # print(f"Added segment {seg_idx}: {start_time:.1f}-{end_time:.1f}s")
+        
+        # 在第一个维度（axis=0）上堆叠每种信号类型
+        final_stacked_signals = {}
+        for sig_type, signal_list in stacked_signals.items():
+            if len(signal_list) > 0:
+                # 在第一个维度（axis=0）上堆叠
+                stacked_data = np.stack(signal_list, axis=0)
+                final_stacked_signals[sig_type] = {
+                    'data': stacked_data,
+                    'channels': signals[sig_type].get('channels', []),
+                    'freq': signals[sig_type]['freq'],
+                }
+                print(f"Stacked {sig_type}: {len(signal_list)} segments -> {stacked_data.shape}")
+        
+        # 在第一个维度（axis=0）上堆叠每种标签类型
+        final_stacked_labels = {}
+        for label_type, label_list in stacked_labels.items():
+            if len(label_list) > 0:
+                # 在第一个维度（axis=0）上堆叠
+                stacked_label_data = np.stack(label_list, axis=0)
+                final_stacked_labels[label_type] = {
+                    'data': stacked_label_data
+                }
+                print(f"Stacked {label_type}: {len(label_list)} segments -> {stacked_label_data.shape}")
+        
+        # 计算总时长
+        total_duration = sum([info['duration'] for info in valid_segments_info])
+        
+        segments.append({
+            'signals': final_stacked_signals,
+            'labels': final_stacked_labels,
+            'info': {
+                'num_epoch': len(valid_segments_info),
+                'total_duration': total_duration,
+            }
+        })
+        return segments
+        
+    def get_subject_id(self, file_name) -> str:
+        return file_name.split('-')[0]
+    
+    def get_segment_id(self, file_name, idx) -> str:
+        return f'{idx}_{file_name}'
 
-        result = {}
-        for signal_type in self.signal_types:
-            result[signal_type] = self.read_signal(signal_record, signal_index, signal_type)
+# telemetry ['EEG Fpz-Cz', 'EEG Pz-Oz', 'EOG horizontal', 'EMG submental', 'Marker']
+class SleepEDFTelemetryDataset(BaseDataset):
+    def __init__(
+        self,
+        # Cassette dataset parameters
+        crop_wake_mins: int = 30,
+        # common parameters
+        root_path: str = './sleep-edf-database-expanded-1.0.0/sleep-telemetry',
+        start_offset: float = 0.0,
+        end_offset: float = 0.0,
+        include_end: bool = False,
+        before_segment_transform: Union[None, Callable] = None,
+        offline_signal_transform: Union[None, Callable] = None,
+        offline_label_transform: Union[None, Callable] = None,
+        online_signal_transform: Union[None, Callable] = None,
+        online_label_transform: Union[None, Callable] = None,
+        io_path: Union[None, str] = None,
+        io_size: int = 1048576,
+        io_chunks: int = None,
+        io_mode: str = 'hdf5',
+        num_worker: int = 0,
+        lazy_threshold: int = 128,
+        verbose: bool = True,
+    ) -> None:
+        # pass all arguments to super class
+        params = {
+            'root_path': root_path,
+            'start_offset': start_offset,
+            'end_offset': end_offset,
+            'include_end': include_end,
+            'before_segment_transform': before_segment_transform,
+            'offline_signal_transform': offline_signal_transform,
+            'offline_label_transform': offline_label_transform,
+            'online_signal_transform': online_signal_transform,
+            'online_label_transform': online_label_transform,
+            'io_path': io_path,
+            'io_size': io_size,
+            'io_chunks': io_chunks,
+            'io_mode': io_mode,
+            'num_worker': num_worker,
+            'lazy_threshold': lazy_threshold,
+            'verbose': verbose
+        }
+        self.crop_wake_mins = crop_wake_mins
+        super().__init__(**params)
 
-        result['label'] = info['label']
-        if self.label_transform is not None:
-            result['label'] = self.label_transform(result['label'])
-        if self.online_transform is not None:
-            for signal_type in self.signal_types:
-                if signal_type in self.online_transform:
-                    result[signal_type] = self.online_transform[signal_type](result[signal_type])
-                    if 'ToIndexChannels' not in [transform.__class__.__name__ for transform in self.online_transform[signal_type].transforms]:
-                        if 'channels' in result[signal_type]:
-                            del result[signal_type]['channels']
-                else:
-                    del result[signal_type]['channels']
-        else:
-            for signal_type in self.signal_types:
-                if 'channels' in result[signal_type]:
-                    del result[signal_type]['channels']
-        return result
+    def set_records(self, root_path, **kwargs):
+        recording_scoring_pairs = []
+
+        recording_scoring_pairs = list_records(root_path)
+
+        return recording_scoring_pairs
+
+    def read_record(self, record: Tuple, **kwargs) -> Dict:
+        recording_file, scoring_file = record
+
+        raw = mne.io.read_raw_edf(recording_file, preload=True)
+        annotation = mne.read_annotations(scoring_file)
+        raw.set_annotations(annotation, emit_warning=False)
+        data = raw.get_data(units='uV')
+        channels = ['Fpz-Cz', 'Pz-Oz', 'horizontal', 'submental']
+        if self.crop_wake_mins > 0:
+            # Find first and last sleep stages
+            mask = [x[-1] in ["1", "2", "3", "4", "R"] for x in annotation.description]
+            sleep_event_inds = np.where(mask)[0]
+
+            # Crop raw
+            tmin = annotation[int(sleep_event_inds[0])]["onset"] - self.crop_wake_mins * 60
+            tmax = annotation[int(sleep_event_inds[-1])]["onset"] + self.crop_wake_mins * 60
+            raw.crop(tmin=max(tmin, raw.times[0]), tmax=min(tmax, raw.times[-1]))
+        print(data.shape)
+        freq = raw.info['sfreq']
+        eeg = {
+            'data': data[0:2, :],
+            'freq': freq,
+            'channels': ['Fpz-Cz', 'Pz-Oz']
+        }
+        eog = {
+            'data': data[2:3, :],
+            'freq': freq,
+            'channels': ['horizontal']
+        }
+        emg = {
+            'data': data[3:4, :],
+            'freq': freq,
+            'channels': ['submental']
+        }
+        events, event_id = mne.events_from_annotations(
+            raw, chunk_duration=30.)
+        print(f"Number of events: {len(events)}")
+        print(events)
+        if 'Sleep stage ?' in event_id.keys():
+            event_id.pop('Sleep stage ?')
+        if 'Movement time' in event_id.keys():
+            event_id.pop('Movement time')
+        # 睡眠阶段映射
+        stage_mapping = {
+            'W': 0,  # Wake
+            '1': 1,  # NREM Stage 1
+            '2': 2,  # NREM Stage 2
+            '3': 3,  # NREM Stage 3
+            '4': 4,  # NREM Stage 4
+            'R': 5,  # REM
+        }
+        id_to_event = {v: k for k, v in event_id.items()}
+        segments = []
+        for i in range(len(events)):
+            stim = events[i][2]
+            if stim not in id_to_event:
+                continue
+            start = events[i][0] / freq
+            end = start + 30.0
+            stage_char = str(id_to_event[stim][-1])
+            stage_numeric = stage_mapping.get(stage_char, -1)
+            segments.append({
+                'start': start,
+                'end': end,
+                'value': {
+                    'stage': {
+                        'data': stage_numeric
+                    }
+                }
+            })
+        return {
+            'signals': {
+                'eeg': eeg,
+                'eog': eog,
+                'emg': emg,
+            },
+            'labels': {
+                'segments': segments,
+            },
+            'meta': {
+                'file_name': os.path.splitext(os.path.basename(recording_file))[0],
+            }
+        }
+        
+    def process_record(
+        self,
+        signals,
+        labels,
+        meta,
+        **kwargs
+    ) -> Generator[Dict[str, Any], None, None]:
+        signals = self.apply_transform(self.before_segment_transform, signals)
+        if signals is None:
+            print(f"Skip file {meta['file_name']} due to transform error.")
+            return None
+        for idx, segment in enumerate(self.segment_split(signals, labels)):
+            seg_signals = segment['signals']
+            seg_label = segment['labels']
+            seg_info = segment['info']
+            # print(signals['eeg']['data'].shape)
+            # print(label['label']['data'])
+            segment_id = self.get_segment_id(meta['file_name'], idx)
+            seg_signals = self.apply_transform(self.offline_signal_transform, seg_signals)
+            seg_label = self.apply_transform(self.offline_label_transform, seg_label)
+            if seg_signals is None or seg_label is None:
+                print(f"Skip segment {segment_id} due to transform error.")
+                continue
+            
+            seg_info.update({
+                'subject_id': self.get_subject_id(meta['file_name']),
+                'session_id': self.get_session_id(),
+                'segment_id': self.get_segment_id(meta['file_name'], idx),
+                'trial_id': self.get_trial_id(),
+            })
+            yield self.assemble_segment(
+                key=segment_id,
+                signals=seg_signals,
+                labels=seg_label,
+                info=seg_info,
+            )
+    def segment_split(
+        self,
+        signals: Dict[str, Any],
+        labels: Dict[str, Any],
+    ) -> list:
+        """
+        对 signals 中所有信号类型按 label['segments'] 分段，将所有段按信号类型和标签类型分别堆叠，
+        返回堆叠后的信号和标签。
+        label['segments'] 的 start/end 单位为秒。
+        """
+        # 存储每种信号类型的所有段
+        stacked_signals = {}
+        stacked_labels = {}
+        valid_segments_info = []
+        segments = []
+        # 初始化每种信号类型的列表
+        for sig_type in signals.keys():
+            stacked_signals[sig_type] = []
+        
+        # 初始化标签类型的列表（从第一个segment中获取标签类型）
+        if len(labels['segments']) > 0:
+            sample_labels = labels['segments'][0]['value']
+            for label_type in sample_labels.keys():
+                stacked_labels[label_type] = []
+        
+        for seg_idx, seg in enumerate(labels['segments']):
+            start_time = seg['start']
+            end_time = seg['end']
+            
+            # 检查这个段是否对所有信号类型都有效
+            segment_valid = True
+            temp_seg_signals = {}
+            
+            for sig_type, sig in signals.items():
+                freq = sig['freq']
+                data = sig['data']
+                start_idx = int(round(start_time * freq))
+                end_idx = int(round(end_time * freq))
+                
+                if self.include_end:
+                    end_idx += 1
+                    
+                # 检查索引是否有效
+                if start_idx < 0 or end_idx > data.shape[-1] or start_idx >= end_idx:
+                    print(f"Invalid segment {seg_idx}: {sig_type}, {start_time}-{end_time}s, "
+                        f"indices {start_idx}-{end_idx}, data_shape={data.shape}")
+                    segment_valid = False
+                    break
+                
+                # 临时存储这个段的信号
+                temp_seg_signals[sig_type] = {
+                    'data': data[..., start_idx:end_idx],
+                    'channels': sig.get('channels', []),
+                    'freq': freq,
+                }
+            
+            # 如果这个段对所有信号类型都有效，则添加到堆叠列表中
+            if segment_valid:
+                # 添加信号段到各自的列表
+                for sig_type, seg_signal in temp_seg_signals.items():
+                    stacked_signals[sig_type].append(seg_signal['data'])
+                
+                # 添加标签段到各自的列表
+                for label_type, label_info in seg['value'].items():
+                    if 'data' in label_info:
+                        stacked_labels[label_type].append(label_info['data'])
+                
+                # 记录段信息
+                valid_segments_info.append({
+                    'segment_idx': seg_idx,
+                    'start_time': start_time,
+                    'end_time': end_time,
+                    'duration': end_time - start_time,
+                })
+                
+                # print(f"Added segment {seg_idx}: {start_time:.1f}-{end_time:.1f}s")
+        
+        # 在第一个维度（axis=0）上堆叠每种信号类型
+        final_stacked_signals = {}
+        for sig_type, signal_list in stacked_signals.items():
+            if len(signal_list) > 0:
+                # 在第一个维度（axis=0）上堆叠
+                stacked_data = np.stack(signal_list, axis=0)
+                final_stacked_signals[sig_type] = {
+                    'data': stacked_data,
+                    'channels': signals[sig_type].get('channels', []),
+                    'freq': signals[sig_type]['freq'],
+                }
+                print(f"Stacked {sig_type}: {len(signal_list)} segments -> {stacked_data.shape}")
+        
+        # 在第一个维度（axis=0）上堆叠每种标签类型
+        final_stacked_labels = {}
+        for label_type, label_list in stacked_labels.items():
+            if len(label_list) > 0:
+                # 在第一个维度（axis=0）上堆叠
+                stacked_label_data = np.stack(label_list, axis=0)
+                final_stacked_labels[label_type] = {
+                    'data': stacked_label_data
+                }
+                print(f"Stacked {label_type}: {len(label_list)} segments -> {stacked_label_data.shape}")
+        
+        # 计算总时长
+        total_duration = sum([info['duration'] for info in valid_segments_info])
+        
+        segments.append({
+            'signals': final_stacked_signals,
+            'labels': final_stacked_labels,
+            'info': {
+                'num_epoch': len(valid_segments_info),
+                'total_duration': total_duration,
+            }
+        })
+        return segments
+    
+    def get_subject_id(self, file_name) -> str:
+        return file_name.split('-')[0]
+    
+    def get_segment_id(self, file_name, idx) -> str:
+        return f'{idx}_{file_name}'
+
+
+
+# from dataset.sleepedfx_dataset import SleepEDFCassetteDataset
+# from dataset.transform import SlideWindow, Select, PickChannels, Mapping, Transpose, Reshape, ExpandDims, Compose
+
+# before_segment_transform =[
+#     PickChannels(channels=['Fpz-Cz'], source='eeg', target='eeg'),
+# ]
+# offline_signal_transform = [
+#     SlideWindow(window_size=20, stride=20, axis=0, source='eeg', target='eeg'),
+#     SlideWindow(window_size=20, stride=20, axis=0, source='eog', target='eog'),
+#     Select(key=['eeg', 'eog']),
+# ]
+# offline_label_transform = [
+#     Mapping(
+#         mapping={
+#             0:0,  # Sleep stage W
+#             1:1,  # Sleep stage N1
+#             2:2,  # Sleep stage N2
+#             3:3,  # Sleep stage N3
+#             4:3, # Sleep stage N4
+#             5:4,  # Sleep stage R
+#         },source='stage', target='stage'),
+#     SlideWindow(window_size=20, stride=20, axis=0, source='stage', target='stage'),
+# ]
+# online_signal_transform = [
+#     Compose(transforms=[
+#         Transpose(axes=(1,0,2)),
+#         Reshape(shape=(1, -1)),
+#         ExpandDims(axis=-1)],source='eeg', target='eeg'),
+#     Compose(transforms=[
+#         Transpose(axes=(1,0,2)),
+#         Reshape(shape=(1, -1)),
+#         ExpandDims(axis=-1)],source='eog', target='eog'),
+# ]
+# dataset = SleepEDFCassetteDataset(
+#     root_path='/mnt/ssd/lingyus/sleep-edf-20',
+#     # root_path='/mnt/ssd/lingyus/test',
+#     io_path='/mnt/ssd/lingyus/tyee_sleepedfx_20/train',
+#     io_mode='hdf5',
+#     before_segment_transform=before_segment_transform,
+#     offline_signal_transform=offline_signal_transform,
+#     offline_label_transform=offline_label_transform,
+#     online_signal_transform=online_signal_transform,
+#     io_chunks=20,
+#     crop_wake_mins=30,
+#     num_worker=8,
+# )

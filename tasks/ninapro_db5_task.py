@@ -18,28 +18,24 @@ class NinaproDB5Task(PRLTask):
     def __init__(self, cfg):
         super().__init__(cfg)
 
-        self.train_dataset = None
-        self.val_dataset = None
-        self.test_dataset = None
-        self.model_select = get_nested_field(cfg, 'model.select', '')
-        self.model_params = get_nested_field(cfg, 'model', {})
-
-
     def build_model(self):
         module_name, class_name = self.model_select.rsplit('.', 1)
         model_name = lazy_import_module(f'models.{module_name}', class_name)
         model = model_name(**self.model_params)
-        # print(model)
+        
         return model
     
     def train_step(self, model: torch.nn.Module, sample: dict[str, torch.Tensor], *args, **kwargs):
-        x = sample['emg']['signals']
-        # 将信号沿着通道维度拼接起来
-        x = x.float()
+        x = sample['emg'].float()
         # print(x.shape)
-        label = sample['label']
+        label = sample['gesture']
+        # finetune
+        # label = torch.argmax(label, dim=1)
         pred = model(x)
+        
         loss = self.loss(pred, label)
+        # softmax = torch.nn.Softmax(dim=1)
+        # pred = softmax(pred)
         return{
             'loss': loss,
             'output': pred,
@@ -48,12 +44,20 @@ class NinaproDB5Task(PRLTask):
 
     @torch.no_grad()
     def valid_step(self, model: torch.nn.Module, sample: dict[str, torch.Tensor], *args, **kwargs):
-        x= sample['emg']['signals']
-        x = x.float()
+        x= sample['emg'].float()
+        # print(x)
         # print(x.shape)
-        label = sample['label']
+        label = sample['gesture']
         pred = model(x)
+        # print(pred.shape, label.shape)
+        # print(f'valid:{x}')
+        label = torch.argmax(label, dim=1)
+        # print(label)
         loss = self.loss(pred, label)
+        softmax = torch.nn.Softmax(dim=1)
+        pred = softmax(pred)
+        # pred_true = torch.argmax(pred, dim=1)
+        # print(pred_true, label)
         return{
             'loss': loss,
             'output': pred,

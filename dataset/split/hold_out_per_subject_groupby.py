@@ -138,6 +138,7 @@ class HoldOutPerSubjectGroupby(BaseSplit):
         subjects = self.subjects
 
         if subject is not None:
+            subject = str(subject)
             assert subject in subjects, f'The subject should be in the subject list {subjects}.'
 
         for local_subject in subjects:

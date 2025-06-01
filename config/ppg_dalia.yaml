@@ -20,11 +20,15 @@ dataset:
   split: 
     select: LosoRotatingCrossSplit
     init_params:
-      split_path: /mnt/ssd/lingyus/tyee_ppgdalia/split
-      n_splits: 5
+      split_path: /mnt/ssd/lingyus/tyee_ppgdalia/split_official
+      n_splits: 4
       group_by: subject_id
       shuffle: true
       random_state: 7
+    # select: LeaveOneOutEAndT
+    # init_params:
+    #   split_path: /mnt/ssd/lingyus/tyee_ppgdalia/split
+    #   group_by: subject_id
 
   
   offline_signal_transform:
@@ -152,12 +156,12 @@ dataset:
 
 
 lr_scheduler:
-  # select: ReduceLROnPlateauScheduler
-  # patience_epochs: 3
-  # factor: 0.5
-  # min_lr: 1e-6
-  # metric_source: train
-  # metric: loss
+  select: ReduceLROnPlateauScheduler
+  patience_epochs: 3
+  factor: 0.5
+  min_lr: 1e-6
+  metric_source: train
+  metric: loss
 
 model:
   select: beliefppg.beliefppg.BeliefPPG
@@ -179,10 +183,10 @@ task:
 trainer:
   fp16: true
   # total_steps: 31980
-  total_epochs: 100
-  update_interval: 10
+  total_epochs: 50
+  update_interval: 1
   # save_interval: 1066
-  eval_interval: 1
+  # eval_interval: 1
   log_interval: 20
   eval_metric:
     select: mae

@@ -104,6 +104,10 @@ class KFoldPerSubjectCross(BaseSplit):
 
         # Filter and sort unique subject IDs
         subjects = list(set(map(indice_file_to_subject, indice_files)))
+        subjects = sorted(subjects)
+        # if len(subjects) == 16:
+        #     subjects = [3, 16, 11, 10, 4, 6, 2, 7, 9, 12, 13, 8, 15, 14, 1, 5]
+        print(f'Subjects: {subjects}')
         return subjects
 
     @property
@@ -123,6 +127,8 @@ class KFoldPerSubjectCross(BaseSplit):
 
         # Filter and sort unique fold IDs
         fold_ids = list(set(map(indice_file_to_fold_id, indice_files)))
+        fold_ids = sorted(fold_ids)
+        print(f'Fold IDs: {fold_ids}')
         return fold_ids
 
     def split(
@@ -160,6 +166,7 @@ class KFoldPerSubjectCross(BaseSplit):
         fold_ids = self.fold_ids
 
         if subject is not None:
+            subject = str(subject)
             assert subject in subjects, f'The subject should be in the subject list {subjects}.'
 
         for local_subject in subjects:
@@ -167,6 +174,7 @@ class KFoldPerSubjectCross(BaseSplit):
                 continue
 
             for fold_id in fold_ids:
+                log.info(f'Processing subject {local_subject} fold {fold_id}.')
                 train_info = pd.read_csv(
                     os.path.join(self.split_path, f'train_subject_{local_subject}_fold_{fold_id}.csv')
                 )

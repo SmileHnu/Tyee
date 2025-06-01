@@ -21,50 +21,55 @@ from typing import Any, Callable, Union, Dict, Generator
 class NinaproDB5Dataset(BaseDataset):
     def __init__(
         self,
-        root_path: str = './NinaproDB5',
-        chunk_size: int = 40,
-        overlap: int = 32,
-        num_channel: int = 16,
-        signal_types: list = ['emg'],
-        online_transform: Union[None, Callable] = None,
-        offline_transform: Union[None, Callable] = None,
-        label_transform: Union[None, Callable] = None,
-        before_trial: Union[None, Callable] = None,
-        after_trial: Union[Callable, None] = None,
-        after_session: Union[Callable, None] = None,
-        after_subject: Union[Callable, None] = None,
+        # NinaproDB5 specific parameters
+        wLen: float = 0.25,
+        stepLen: float = 0.05,
+        balance: bool = True,
+        include_transitions: bool = False,
+        # BaseDataset parameters
+        root_path: str = './NinaProDB5',
+        start_offset: float = 0,
+        end_offset: float = 0,
+        include_end: bool = False,
+        before_segment_transform: Union[None, Callable] = None,
+        offline_signal_transform: Union[None, Callable] = None,
+        offline_label_transform: Union[None, Callable] = None,
+        online_signal_transform: Union[None, Callable] = None,
+        online_label_transform: Union[None, Callable] = None,
         io_path: Union[None, str] = None,
         io_size: int = 1048576,
-        io_mode: str = 'lmdb',
+        io_chunks: int = None,
+        io_mode: str = 'hdf5',
         num_worker: int = 0,
+        lazy_threshold: int = 128,
         verbose: bool = True,
     ) -> None:
-        # if io_path is None:
-        #     io_path = get_random_dir_path(dir_prefix='datasets')
-
         # pass all arguments to super class
         params = {
+            # BaseDataset parameters
             'root_path': root_path,
-            'chunk_size': chunk_size,
-            'overlap': overlap,
-            'num_channel': num_channel,
-            'signal_types': signal_types,
-            'online_transform': online_transform,
-            'offline_transform': offline_transform,
-            'label_transform': label_transform,
-            'before_trial': before_trial,
-            'after_trial': after_trial,
-            'after_session': after_session,
-            'after_subject': after_subject,
+            'start_offset': start_offset,
+            'end_offset': end_offset,
+            'include_end': include_end,
+            'before_segment_transform': before_segment_transform,
+            'offline_signal_transform': offline_signal_transform,
+            'offline_label_transform': offline_label_transform,
+            'online_signal_transform': online_signal_transform,
+            'online_label_transform': online_label_transform,
             'io_path': io_path,
             'io_size': io_size,
+            'io_chunks': io_chunks,
             'io_mode': io_mode,
             'num_worker': num_worker,
+            'lazy_threshold': lazy_threshold,
             'verbose': verbose
         }
-        # save all arguments to __dict__
-        self.__dict__.update(params)
-        super().__init__(**params) 
+        # NinaproDB5 specific parameters
+        self.wlen = wLen
+        self.steplen = stepLen
+        self.balance = balance
+        self.include_transitions = include_transitions
+        super().__init__(**params)
         
     def set_records(self, root_path: str = None, **kwargs):
         assert os.path.exists(
@@ -80,140 +85,238 @@ class NinaproDB5Dataset(BaseDataset):
         
         return file_list
 
-    @staticmethod
-    def read_record(record: str, **kwargs):
+    def read_record(self, record: str, **kwargs):
         
         a_data = scio.loadmat(record)
-        emg = np.array(a_data['emg']).astype(np.float64).T
+        emg_data = np.array(a_data['emg']).astype(np.float64).T
         restimulus = np.array(a_data['restimulus'])
-        sampling_rate = a_data['frequency'].astype(np.float64)
-        glove = np.array(a_data['glove']).astype(np.float64)
-        result = {
-            'emg': {
-                'signals': emg,
-                'sampling_rate': sampling_rate,
-                'channels': [f"sEMG{i}" for i in range(emg.shape[0])],
-            },
-            'restimulus': restimulus,
-            'glove': glove,
-            'freq': sampling_rate,
-            
+        freq = float(np.squeeze(a_data['frequency']))
+        print(freq)
+
+        emg = {
+            'data': emg_data,
+            'freq': freq,
+            'channels': [f'{i}' for i in range(1, emg_data.shape[0] + 1)],
         }
-        return result
-        
-    @staticmethod
-    def process_record(
-        record, 
-        result,
-        signal_types,
-        chunk_size,
-        overlap,
-        offline_transform,
-        **kwargs
-    ) -> Generator[Dict[str, Any], None, None]:
+        windows = []
+        gestures = []
+        for idx in range(0, restimulus.shape[0] - int(self.wlen * freq) + 1, int(self.steplen * freq)):
+            start = idx / freq
+            end = start + self.wlen
+            # print(f"start: {start}, end: {end}")
+            windows.append({
+                'start': start,
+                'end': end,
+            })
+            element = restimulus[idx:idx + int(self.wlen * freq)]
+            gestures.append(element)
+        if self.balance:
+            indices = self.balance_gesture_classifier(gestures, self.include_transitions)
+            # print(f"balance indices: {len(indices)}")
+            # print(f"total indices: {len(gestures)}")
+            # return
+            gestures = [gestures[i] for i in indices]
+            windows = [windows[i] for i in indices]
+        gestures = self.contract_gesture_classifier(gestures, self.include_transitions)
+
+        assert len(gestures) == len(windows), f"labels and windows length mismatch: {len(gestures)} != {len(windows)}"
+        segments = []
         file_name = os.path.splitext(os.path.basename(record))[0]
-        subject_id = file_name.split('_')[0]
-        session_id = file_name.split('_')[1]
-        offset = {
-            'E1': 0,
-            'E2': 12,
-            'E3': 12+17,
-        }
-        if not offline_transform is None:
-            try:
-                for signal_type in signal_types:
-                    if signal_type in offline_transform:
-                        result[signal_type] = offline_transform[signal_type](result[signal_type])
-            except (KeyError, ValueError) as e:
-                print(f'Error in processing record {file_name}: {e}')
-                return None
-        restimulus = result['restimulus'].copy()
-        glove = result['glove'].copy()
-        data = result['emg']['signals'].copy()
-        sampling_rate = result['emg']['sampling_rate'].copy()
-        freq = result['freq'].copy()
-        channels = result['emg']['channels'].copy()
-        mask = restimulus > 0
-        label_array, num_segments = label(mask)
-        # 如果采样率发生变化，重新映射 glove 和 restimulus
-        if sampling_rate != freq:
-            # 计算原始时间轴和新时间轴
-            original_time = np.linspace(0, len(restimulus) / freq, len(restimulus))
-            new_time = np.linspace(0, data.shape[1] / sampling_rate, data.shape[1])  # 修正为数据的时间轴
-
-
-            # 使用插值函数重新映射 restimulus 和 glove
-            restimulus_interp = interp1d(original_time, restimulus, kind='nearest', fill_value="extrapolate")
-            glove_interp = interp1d(original_time, glove, kind='linear', fill_value="extrapolate")
-
-            # 更新 restimulus 和 glove
-            restimulus = restimulus_interp(new_time).astype(restimulus.dtype)
-            glove = glove_interp(new_time).astype(glove.dtype)
-        
-        idx = 0 
-        for seg_id in range(1, num_segments + 1):  # 遍历每个手势段
-
-            segment_indices = np.where(label_array == seg_id)[0]  # 该段的索引
-            segment_emg = data[:, segment_indices]  # 取出对应的 sEMG 片段（调整索引顺序）
-            segment_label = restimulus[segment_indices]  # 取出对应的标签
-
-            unique_labels = np.unique(segment_label)
-            if len(unique_labels) > 1:
-                raise ValueError(f"Segment {seg_id} 存在多个不同标签: {unique_labels}")
-
-            hand_gesture = unique_labels[0] + offset[session_id] - 1  # 该段唯一的手势标签
-            
-            # 滑动窗口提取样本
-            # 计算重叠步长
-            stride = chunk_size - overlap
-            for start in range(0, len(segment_indices) - chunk_size + 1, stride):
-                emg = segment_emg[:, start:start + chunk_size]  # 取窗口内的信号，确保形状是 (通道数, 采样点)
-                clip_id = f'{idx}_{file_name}'
-
-                info = {
-                    'clip_id': clip_id,
-                    'subject_id': subject_id,
-                    'session_id': f'{subject_id}_{session_id}',
-                    'trial_id': f'{subject_id}_{session_id}_{hand_gesture}',
-                    'stimulus_id': f'{subject_id}_{session_id}_{hand_gesture}_{(seg_id-1) % 6}',
-                    'label': hand_gesture
-                }
-                result = {
-                    'key': clip_id,
-                    'emg': {
-                        'signals': emg,  # 确保最终存储的信号形状是 (通道数, 采样点)
-                        'sampling_rate': sampling_rate,
-                        'channels': channels
+        exercise = int(file_name.split('_')[1][1:])
+        # print(f"exercise: {exercise}")
+        # return
+        exercise_idx = [0, 12, 12+17]
+        for idx, window in enumerate(windows):
+            start = window['start']
+            end = window['end']
+            segment = {
+                'start': start,
+                'end': end,
+                'value': {
+                    'gesture':{
+                        'data': gestures[idx] if gestures[idx] == 0 else gestures[idx] + exercise_idx[exercise-1],
                     }
                 }
-                result.update({
-                    'info': info
-                })
-                yield result
-                idx += 1
-
-    def __getitem__(self, index):
-        info = self.read_info(index)
+            }
+            segments.append(segment)
         
-        signal_index = str(info['clip_id'])
-        signal_record = str(info['record_id'])
+        return {
+            'signals':{
+                'emg': emg,
+            },
+            'labels':{
+                'segments': segments,
+            },
+            'meta':{
+                'file_name': file_name,
+            }
 
-        result = {}
-        for signal_type in self.signal_types:
-            result[signal_type] = self.read_signal(signal_record, signal_index, signal_type)
+        }
 
-        result['label'] = info['label']
-        if self.label_transform is not None:
-            result['label'] = self.label_transform(result['label'])
-        if self.online_transform is not None:
-            for signal_type in self.signal_types:
-                if signal_type in self.online_transform:
-                    result[signal_type] = self.online_transform[signal_type](result[signal_type])
-                if 'ToIndexChannels' not in [transform.__class__.__name__ for transform in self.online_transform[signal_type].transforms]:
-                    if 'channels' in result[signal_type]:
-                        del result[signal_type]['channels']
+        
+    def process_record(
+        self,
+        signals,
+        labels,
+        meta,
+        **kwargs
+    ) -> Generator[Dict[str, Any], None, None]:
+        signals = self.apply_transform(self.before_segment_transform, signals)
+        if signals is None:
+            print(f"Skip file {meta['file_name']} due to transform error.")
+            return None
+        for idx, segment in enumerate(self.segment_split(signals, labels)):
+            seg_signals = segment['signals']
+            seg_label = segment['labels']
+            seg_info = segment['info']
+            segment_id = self.get_segment_id(meta['file_name'], idx)
+            gesture = seg_label['gesture']['data']
+
+            seg_signals = self.apply_transform(self.offline_signal_transform, seg_signals)
+            seg_label = self.apply_transform(self.offline_label_transform, seg_label)
+            if seg_signals is None or seg_label is None:
+                print(f"Skip segment {segment_id} due to transform error.")
+                continue
+            
+            seg_info.update({
+                'subject_id': self.get_subject_id(meta['file_name']),
+                'session_id': self.get_session_id(meta['file_name']),
+                'gesture': gesture,
+                'segment_id': self.get_segment_id(meta['file_name'], idx),
+                'trial_id': self.get_trial_id(idx),
+            })
+            yield self.assemble_segment(
+                key=segment_id,
+                signals=seg_signals,
+                labels=seg_label,
+                info=seg_info,
+            )
+
+    def get_subject_id(self, file_name) -> str:
+        # Extract the subject ID from the file name
+        # Assuming the file name format is like "subject_id_record_id"
+        # You can modify this logic based on your actual file naming convention
+        return file_name.split('_')[0][1:]
+    
+    def get_session_id(self, file_name) -> str:
+        # Extract the session ID from the file name
+        # Assuming the session ID is not available in the file name
+        # You can modify this logic based on your actual file naming convention
+        return file_name.split('_')[1][1:]
+    
+    def get_segment_id(self, file_name, idx) -> str:
+        # Extract the segment ID from the file name
+        # Assuming the segment ID is the same as the file name in this case
+        return f'{idx}_{file_name}'
+    
+    def get_trial_id(self, idx) -> str:
+        # Extract the trial ID from the index
+        # Assuming the trial ID is the same as the index in this case
+        return str(idx)
+
+    def balance_gesture_classifier(self, restimulus, include_transitions=False):
+        """ Balances distribution of restimulus by minimizing zero (rest) gestures.
+
+        Args:
+            restimulus (tensor): restimulus tensor
+            args: argument parser object
+
+        """
+        numZero = 0
+        indices = []
+        count_dict = {}
+        
+        # First pass: count the occurrences of each unique tensor
+        for x in range(len(restimulus)):
+            unique_elements = np.unique(restimulus[x])
+            if len(unique_elements) == 1:
+                element = unique_elements.item()
+                element = (element, )
+                if element in count_dict:
+                    count_dict[element] += 1
+                else:
+                    count_dict[element] = 1
+
+            else:
+                if include_transitions:
+                    elements = (restimulus[x][0][0].item(), restimulus[x][0][-1].item()) # take first and last gesture (transition window)
+
+                    if elements in count_dict:
+                        count_dict[elements] += 1
+                    else:
+                        count_dict[elements] = 1
+                    
+        # Calculate average count of non-zero elements
+        non_zero_counts = [count for key, count in count_dict.items() if key != (0,)]
+        print(count_dict)
+        print(non_zero_counts)
+        print(sum(non_zero_counts))
+        if non_zero_counts:
+            avg_count = sum(non_zero_counts) / len(non_zero_counts)
         else:
-            for signal_type in self.signal_types:
-                if 'channels' in result[signal_type]:
-                    del result[signal_type]['channels']
-        return result
+            avg_count = 0  # Handle case where there are no non-zero unique elements
+        print(f"avg_count: {avg_count}")
+        for x in range(len(restimulus)):
+            unique_elements = np.unique(restimulus[x])
+            if len(unique_elements) == 1:
+                gesture = unique_elements.item()
+                if gesture == 0: 
+                    if numZero < avg_count:
+                        indices.append(x)
+                    numZero += 1 # Rest always in partial
+                else:
+                    indices.append(x)
+            else:
+                if include_transitions:
+                    indices.append(x)
+        return indices
+    
+    def contract_gesture_classifier(self, restim, include_transitions=False):
+        labels = []
+        for x in range(len(restim)):
+            if include_transitions:
+                gesture = int(restim[x][-1])  # 取最后一个标签
+            else:
+                gesture = int(restim[x][0])   # 取第一个标签
+            labels.append(gesture)
+
+        return labels
+
+
+# from dataset.ninapro_db5_dataset import NinaproDB5Dataset
+# from dataset.transform import Mapping, Filter, ImageResize, NotchFilter, ToImage, ToNumpyFloat16,Reshape, OneHotEncode
+# onffline_label_transform = [
+#     Mapping(mapping={
+#         0: 0,
+#         17: 1,
+#         18: 2,
+#         20: 3,
+#         21: 4,
+#         22: 5,
+#         25: 6,
+#         26: 7,
+#         27: 8,
+#         28: 9,
+#     }, source='gesture', target='gesture'),
+#     OneHotEncode(num=10, source='gesture', target='gesture'),
+# ]
+# offline_signal_transform = [
+#     Filter(h_freq=None, l_freq=5.0, method='iir', iir_params=dict(order=3, ftype='butter', padlen=12), phase='zero', source='emg', target='emg'),
+#     # NotchFilter(freqs=[50.0], method='iir', source='emg', target='emg'),
+#     Reshape(shape=16*50, source='emg', target='emg'),
+#     ToImage(length=16, width=50, resize_length_factor=1, native_resnet_size=224, cmap='viridis', source='emg', target='emg'),
+#     ToNumpyFloat16(source='emg', target='emg'),
+# ]
+# online_signal_transform = [
+#     ImageResize(size=(224,224), source='emg', target='emg')
+# ]
+# dataset = NinaproDB5Dataset(
+#     root_path='/mnt/ssd/lingyus/NinaproDB5E2',
+#     io_path='/mnt/ssd/lingyus/tyee_ninapro_db5/train',
+#     # io_chunks=224,
+#     offline_label_transform=onffline_label_transform,
+#     offline_signal_transform=offline_signal_transform,
+#     # online_signal_transform=online_signal_transform,
+#     io_mode='hdf5',
+#     num_worker=4,
+# )

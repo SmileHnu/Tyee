@@ -231,10 +231,11 @@ class BCICIV2ADataset(BaseDataset):
     
 
 # from dataset.bciciv2a_dataset import BCICIV2ADataset
-# from dataset.transform import Cheby2Filter
+# from dataset.transform import Cheby2Filter, Select
 
 # offline_signal_transform = [
 #     Cheby2Filter(l_freq=4, h_freq=40, source='eeg', target='eeg'),
+#     Select(key=['eeg']),
 # ]
 # for i in range(3, 10):
 #     dataset = BCICIV2ADataset(

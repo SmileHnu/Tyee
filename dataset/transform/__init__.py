@@ -19,3 +19,5 @@ from .for_each import *
 from .lambd import *
 from .pad import *
 from .multi import *
+from .to import *
+from .one_hot_encode import *

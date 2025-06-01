@@ -114,9 +114,20 @@ def convert_sci_notation(data):
     elif isinstance(data, list):
         return [convert_sci_notation(item) for item in data]
     elif isinstance(data, str):
+        data_stripped = data.strip()
+        # Handle boolean strings case-insensitively first
+        if data_stripped.lower() == "true":
+            return True
+        if data_stripped.lower() == "false":
+            return False
+        
+        # Try to evaluate as a Python literal (int, float, list, dict, tuple, string, bool, None)
+        # This will convert '1' to 1 (int), '1.0' to 1.0 (float), '1e-5' to 1e-5 (float).
         try:
-            return float(data)
-        except ValueError:
-            return data
+            return ast.literal_eval(data_stripped)
+        except (ValueError, SyntaxError):
+            # If ast.literal_eval fails, it's not a simple Python literal.
+            # It could be a plain string (e.g., a path, a name) that should remain a string.
+            return data_stripped # Return the stripped string as is
     else:
         return data

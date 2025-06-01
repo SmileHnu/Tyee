@@ -25,7 +25,7 @@ dataset:
       val_size: 0.5
       random_state: 0
       shuffle: true
-
+  # 预处理详见dataset.bciciv4_dataset.py
  
 
 

@@ -55,6 +55,7 @@ class Trainer:
         self._total_steps = get_nested_field(self.cfg, 'trainer.total_steps', INT_MAX)
         self._total_epochs = get_nested_field(self.cfg, 'trainer.total_epochs', INT_MAX)
         self._update_interval = get_nested_field(self.cfg, 'trainer.update_interval', 1)
+        print(f"Update interval: {self._update_interval}")
         self._save_interval = get_nested_field(self.cfg, 'trainer.save_interval', None)
         self._eval_interval = get_nested_field(self.cfg, 'trainer.eval_interval', None)
         self._log_interval = get_nested_field(self.cfg, 'trainer.log_interval', 16)
@@ -110,6 +111,7 @@ class Trainer:
         # Checkpoint directory
         self.checkpoint_dir = os.path.join(self.checkpoint_root, f'fold_{fold}')
         os.makedirs(self.checkpoint_dir, exist_ok=True)
+        self.last_checkpoint = None
 
         # TensorBoard directory
         tb_fold_dir = os.path.join(self.tb_root, f'fold_{fold}')
@@ -180,11 +182,14 @@ class Trainer:
             # Update epoch and iterator
             if step % len(self.train_loader) == 0:
                 self.task.on_train_epoch_end(self, step-1)
-                self.train_sampler.set_epoch(step // len(self.train_loader))
+                if self.train_sampler is not None:
+                    # Update epoch for distributed training
+                    self.train_sampler.set_epoch(step // len(self.train_loader))
                 iterator = self.task.get_batch_iterator(self.train_loader)
                 self.task.on_train_epoch_start(self, step)
 
             # Perform a single training step
+            # train_result = {}
             train_result = self._train_step(iterator, step, val_metrics)
 
             # Accumulate training metrics
@@ -281,8 +286,11 @@ class Trainer:
 
             # # 测试——检查参数是否更新
             # for name, param in self.model.named_parameters():
-            #     diff = (param.detach() - old_params[name]).abs().sum().item()
-            #     print(f"{name}: param change sum = {diff}")
+            #     if param.grad is not None:
+            #         diff = (param.detach() - old_params[name]).abs().sum().item()
+            #         print(f"{name}: param change sum = {diff}")
+            #         changed = not torch.equal(param.detach(), old_params[name])
+            #         print(f"{name}: updated={changed}")
         else:
             if self._max_grad_norm is not None:
                 torch.nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=self._max_grad_norm)
@@ -499,7 +507,7 @@ class Trainer:
         self._save_checkpoint(checkpoint_filename, self.model, self.optimizer, self.lr_scheduler, step)
 
         # Remove the last checkpoint if it exists
-        if hasattr(self, 'last_checkpoint') and os.path.exists(self.last_checkpoint):
+        if hasattr(self, 'last_checkpoint') and self.last_checkpoint is not None and os.path.exists(self.last_checkpoint):
             os.remove(self.last_checkpoint)
 
         self.last_checkpoint = checkpoint_filename
@@ -533,6 +541,6 @@ class Trainer:
         self.optimizer.load_state_dict(ckpt_params["optimizer"])
         if "lr_scheduler" in ckpt_params and self.lr_scheduler is not None:
             self.lr_scheduler.load_state_dict(ckpt_params["lr_scheduler"])
-        self.step = ckpt_params["step"] + 1
+        self.start_step = ckpt_params["step"] + 1
         self.best_metric_value = ckpt_params["best_metric_value"]
         self.logger.info(f"Checkpoint loaded from {filename}")

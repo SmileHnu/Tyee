@@ -1,83 +1,127 @@
 common:
-  seed: 2025
+  seed: 0
   verbose: true
   exp_dir: experiments
 
 dataset:
-  batch_size: 128
+  batch_size: 64
   dataset: ninapro_db5_dataset.NinaproDB5Dataset
   num_workers: 4
   root_path:
-    train: '/home/lingyus/data/NinaproDB5/s1'
+    train: '/mnt/ssd/lingyus/NinaproDB5E2'
     val:
     # test: 
   io_path:
-    train: "/home/lingyus/data/NinaproDB5/processed_test"
+    train: "/mnt/ssd/lingyus/tyee_ninapro_db5/train"
     val: 
     test: 
-  io_mode: pickle
+  io_mode: hdf5
   split: 
-    method: ninapro
-    split_by: stimulus_id
-    stratified: false
-    shuffle: true
-    seed: 7
-    # test_size: 0
-    # val_size: 0.33333
-    n_splits: 5
-  other:
-    chunk_size: 40
-    overlap: 32
+    # pretrain
+    # select: LeaveOneOutAndHoldOutET
+    # init_params:
+    #   split_path: /mnt/ssd/lingyus/tyee_ninapro_db5/split_pretrain
+    #   stratify: gesture
+    #   shuffle: false
+    #   test_size: 0.4
+    #   group_by: subject_id
 
-  offline_transform:
-    emg:
-      Filter:
-        method: iir
-        l_freq: 1
-        iir_params:
-          order: 3
-          ftype: butter
-      PickChannels:
-        channels: ['sEMG8', 'sEMG9', 'sEMG10', 'sEMG11', 'sEMG12', 'sEMG13', 'sEMG14', 'sEMG15']
-        # channels: ['sEMG0','sEMG1', 'sEMG2', 'sEMG3', 'sEMG4', 'sEMG5', 'sEMG6', 'sEMG7']
-      # WaveletTransform:
-      #   wavelet: 'db4'
-      #   level: 3
-      Normalize:
-        method: min_max
+    # finetune
+    select: HoldOutPerSubjectET
+    init_params:
+      split_path: /mnt/ssd/lingyus/tyee_ninapro_db5/split_finetune
+      stratify: gesture
+      shuffle: false
+      val_size: 0.4
+      test_size: 0.4
+    run_params:
+      subject: 3
+  offline_label_transform:
+    - select: Mapping
+      mapping:
+        0: 0
+        17: 1
+        18: 2
+        20: 3
+        21: 4
+        22: 5
+        25: 6
+        26: 7
+        27: 8
+        28: 9
+      source: gesture
+      target: gesture
+    - select: OneHotEncode
+      num: 10
+      source: gesture
+      target: gesture
+
+  offline_signal_transform:
+    - select: Filter
+      l_freq: 5.0
+      method: iir
+      iir_params:
+        order: 3
+        ftype: butter
+        padlen: 12
+      phase: zero
+      source: emg
+      target: emg
+    - select: Reshape
+      shape: 800  # 16*50 = 800
+      source: emg
+      target: emg
+    - select: ToImage
+      length: 16
+      width: 50
+      resize_length_factor: 1
+      native_resnet_size: 224
+      cmap: viridis
+      source: emg
+      target: emg
+    - select: ToNumpyFloat16
+      source: emg
+      target: emg
+
+  online_signal_transform:
+    - select: ImageResize
+      size: (224, 224)
+      source: emg
+      target: emg
+
 
  
 
 
-lr_scheduler:
-  select: WarmupCosineScheduler
-  total_epochs: 400
-  eta_min: 1e-6
-  warmup_start_lr: 0
-  warmup_epochs: 5
+# lr_scheduler:
+#   select: WarmupCosineScheduler
+#   total_epochs: 400
+#   eta_min: 1e-6
+#   warmup_start_lr: 0
+#   warmup_epochs: 5
 
 model:
-  select: conformer.Conformer
-  n_outputs: 52
-  n_chans: 8
-  n_times: 40
-  filter_time_length: 5
-  n_filters_time: 64
-  drop_prob: 0.1
-  pool_time_length: 3
-  pool_time_stride: 1
-  att_depth: 4
-  att_heads: 8
-  att_drop_prob: 0.1
+  select: resnet18.resnet18
+  num_classes: 10
 
-  # select: EEGNet
-  # n_chans: 16
-  # chunk_size: 40
-  # num_classes: 52
-    
+  # pretrain
+  pretrained: true
+  pretrained_cfg_overlay:
+    file: '/home/lingyus/code/emgbench/checkpoint/resnet18/pytorch_model.bin'
 
+  # finetune
+  # checkpoint_path: /home/lingyus/code/PRL/experiments/2025-05-23/11-24-05-ninapro_db5_task.NinaproDB5Task/checkpoint/fold_0/checkpoint_best.pt 
+  # checkpoint_path: /home/lingyus/code/PRL/experiments/2025-05-23/11-24-05-ninapro_db5_task.NinaproDB5Task/checkpoint/fold_1/checkpoint_best.pt
+  # checkpoint_path: /home/lingyus/code/PRL/experiments/2025-05-23/11-24-05-ninapro_db5_task.NinaproDB5Task/checkpoint/fold_2/checkpoint_best.pt
+  checkpoint_path: /home/lingyus/code/PRL/experiments/2025-05-23/11-24-05-ninapro_db5_task.NinaproDB5Task/checkpoint/fold_3/checkpoint_best.pt
+  # checkpoint_path: /home/lingyus/code/PRL/experiments/2025-05-23/11-24-05-ninapro_db5_task.NinaproDB5Task/checkpoint/fold_4/checkpoint_best.pt
+  # checkpoint_path: /home/lingyus/code/PRL/experiments/2025-05-23/11-24-05-ninapro_db5_task.NinaproDB5Task/checkpoint/fold_5/checkpoint_best.pt
+  # checkpoint_path: /home/lingyus/code/PRL/experiments/2025-05-23/11-24-05-ninapro_db5_task.NinaproDB5Task/checkpoint/fold_6/checkpoint_best.pt
+  # checkpoint_path: /home/lingyus/code/PRL/experiments/2025-05-23/11-24-05-ninapro_db5_task.NinaproDB5Task/checkpoint/fold_7/checkpoint_best.pt
+  # checkpoint_path: /home/lingyus/code/PRL/experiments/2025-05-23/11-24-05-ninapro_db5_task.NinaproDB5Task/checkpoint/fold_8/checkpoint_best.pt
+  # checkpoint_path: /home/lingyus/code/PRL/experiments/2025-05-23/11-24-05-ninapro_db5_task.NinaproDB5Task/checkpoint/fold_9/checkpoint_best.pt
 optimizer:
-  lr:  0.001
+  lr:  5e-4
   select: Adam
   # weight_decay: 0.05             # 权重衰减 (L2正则化)
   # layer_decay: 0.65                # 层级学习率衰减
@@ -89,20 +133,19 @@ task:
   select: ninapro_db5_task.NinaproDB5Task
 
 trainer:
-  resume:  # 添加断点恢复配置
-      enabled: false
-      checkpoint: /home/lingyus/code/PRL/experiments/2025-01-10/14-27-21/checkpoint/checkpoint_step_8488.pt
-  fp16: true
-  # total_steps: 31980
-  total_epochs: 400
+  fp16: false
+  # pretrain
+  # total_epochs: 100
+  # finetune
+  total_epochs: 750
   update_interval: 1
-  # save_interval: 1066
-  # eval_interval: 1066
+  # eval_interval: 1
   log_interval: 20
   eval_metric:
     select: accuracy
     mode: max
-  metrics: [accuracy, precision_macro, f1_macro, recall_macro]
+  # metrics: [accuracy, balanced_accuracy, roc_auc_macro_ovr, roc_auc_macro_ovo]
+  metrics: [accuracy, balanced_accuracy]
     
 
 distributed:

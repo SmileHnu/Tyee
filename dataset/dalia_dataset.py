@@ -14,226 +14,13 @@ import torch
 import scipy
 import numpy as np
 from pathlib import Path
-from scipy.fft import rfft, rfftfreq
-from scipy.signal import butter, lfilter
 from typing import Callable, Union, Dict, List, Tuple
-
-# from dataset.base_dataset import BaseDataset
 from dataset.base_dataset import BaseDataset
-
-
-def butter_bandpass(lowcut, highcut, fs, order=4):
-    """
-    Helper function for butter_bandpass_filter
-    Creates a scipy filter
-    https://stackoverflow.com/questions/12093594/how-to-implement-band-pass-butterworth-filter-with-scipy-signal-butter
-
-    :param lowcut: lower cut-off value for butterworth filter (Hz)
-    :param highcut: upper cut-off value for butterworth filter (Hz)
-    :param fs: frequency of signal in Hz
-    :param order: order of filter
-    :return:(ndarray, ndarray)  Numerator (`b`) and denominator (`a`) polynomials of the IIR filter.scipy filter object
-    """
-    nyq = 0.5 * fs
-    low = lowcut / nyq
-    high = highcut / nyq
-    b, a = butter(order, [low, high], btype="band")
-    return b, a
-
-
-def butter_bandpass_filter(data, lowcut, highcut, fs, order=4):
-    """
-    Filters the signal with specified butter-bandpass filter
-    :param data: single-channel signal (one-dimensional)
-    :param lowcut: . of the filter
-    :param highcut: . of the filter
-    :param fs: input sampling frequency
-    :param order: . of the filter
-    :return: filtered signal of same shape
-    """
-    data = scipy.signal.detrend(data)
-    b, a = butter_bandpass(lowcut, highcut, fs, order=order)
-    y = lfilter(b, a, data)
-    return y
-
-
-def process_window_spec_ppg(sig, freq, resolution, min_hz, max_hz):
-    """
-    Processes a window of PPG signal into spectral representation. Custom implementation of STFT.
-    The channels are averaged, the signal is downsampled and the FFT is computed. Only amplitudes within relevant
-    range are returned.
-    :param sig: PPG signal of shape (n_samples, n_channels)
-    :param freq: signal frequency (Hz)
-    :param resolution: Number of points for the FFT algorithm
-    :param min_hz: Lower cutoff frequency for spectrum
-    :param max_hz: Higher cutoff frequency for spectrum
-    :return: Spectrogram of shape (n_steps, n_freq_bins)
-    """
-    filt = lambda x: butter_bandpass_filter(x, 0.4, 4, fs=freq, order=4)
-    sig = np.apply_along_axis(filt, 0, sig)
-    sig = (sig - sig.mean(axis=0)[None, :]) / (sig.std(axis=0)[None, :] + 1e-10)
-    sig = sig.mean(axis=-1)  # average over channels if multiple present
-
-    sig = scipy.signal.resample(
-        sig, int(len(sig) * 25 / freq)
-    )  # resample to 25 hz (optional but faster)
-    # do FFT
-    if resolution > len(sig):
-        sig = np.pad(sig, (0, resolution - len(sig)))
-    y = np.abs(rfft(sig, axis=0))
-    freq = rfftfreq(len(sig), 1 / 25)
-    # extract relevant frequencies
-    y = y[(freq > min_hz) & (freq < max_hz)]
-    return y
-
-
-def process_window_spec_acc(sig, freq, resolution: int, min_hz: float, max_hz: float):
-    """
-    Processes a window of accelerometer signal into spectral representation. Custom implementation of STFT.
-    The signal is downsampled, FFT is computed and the channels are averaged. Only amplitudes within relevant
-    range are returned.
-    :param sig: ACC signal of shape (n_samples, n_channels)
-    :param freq: signal frequency (Hz)
-    :param resolution: Number of points for the FFT algorithm
-    :param min_hz: Lower cutoff frequency for spectrum
-    :param max_hz: Higher cutoff frequency for spectrum
-    :return: Spectrogram of shape (n_steps, n_freq_bins)
-    """
-    filt = lambda x: butter_bandpass_filter(x, 0.4, 4, fs=freq, order=4)
-    sig = np.apply_along_axis(filt, 0, sig)
-    sig = (sig - sig.mean(axis=0)[None, :]) / (sig.std(axis=0)[None, :] + 1e-10)
-
-    sig = scipy.signal.resample(
-        sig, int(len(sig) * 25 / freq)
-    )  # resample to 25 hz (optional but faster)
-    # do FFT
-    if resolution > len(sig):
-        sig = np.pad(sig, ((0, resolution - len(sig)), (0, 0)))
-    y = np.abs(rfft(sig, axis=0))
-    freq = rfftfreq(len(sig), 1 / 25)
-    # extract relevant frequencies
-    y = y[(freq > min_hz) & (freq < max_hz), :]
-    return y.mean(axis=-1)
-
-
-def prepare_session_spec(ppg, acc, ppg_freq, acc_freq, win_size, stride, n_bins, min_hz, max_hz):
-    """
-    Prepares the spectral-domain input. Performs a custom version of STFT with channel averaging.
-    Only returns frequencies within a relevant range.
-    :param ppg: the ppg signal with shape (n_samples, n_ppg_channels)
-    :param acc: the acceleromenter signal with shape (n_samples, n_acc_channels)
-    :param ppg_freq: frequency of the PPG signal
-    :param acc_freq: frequency of the ACC signal
-    :param win_size: size in seconds of the signal window for fourier transform
-    :param stride: size in seconds of the window stride for STFT
-    :param n_bins: number of frequency bins. Can be either 64 or 256 for model compatibility
-    :param min_hz: minimal relevant frequency in Hz.
-    :param max_hz: maximal relevant frequency in Hz.
-    :return: processed signal of shape (n_steps, n_bins, n_channels),
-            where n_channels=2 stands for the aggregated PPG and ACC signals
-    """
-    fft_winsize = (
-        535 if n_bins == 64 else (4 * 535 - 5)
-    )
-    ppgs = []
-    ppg_wsize = win_size * ppg_freq
-    for i in range(0, len(ppg) - ppg_wsize + 1, ppg_freq * stride):
-        ppgs.append(
-            process_window_spec_ppg(
-                ppg[i : i + ppg_wsize], ppg_freq, fft_winsize, min_hz, max_hz
-            )
-        )
-
-    accs = []
-    acc_wsize = win_size * acc_freq
-    for i in range(0, len(acc) - acc_wsize + 1, acc_freq * stride):
-        accs.append(
-            process_window_spec_acc(
-                acc[i : i + acc_wsize], acc_freq, fft_winsize, min_hz, max_hz
-            )
-        )
-
-    sig = np.stack([ppgs, accs], axis=-1)
-
-    # normalize
-    sig = (sig - sig.mean()) / (sig.std() + 1e-10)
-
-    assert not np.isnan(sig).any()
-    return sig.astype(np.float32)
-
-
-def process_window_time(ppg, ppg_freq, target_freq, filter_lowcut, filter_highcut):
-    """
-    Prepares time-domain PPG signal as input. Preprocessing consists of filtering, averaging & resampling.
-    :param ppg: PPG signal of shape (n_samples, n_channels)
-    :param ppg_freq: frequency of signal
-    :param target_freq: desired frequency for input
-    :param filter_lowcut: lower cutoff frequency for bandpass filtering
-    :param filter_highcut: upper cutoff frequency for bandpass filtering
-    :return: time-domain signal of shape (n_samples_new,)
-    """
-    filt = lambda x: butter_bandpass_filter(x, filter_lowcut, filter_highcut, ppg_freq)
-    ppg = np.apply_along_axis(filt, 0, ppg)
-    ppg = ppg.mean(axis=-1)  # average over channels if multiple present
-    ppg = scipy.signal.resample_poly(ppg, target_freq, ppg_freq)
-    ppg = np.expand_dims(ppg, -1)
-    return ppg
-
-
-def prepare_session_time(ppg, ppg_freq, target_freq, filter_lowcut, filter_highcut):
-    """
-    Prepares the time-domain input. Preprocessing mainly consists of filtering, resampling and standardizing.
-    :param ppg: the ppg signal with shape (n_samples, n_channels)
-    :param ppg_freq: frequency of the signal
-    :param target_freq: desired input frequency for model
-    :param filter_lowcut: lower cutoff frequency for bandpass filter
-    :param filter_highcut: upper cutoff frequency for bandpass filter
-    :return: processed signal of shape (n_samples_new,)
-    """
-    # only feed ppg signals as time-domain features
-    sig = process_window_time(ppg, ppg_freq, target_freq, filter_lowcut, filter_highcut)
-
-    # normalize
-    sig = (sig - sig.mean()) / (sig.std() + 1e-10)
-
-    assert not np.isnan(sig).any()
-    return sig.astype(np.float32)
-
-
-def prepare_session_labels(hr, n_frames):
-    """
-    Add offset to session labels to compensate for the length of the feature window.
-    :param hr: labels of shape (n_steps, )
-    :param n_frames: number of steps per feature window
-    :return: labels of shape (n_steps - n_frames + 1, )
-    """
-    offset = n_frames - 1
-    assert not np.isnan(hr).any()
-    return hr[offset:].astype(np.float32)
-
-
-def get_strided_windows(ds, win_size, stride):
-    """
-    Generates a sliding window view of a np.ndarray along the first axis
-    :param win_size: number of samples in window
-    :param stride: number of skipped samples between consecutive windows
-    :return: tf.data.Dataset yielding tensors of shape (win_size, ) + old_shape
-    """
-    res = []
-    num_samples = (len(ds) - win_size) // stride + 1
-    for idx in range(0, num_samples):
-        start = idx * stride
-        end = start + win_size
-        if end > len(ds):
-            break
-        res.append(ds[start : end, ...])
-    return res
-
 
 class DaLiADataset(BaseDataset):
     def __init__(
         self,
-        root_path: str = './lingyus/erp-based-brain-computer-interface-recordings-1.0.0',
+        root_path: str = './PPG_FieldStudy',
         start_offset: float = 0,
         end_offset: float = 0,
         include_end: bool = False,
@@ -384,3 +171,84 @@ class DaLiADataset(BaseDataset):
         return str(idx)
     
 
+
+# from dataset.dalia_dataset import DaLiADataset
+# from dataset.transform import WindowExtract,SlideWindow, ForEach, Filter,Detrend,\
+#                             ZScoreNormalize, Lambda, Resample, Pad, FFTSpectrum,\
+#                             Stack, ExpandDims, Crop, Select, Compose, Mean
+# iir_params = dict(order=4, ftype='butter')
+# offline_signal_trasnform=[
+#     Compose(
+#         transforms=[
+#             SlideWindow(window_size=8*64, stride=2*64),
+#             WindowExtract(),
+#             ForEach(
+#                 transforms=[
+#                     Detrend(),
+#                     Filter(l_freq=0.4, h_freq=4, method='iir', phase='forward', iir_params=iir_params),
+#                     ZScoreNormalize(axis=-1, epsilon=1e-10),
+#                     # Lambda(lambd=lambda x: x.mean(axis=0)),
+#                     Mean(axis=0),
+#                     Resample(desired_freq=25, window='boxcar', pad='constant', npad=0,),
+#                     # Pad(axis=0, side='post', constant_values=0, pad_len=535-200)
+#                     FFTSpectrum(resolution=535, min_hz=0.5, max_hz=3.5),
+#                 ]),
+#         ],source='ppg', target='ppg_spec'
+#     ),
+#     Compose(
+#         transforms=[
+#             SlideWindow(window_size=8*32, stride=2*32),
+#             WindowExtract(),
+#             ForEach(
+#                 transforms=[
+#                     Detrend(),
+#                     Filter(l_freq=0.4, h_freq=4, method='iir', phase='forward', iir_params=iir_params),
+#                     ZScoreNormalize(axis=-1, epsilon=1e-10),
+#                     Resample(desired_freq=25, window='boxcar', pad='constant', npad=0,),
+#                     # Pad(axis=0, side='post', constant_values=0, pad_len=535-200)
+#                     FFTSpectrum(resolution=535, min_hz=0.5, max_hz=3.5, axis=-1),
+#                     Mean(axis=0),
+#                 ]),
+#         ], source='acc', target='acc'
+#     ),
+#     Stack(source=['ppg_spec', 'acc'], target='ppg_acc', axis=-1),
+#     Compose(
+#         transforms=[
+#             ZScoreNormalize(epsilon=1e-10),
+#             SlideWindow(window_size=7, stride=1, axis=0),
+#         ],source='ppg_acc', target='ppg_acc'
+#     ),
+#     Compose(
+#         transforms=[
+#             Detrend(),
+#             Filter(l_freq=0.1, h_freq=18, method='iir', phase='forward', iir_params=iir_params),
+#             Mean(axis=0),
+#             # Resample(desired_freq=25, window='boxcar', pad='constant', npad=0, source='ppg', target='ppg'),
+#             ExpandDims(axis=-1),
+#             ZScoreNormalize(epsilon=1e-10),
+#             SlideWindow(window_size=1280, stride=128, axis=0),
+#         ],source='ppg', target='ppg_time'
+#     ),
+#     Select(key=['ppg_time', 'ppg_acc']),
+# ]
+# offline_label_trasnform=[
+#     Compose(
+#         transforms=[
+#             Crop(crop_left=6),
+#             SlideWindow(window_size=1, stride=1, axis=0),
+#         ], source='hr', target='hr'
+#     )
+# ]
+
+# dataset = DaLiADataset(
+#     root_path='/mnt/ssd/lingyus/ppg_dalia/PPG_FieldStudy',
+#     io_path='/mnt/ssd/lingyus/tyee_ppgdalia/train',
+#     # online_signal_transform=online_signal_trasnform
+#     offline_signal_transform=offline_signal_trasnform,
+#     offline_label_transform=offline_label_trasnform,
+#     # online_label_transform=online_label_trasnform,
+#     num_worker=4,
+#     io_chunks=320,
+# )
+# # print(dataset[0])
+# print(len(dataset))

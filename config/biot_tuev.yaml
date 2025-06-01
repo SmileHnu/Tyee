@@ -15,27 +15,42 @@ dataset:
     train: "/home/lingyus/data/tuh_eeg_events/v2.0.1/edf/processed_biot_train"
     val:
     test: "/home/lingyus/data/tuh_eeg_events/v2.0.1/edf/processed_biot_eval"
-  io_mode: pickle
+  io_mode: hdf5
   split: 
-    method: hold_out
-    split_by: subject_id
-    seed: 4523
-    val_size: 0.1
-  offline_transform:
-    eeg:
-      Scale:
-        scale_factor: 1e-6
-      UniToBiTransform:
-        target_channels: BIOT_CHANNELS
-  online_transform:
-    eeg:
-      # ToIndexChannels:
-      #   channels: ['FP1', 'FP2', 'F3', 'F4', 'C3', 'C4', 'P3', 'P4', 'O1', 'O2', 'F7', 'F8', 'T3', 'T4', 'T5', 'T6', 'A1', 'A2', 'FZ', 'CZ', 'PZ', 'T1', 'T2']
-      Resample:
-        desired_sampling_rate: 200.0
-      Normalize:
-        q: 0.95
-        epsilon: 1e-8
+    select: HoldOutCross
+    init_params:
+      split_path: /mnt/ssd/lingyus/tuh_eeg_events/v2.0.1/edf/split
+      group_by: subject_id
+      val_size: 0.1
+      random_state: 4523
+      shuffle: true
+  before_segment_transform:
+    - select: Scale
+      scale_factor: 1e-6
+      source: eeg
+      target: eeg
+    - select: UniToBiTransform
+      target_channels: BIOT_CHANNELS
+      source: eeg
+      target: eeg
+  online_signal_transform:
+    - select: Resample
+      desired_freq: 200
+      source: eeg
+      target: eeg
+    - select: QuantileNormalize
+      q: 0.95
+      epsilon: 1e-8
+      source: eeg
+      target: eeg
+  online_label_transform:
+    - select: Offset
+      offset: -1
+      source: event
+      target: event
+    - select: Select
+      key: event
+
 
 # lr_scheduler:
 #   select: WarmupCosineScheduler

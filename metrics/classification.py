@@ -71,6 +71,44 @@ class ClassMetric(ABC):
 
         return all_targets, all_outputs
     
+    def process_roc_auc_results(self, results: list):
+        all_targets_roc = []
+        all_outputs_probs = [] # 需要原始概率
+
+        for result in results:
+            label = result.get('label') # 假设 label 已经是类别索引或可以转换为类别索引
+            output_raw = result.get('output') # 获取原始模型输出
+
+            # 确保 label 是类别索引 (如果它是 one-hot)
+            if label.ndim == 2 and label.shape[1] > 1:
+                # 假设是 one-hot 且需要转换为类别索引
+                # 检查是否是类似 one-hot 的 (0s and 1s)
+                if np.array_equal(label, label.astype(bool)):
+                    label = np.argmax(label, axis=1)
+            
+            # output_raw 应该是 [n_samples, n_classes] 的概率或 logits
+            # roc_auc_score 可以处理 logits，但通常概率更标准
+            # 如果 output_raw 是 logits，可以考虑先应用 softmax
+            # from scipy.special import softmax
+            # if output_raw.ndim == 2 and output_raw.shape[1] > 1:
+            #    # 假设是 logits, 转换为概率 (如果 roc_auc_score 不能很好处理 logits for multiclass)
+            #    # output_raw = softmax(output_raw, axis=1) 
+            #    pass # sklearn roc_auc_score 通常可以直接处理非标准化的分数
+
+            if label is not None and output_raw is not None:
+                all_targets_roc.append(label)
+                all_outputs_probs.append(output_raw)
+
+        if not all_targets_roc or not all_outputs_probs:
+            # 返回空数组或根据需要处理，以避免在空列表上调用 concatenate
+            return np.array([]), np.array([])
+
+
+        all_targets_roc = np.concatenate(all_targets_roc, axis=0)
+        all_outputs_probs = np.concatenate(all_outputs_probs, axis=0)
+        
+        return all_targets_roc, all_outputs_probs
+    
     @abstractmethod
     def compute(self, result: list):
         """
@@ -105,6 +143,46 @@ class CohenKappa(ClassMetric):
         return cohen_kappa_score(all_targets, all_outputs)
     
 # 二分类问题的指标
+class TruePositive(ClassMetric):
+    """计算真阳性(TP)"""
+    def __init__(self):
+        self.name = 'tp'
+    
+    def compute(self, results: list):
+        all_targets, all_outputs = self.process_result(results)
+        tp = int(np.sum((all_targets == 1) & (all_outputs == 1)))
+        return tp
+
+class TrueNegative(ClassMetric):
+    """计算真阴性(TN)"""
+    def __init__(self):
+        self.name = 'tn'
+    
+    def compute(self, results: list):
+        all_targets, all_outputs = self.process_result(results)
+        tn = int(np.sum((all_targets == 0) & (all_outputs == 0)))
+        return tn
+
+class FalsePositive(ClassMetric):
+    """计算假阳性(FP)"""
+    def __init__(self):
+        self.name = 'fp'
+    
+    def compute(self, results: list):
+        all_targets, all_outputs = self.process_result(results)
+        fp = int(np.sum((all_targets == 0) & (all_outputs == 1)))
+        return fp
+
+class FalseNegative(ClassMetric):
+    """计算假阴性(FN)"""
+    def __init__(self):
+        self.name = 'fn'
+    
+    def compute(self, results: list):
+        all_targets, all_outputs = self.process_result(results)
+        fn = int(np.sum((all_targets == 1) & (all_outputs == 0)))
+        return fn
+    
 class PR_AUC(ClassMetric):
     def __init__(self):
         self.name = 'pr_auc'
@@ -182,29 +260,44 @@ class ROC_AUC_Macro_OVO(ClassMetric):
     def __init__(self):
         self.name = 'roc_auc_macro_ovo'
     def compute(self, results: list):
-        all_targets, all_outputs = self.process_result(results)
+        all_targets, all_outputs = self.process_roc_auc_results(results)
         return roc_auc_score(all_targets, all_outputs, average='macro', multi_class='ovo')
 
 class ROC_AUC_Macro_OVR(ClassMetric):
     def __init__(self):
         self.name = 'roc_auc_macro_ovr'
     def compute(self, results: list):
-        all_targets, all_outputs = self.process_result(results)
+        all_targets, all_outputs = self.process_roc_auc_results(results)
         return roc_auc_score(all_targets, all_outputs, average='macro', multi_class='ovr')
 
 class ROC_AUC_Weighted_OVO(ClassMetric):
     def __init__(self):
         self.name = 'roc_auc_weighted_ovo'
     def compute(self, results: list):
-        all_targets, all_outputs = self.process_result(results)
+        all_targets, all_outputs = self.process_roc_auc_results(results)
         return roc_auc_score(all_targets, all_outputs, average='weighted', multi_class='ovo')
 
 class ROC_AUC_Weighted_OVR(ClassMetric):
     def __init__(self):
         self.name = 'roc_auc_weighted_ovr'
     def compute(self, results: list):
-        all_targets, all_outputs = self.process_result(results)
+        all_targets, all_outputs = self.process_roc_auc_results(results)
         return roc_auc_score(all_targets, all_outputs, average='weighted', multi_class='ovr')
+
+class PR_AUC_Macro(ClassMetric):
+    def __init__(self):
+        self.name = 'pr_auc_macro'
+    def compute(self, results: list):
+        all_targets, all_outputs = self.process_roc_auc_results(results)
+        return average_precision_score(all_targets, all_outputs, average='macro')
+
+class PR_AUC_Weighted(ClassMetric):
+    def __init__(self):
+        self.name = 'pr_auc_weighted'
+    def compute(self, results: list):
+        all_targets, all_outputs = self.process_roc_auc_results(results)
+        return average_precision_score(all_targets, all_outputs, average='weighted')
+
 
 class F1_Macro(ClassMetric):
     def __init__(self):

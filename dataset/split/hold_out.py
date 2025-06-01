@@ -5,7 +5,7 @@ from typing import Union, Tuple, Generator
 
 import numpy as np
 import pandas as pd
-from sklearn import model_selection
+from .train_test_split import train_test_split
 
 from dataset.base_dataset import BaseDataset
 from .base_split import BaseSplit
@@ -18,6 +18,7 @@ class HoldOut(BaseSplit):
         self,
         val_size: float = 0.2,
         shuffle: bool = False,
+        stratify: str = None,
         random_state: Union[int, None] = None,
         split_path: Union[None, str] = None,
         **kwargs
@@ -33,6 +34,7 @@ class HoldOut(BaseSplit):
         """
         self.val_size = val_size
         self.shuffle = shuffle
+        self.stratify = stratify
         self.random_state = random_state
         self.split_path = split_path
 
@@ -43,20 +45,15 @@ class HoldOut(BaseSplit):
         Args:
             info (pd.DataFrame): DataFrame containing dataset information.
         """
-        n_samples = len(info)
-        indices = np.arange(n_samples)
 
         # Perform train-val split
-        train_index, val_index = model_selection.train_test_split(
-            indices,
+        train_info, val_info = train_test_split(
+            info,
             test_size=self.val_size,
             random_state=self.random_state,
-            shuffle=self.shuffle
+            shuffle=self.shuffle,
+            stratify=self.stratify
         )
-
-        # Save train and val splits
-        train_info = info.iloc[train_index]
-        val_info = info.iloc[val_index]
 
         train_info.to_csv(os.path.join(self.split_path, 'train.csv'), index=False)
         val_info.to_csv(os.path.join(self.split_path, 'val.csv'), index=False)

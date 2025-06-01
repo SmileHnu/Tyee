@@ -68,7 +68,8 @@ def load_cfg() -> dict:
     torch.manual_seed(seed)
     if torch.cuda.is_available():
         torch.cuda.manual_seed_all(seed)
-
+    torch.backends.cudnn.deterministic = True  # 使用确定性算法
+    torch.backends.cudnn.benchmark = False     # 禁用自动优化
     return cfg
 
 def main(cfg: dict, rank: int, world_size: int, **kwargs):

@@ -573,7 +573,7 @@ class HDF5PhysioSignalIO(_PhysioSignalIO):
         axis = signal.get('axis', -1)
         if self.io_chunks is not None and isinstance(data, np.ndarray):
             chunks = list(data.shape)
-            chunks[axis] = self.io_chunks
+            chunks[axis] = self.io_chunks if self.io_chunks < data.shape[axis] else data.shape[axis]
             chunks = tuple(chunks)
         else:
             chunks = None

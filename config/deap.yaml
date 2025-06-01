@@ -1,0 +1,111 @@
+common:
+  seed: 2025
+  verbose: true
+  exp_dir: experiments
+
+dataset:
+  batch_size: 64
+  dataset: deap_dataset.DEAPDataset
+  num_workers: 8
+  root_path:
+    train: '/mnt/ssd/lingyus/DEAP/data_preprocessed_python'
+    val:
+    # test: 
+  io_path:
+    train: "/mnt/ssd/lingyus/tyee_deap/train"
+    val: 
+    test: 
+  io_mode: hdf5
+  io_chunks: 640
+  split: 
+    select: HoldOut
+    init_params:
+      split_path: /mnt/ssd/lingyus/tyee_deap/split
+      val_size: 0.3
+      random_state: 42
+      shuffle: true
+  offline_signal_transform:
+    - select: Concat
+      axis: 0
+      source: ['gsr', 'resp', 'ppg', 'temp']
+      target: mulit4
+    - select: Compose
+      transforms:
+        - select: MinMaxNormalize
+          axis: -1
+        - select: SlideWindow
+          window_size: 640  # 128*5 = 640
+          stride: 384       # 128*3 = 384
+      source: mulit4
+      target: mulit4
+    - select: Select
+      key: ['mulit4']
+
+  offline_label_transform:
+    - select: Compose
+      transforms:
+        - select: Round
+        - select: ToNumpyInt32
+        - select: Mapping
+          mapping:
+            1: 0
+            2: 1
+            3: 2
+            4: 3
+            5: 4
+            6: 5
+            7: 6
+            8: 7
+            9: 8
+        # - select: OneHotEncode
+        #   num: 9
+      source: arousal
+      target: arousal
+    - select: Select
+      key: ['arousal']
+
+lr_scheduler:
+  select: ReduceLROnPlateauScheduler
+  patience_epochs: 100
+  factor: 0.7071
+  min_lr: 1e-4
+  metric_source: train
+  metric: loss
+
+model:
+  select: mlstm_fcn.MLSTM_FCN
+  max_nb_variables: 4
+  max_timesteps: 640
+  nb_class: 9
+
+
+optimizer:
+  lr:  1e-3
+  select: Adam
+
+task:
+  loss:
+    select: CrossEntropyLoss
+  select: deap_task.DEAPTask
+
+trainer:
+  resume:  # 添加断点恢复配置
+      enabled: true
+      checkpoint: /home/lingyus/code/PRL/experiments/2025-05-25/22-13-43-deap_task.DEAPTask/checkpoint/fold_0/checkpoint_step_240800.pt
+  fp16: false
+  # total_steps: 31980
+  total_epochs: 2000
+  update_interval: 1
+  # save_interval: 1066
+  # eval_interval: 1066
+  log_interval: 20
+  eval_metric:
+    select: accuracy
+    mode: max
+  metrics: [accuracy, precision_macro, f1_macro, recall_macro]
+    
+
+distributed:
+  backend: nccl
+  world_size: 1
+  distributed_no_spawn: false

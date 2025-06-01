@@ -60,8 +60,8 @@ lr_scheduler:
   pct_start: 0.2
 
 model:
-  select: finetune_eegpt.linear_probe_EEGPT_PhysioP300.LitEEGPTCausal
-  load_path: /home/lingyus/code/PRL/models/finetune_eegpt/checkpoint/eegpt_mcae_58chs_4s_large4E.ckpt
+  select: eegpt.linear_probe_EEGPT_PhysioP300.LitEEGPTCausal
+  load_path: /home/lingyus/code/PRL/models/eegpt/checkpoint/eegpt_mcae_58chs_4s_large4E.ckpt
 
 optimizer:
   lr: 4e-4

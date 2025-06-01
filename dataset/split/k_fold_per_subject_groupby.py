@@ -159,6 +159,7 @@ class KFoldPerSubjectGroupby(BaseSplit):
         fold_ids = self.fold_ids
 
         if subject is not None:
+            subject = str(subject)
             assert subject in subjects, f'The subject should be in the subject list {subjects}.'
 
         for local_subject in subjects:

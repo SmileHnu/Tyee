@@ -18,13 +18,6 @@ class MITBIHTask(PRLTask):
     def __init__(self, cfg):
         super().__init__(cfg)
 
-        self.train_dataset = None
-        self.val_dataset = None
-        self.test_dataset = None
-        self.model_select = get_nested_field(cfg, 'model.select', '')
-        self.model_params = get_nested_field(cfg, 'model', {})
-
-
     def build_model(self):
         module_name, class_name = self.model_select.rsplit('.', 1)
         model_name = lazy_import_module(f'models.{module_name}', class_name)
@@ -33,11 +26,10 @@ class MITBIHTask(PRLTask):
         return model
     
     def train_step(self, model: torch.nn.Module, sample: dict[str, torch.Tensor], *args, **kwargs):
-        x = sample['ecg']['signals']
+        x = sample['ecg'].float()
         # 将信号沿着通道维度拼接起来
-        x = x.float()
         # print(x.shape)
-        label = sample['label']
+        label = sample['symbol']
         pred = model(x)
         loss = self.loss(pred, label)
         return{
@@ -48,10 +40,9 @@ class MITBIHTask(PRLTask):
 
     @torch.no_grad()
     def valid_step(self, model: torch.nn.Module, sample: dict[str, torch.Tensor], *args, **kwargs):
-        x= sample['ecg']['signals']
-        x = x.float()
+        x= sample['ecg'].float()
         # print(x.shape)
-        label = sample['label']
+        label = sample['symbol']
         pred = model(x)
         loss = self.loss(pred, label)
         return{

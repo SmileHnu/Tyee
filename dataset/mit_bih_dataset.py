@@ -23,51 +23,43 @@ class MITBIHDataset(BaseDataset):
     def __init__(
         self,
         root_path: str = './mit-bih-arrhythmia-database-1.0.0',
-        pre_offset : int = 100,
-        post_offset : int = 200,
-        interval_warn: int = 500,
-        num_channel: int = 62,
-        signal_types: list = ['ecg'],
-        online_transform: Union[None, Callable] = None,
-        offline_transform: Union[None, Callable] = None,
-        label_transform: Union[None, Callable] = None,
-        before_trial: Union[None, Callable] = None,
-        after_trial: Union[Callable, None] = None,
-        after_session: Union[Callable, None] = None,
-        after_subject: Union[Callable, None] = None,
+        start_offset: float = -64/360,
+        end_offset: float = 64/360,
+        include_end: bool = False,
+        before_segment_transform: Union[None, Callable] = None,
+        offline_signal_transform: Union[None, Callable] = None,
+        offline_label_transform: Union[None, Callable] = None,
+        online_signal_transform: Union[None, Callable] = None,
+        online_label_transform: Union[None, Callable] = None,
         io_path: Union[None, str] = None,
         io_size: int = 1048576,
-        io_mode: str = 'lmdb',
+        io_chunks: int = None,
+        io_mode: str = 'hdf5',
         num_worker: int = 0,
+        lazy_threshold: int = 128,
         verbose: bool = True,
     ) -> None:
-        # if io_path is None:
-        #     io_path = get_random_dir_path(dir_prefix='datasets')
-
         # pass all arguments to super class
         params = {
             'root_path': root_path,
-            'pre_offset': pre_offset,
-            'post_offset': post_offset,
-            'interval_warn': interval_warn,
-            'num_channel': num_channel,
-            'signal_types': signal_types,
-            'online_transform': online_transform,
-            'offline_transform': offline_transform,
-            'label_transform': label_transform,
-            'before_trial': before_trial,
-            'after_trial': after_trial,
-            'after_session': after_session,
-            'after_subject': after_subject,
+            'start_offset': start_offset,
+            'end_offset': end_offset,
+            'include_end': include_end,
+            'before_segment_transform': before_segment_transform,
+            'offline_signal_transform': offline_signal_transform,
+            'offline_label_transform': offline_label_transform,
+            'online_signal_transform': online_signal_transform,
+            'online_label_transform': online_label_transform,
             'io_path': io_path,
             'io_size': io_size,
+            'io_chunks': io_chunks,
             'io_mode': io_mode,
             'num_worker': num_worker,
+            'lazy_threshold': lazy_threshold,
             'verbose': verbose
         }
-        # save all arguments to __dict__
-        self.__dict__.update(params)
-        super().__init__(**params) 
+        super().__init__(**params)
+    
         
     def set_records(self, root_path: str = None, **kwargs):
         assert os.path.exists(
@@ -86,133 +78,138 @@ class MITBIHDataset(BaseDataset):
         print(file_list)
         return file_list
 
-    @staticmethod
-    def read_record(record: str, **kwargs):
+    def read_record(self, record: str, **kwargs):
         
         data = wfdb.rdsamp(record)
         annotation = wfdb.rdann(record,'atr')
-        ecg_signals = data[0].transpose()
-        sampling_rate = data[1]['fs']
+        ecg_data = data[0].transpose()
+        freq = data[1]['fs']
         ecg_channels = data[1]['sig_name']
         R_location = np.array(annotation.sample)
-        labels = np.array(annotation.symbol)
+        labels = [str(symbol) for symbol in annotation.symbol]
         ecg = {
-            'signals': ecg_signals,
+            'data': ecg_data,
             'channels': ecg_channels,
-            'sampling_rate': sampling_rate
+            'freq': freq
         }
+        segments = []
+        for i in range(len(R_location)):
+            segments.append({
+                'start': R_location[i] / freq,
+                'end': R_location[i]/freq,
+                'value':{
+                    'symbol':{
+                        'data': labels[i],
+                    }
+                }
+            })
         return {
-            'ecg': ecg,
-            'R_location': R_location,
-            'labels': labels
+            'signals':{
+                'ecg': ecg,
+            },
+            'labels': {
+                'segments': segments,
+            },
+            'meta':{
+                'file_name': os.path.splitext(os.path.basename(record))[0]
+            }
         }
         
     def process_record(
         self,
-        record, 
-        result,
-        signal_types,
-        pre_offset,
-        post_offset,
-        interval_warn,
-        before_trial,
-        offline_transform,
+        signals,
+        labels,
+        meta,
         **kwargs
     ) -> Generator[Dict[str, Any], None, None]:
-        file_name = os.path.splitext(os.path.basename(record))[0]
-        if before_trial is not None:
-            try:
-                for signal_type in signal_types:
-                    if signal_type in before_trial:
-                        result[signal_type] = before_trial[signal_type](result[signal_type])
-            except (KeyError, ValueError) as e:
-                print(f'Error in processing record {file_name}: {e}')
-                return None
-        # print(signal_types)
-        # print(pre_offset)
-        # print(post_offset)
-        aami_mapping = {
-            'N': 'N', 'L': 'N', 'R': 'N', 'e': 'N', 'j': 'N',  # N 类（正常）
-            'A': 'S', 'a': 'S', 'J': 'S', 'S': 'S',  # S 类（房性心律失常）
-            'V': 'V', 'E': 'V',  # V 类（室性心律失常）
-            'F': 'F'  # F 类（融合搏动）
-        }
-        symbols = np.array(['N','L','R','A','a','J','S','V','F','e','j','E'])
-        Index = np.isin(result['labels'], symbols)
-        labels = np.array(result['labels'])[Index]
-        R_location = np.array(result['R_location'])[Index]
-        a_data = result['ecg']['signals'].copy()
-        data_len = result['ecg']['signals'].shape[1]
-        
-        for index, item in enumerate(labels):
-            # print(index)
-            clip_id = f'{index}_{file_name}'
-            label = aami_mapping.get(item)
-            R_time = R_location[index]
-            # print(R_time)
-            # print(result['ecg']['signals'].shape)
-            if R_time-pre_offset < 0 or R_time+post_offset > data_len:
-                # print(f'R_time is out of range')
+        signals = self.apply_transform(self.before_segment_transform, signals)
+        if signals is None:
+            print(f"Skip file {meta['file_name']} due to transform error.")
+            return None
+        for idx, segment in enumerate(self.segment_split(signals, labels)):
+            seg_signals = segment['signals']
+            seg_label = segment['labels']
+            seg_info = segment['info']
+            symbol = seg_label['symbol']['data']
+            # print(signals['eeg']['data'].shape)
+            # print(label['label']['data'])
+            segment_id = self.get_segment_id(meta['file_name'], idx)
+            seg_signals = self.apply_transform(self.offline_signal_transform, seg_signals)
+            seg_label = self.apply_transform(self.offline_label_transform, seg_label)
+            if seg_signals is None or seg_label is None:
+                print(f"Skip segment {segment_id} due to transform error.")
                 continue
-            if index+1 < len(R_location):
-                if R_time - R_location[index-1] > interval_warn or R_location[index+1] - R_time > interval_warn:
-                    continue
-
-            data = a_data[:,R_time-pre_offset:R_time+post_offset]
-            info = {
-                'clip_id': clip_id,
-                'subject_id': file_name,
-                'label': aami_mapping[label]
-            }
-            result = {
-                'ecg': {
-                    'signals': data,
-                    'sampling_rate': result['ecg']['sampling_rate'],
-                    'channels': result['ecg']['channels'],
-                }
-            }
-            if not offline_transform is None:
-                try:
-                    for signal_type in signal_types:
-                        if signal_type in offline_transform:
-                            result[signal_type] = offline_transform[signal_type](result[signal_type])
-                except (KeyError, ValueError) as e:
-                    print(f'Error in processing record {file_name}: {e}')
-                    return None
-            result.update({
-                'key': clip_id,
-                'info': info
-                })
-            # print(result)
-            yield result
             
-    def __getitem__(self, index):
-        info = self.read_info(index)
-        
-        signal_index = str(info['clip_id'])
-        signal_record = str(info['record_id'])
+            seg_info.update({
+                'subject_id': self.get_subject_id(meta['file_name']),
+                'session_id': self.get_session_id(),
+                'segment_id': self.get_segment_id(meta['file_name'], idx),
+                'trial_id': self.get_trial_id(idx),
+                'symbol': symbol,
+            })
+            yield self.assemble_segment(
+                key=segment_id,
+                signals=seg_signals,
+                labels=seg_label,
+                info=seg_info,
+            )
 
-        result = {}
-        for signal_type in self.signal_types:
-            result[signal_type] = self.read_signal(signal_record, signal_index, signal_type)
+    def get_subject_id(self, file_name) -> str:
+        # Extract the subject ID from the file name
+        # Assuming the file name format is like "subject_id_record_id.edf"
+        # You can modify this logic based on your actual file naming convention
+        return file_name
+    
+    def get_segment_id(self, file_name, idx) -> str:
+        # Extract the segment ID from the file name
+        # Assuming the segment ID is the same as the file name in this case
+        return f'{idx}_{file_name}'
+    
+    def get_trial_id(self, idx) -> str:
+        # Extract the trial ID from the index
+        # Assuming the trial ID is the same as the index in this case
+        return str(idx)
 
-        label2id = {'N': 0,
-                    'S': 1,
-                    'V': 2,
-                    'F': 3,
-                    }
-        result['label'] = label2id[info['label']]
-        if self.label_transform is not None:
-            result['label'] = self.label_transform(result['label'])
-        if self.online_transform is not None:
-            for signal_type in self.signal_types:
-                if signal_type in self.online_transform:
-                    result[signal_type] = self.online_transform[signal_type](result[signal_type])
-                if 'ToIndexChannels' not in [transform.__class__.__name__ for transform in self.online_transform[signal_type].transforms]:
-                    if 'channels' in result[signal_type]:
-                        del result[signal_type]['channels']
-        else:
-            for signal_type in self.signal_types:
-                if 'channels' in result[signal_type]:
-                    del result[signal_type]['channels']
-        return result
+# from dataset.mit_bih_dataset import MITBIHDataset
+# from dataset.transform import PickChannels, Mapping, ZScoreNormalize
+
+
+# before_segment_transform = [
+#     PickChannels(channels=['MLII'], source='ecg', target='ecg'),
+#     ZScoreNormalize(axis=-1, source='ecg', target='ecg'),
+# ]
+# # 1. N - Normal
+# # 2. V - PVC (Premature ventricular contraction)
+# # 3. / - PAB (Paced beat)
+# # 4. R - RBB (Right bundle branch)
+# # 5. L - LBB (Left bundle branch)
+# # 6. A - APB (Atrial premature beat)
+# # 7. ! - AFW (Ventricular flutter wave)
+# # 8. E - VEB (Ventricular escape beat)
+# offline_label_transform = [
+#     Mapping(mapping={
+#         'N': 0,
+#         'V': 1,
+#         '/': 2,
+#         'R': 3,
+#         'L': 4,
+#         'A': 5,
+#         '!': 6,
+#         'E': 7,
+#     }, source='label', target='label'),
+# ]
+
+# dataset = MITBIHDataset(
+#     root_path='/mnt/ssd/lingyus/test',
+#     io_path='/mnt/ssd/lingyus/tyee_mit_bih/train',
+#     # io_chunks=224,
+#     before_segment_transform=before_segment_transform,
+#     offline_label_transform=offline_label_transform,
+#     # offline_signal_transform=offline_signal_transform,
+#     # online_signal_transform=online_signal_transform,
+#     io_mode='hdf5',
+#     io_chunks=128,
+#     num_worker=4,
+# )
+# print(len(dataset))
+# print(dataset[0]['ecg'].shape)

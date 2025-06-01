@@ -67,3 +67,54 @@ class Offset(BaseTransform):
         data = result['data']
         result['data'] = data + self.offset
         return result
+
+class Round(BaseTransform):
+    def __init__(self, source: Optional[str] = None, target: Optional[str] = None):
+        """
+        初始化四舍五入变换类。
+
+        参数:
+        - source: 输入信号字段名。
+        - target: 输出信号字段名。
+        """
+        super().__init__(source, target)
+
+    def transform(self, result: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        对信号进行四舍五入处理。
+
+        参数:
+        - result: 包含信号数据的字典，字段为 'data'。
+
+        返回:
+        - 更新后的信号数据字典。
+        """
+        data = result['data']
+        result['data'] = np.round(data)
+        return result
+    
+class Log(BaseTransform):
+    def __init__(self, epsilon:float=1e-10, source: Optional[str] = None, target: Optional[str] = None):
+        """
+        初始化对数变换类。
+
+        参数:
+        - source: 输入信号字段名。
+        - target: 输出信号字段名。
+        """
+        super().__init__(source, target)
+        self.epsilon = epsilon
+
+    def transform(self, result: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        对信号进行对数处理。
+
+        参数:
+        - result: 包含信号数据的字典，字段为 'data'。
+
+        返回:
+        - 更新后的信号数据字典。
+        """
+        data = result['data']
+        result['data'] = np.log(data + self.epsilon)  # 避免对数零点
+        return result
