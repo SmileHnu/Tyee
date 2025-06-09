@@ -1,0 +1,107 @@
+common:
+  seed: 0
+  verbose: true
+  exp_dir: experiments
+
+dataset:
+  batch_size: 64
+  dataset: tuev_dataset.TUEVDataset
+  num_workers: 4
+  root_path:
+    train: '/mnt/ssd/lingyus/tuh_eeg_events/v2.0.1/edf/train'
+    val:
+    test: '/mnt/ssd/lingyus/tuh_eeg_events/v2.0.1/edf/eval'
+  io_path:
+    train: "/mnt/ssd/lingyus/tuh_eeg_events/v2.0.1/edf/processed_train_yaml"
+    val:
+    test: "/mnt/ssd/lingyus/tuh_eeg_events/v2.0.1/edf/processed_eval_yaml"
+  split: 
+    select: HoldOutCross
+    init_params:
+      split_path: /mnt/ssd/lingyus/tuh_eeg_events/v2.0.1/edf/split
+      group_by: subject_id
+      val_size: 0.2
+      random_state: 4523
+      shuffle: true
+  before_segment_transform:
+    - select: Compose
+      transforms:
+        - select: PickChannels
+          channels: ['FP1', 'FP2', 'F3', 'F4', 'C3', 'C4', 'P3', 'P4', 'O1', 'O2', 'F7', 'F8', 'T3', 'T4', 'T5', 'T6', 'A1', 'A2', 'FZ', 'CZ', 'PZ', 'T1', 'T2']
+        - select: Filter
+          l_freq: 0.1
+          h_freq: 75.0
+        - select: NotchFilter
+          freqs: [50.0]
+        - select: Resample
+          desired_freq: 200
+      source: eeg
+      target: eeg
+  
+  offline_signal_transform:
+    - select: SlideWindow
+      window_size: 1000
+      stride: 1000
+      source: eeg
+      target: eeg
+  
+  online_label_transform:
+    - select: Offset
+      offset: -1
+      source: event
+      target: event
+    - select: Select
+      key: event
+    
+
+
+lr_scheduler:
+  select: CosineLRScheduler
+  period_epochs: 50
+  min_lr: 1e-6
+  warmup_start_lr: 0
+  warmup_epochs: 5
+
+model:
+  select: labram.labram_base_patch200_200
+  trainable: true
+  finetune: /home/lingyus/code/PRL/models/labram/checkpoints/labram-base.pth
+  nb_classes: 6
+  drop: 0.0
+  drop_path: 0.1
+  attn_drop_rate: 0.0
+  drop_block_rate: null
+  use_mean_pooling: true
+  init_scale: 0.001
+  rel_pos_bias: false
+  abs_pos_emb: true
+  layer_scale_init_value: 0.1
+  qkv_bias: false
+
+optimizer:
+  lr: 5e-4
+  select: AdamW
+  weight_decay: 0.05             
+  layer_decay: 0.65                
+
+task:
+  loss:
+    select: LabelSmoothingCrossEntropy
+    smoothing: 0.1
+  select: tuev_task.TUEVTask
+
+trainer:
+  fp16: true
+  total_epochs: 50
+  update_interval: 8
+  log_interval: 20
+  eval_metric:
+    select: balanced_accuracy
+    mode: max
+  metrics: [balanced_accuracy, accuracy, f1_weighted, cohen_kappa]
+    
+
+distributed:
+  backend: nccl
+  world_size: 1
+  distributed_no_spawn: false

@@ -1,0 +1,76 @@
+common:
+  seed: 2021
+  verbose: true
+  exp_dir: experiments
+
+dataset:
+  batch_size: 72
+  dataset: bciciv2a_dataset.BCICIV2ADataset
+  num_workers: 4
+  root_path:
+    train: '/mnt/ssd/lingyus/BCICIV_2a/A09'
+    val:
+    test: 
+  io_path:
+    train: "/mnt/ssd/lingyus/tyee_bciciv2a/A09"
+    val: 
+    test: 
+  io_mode: hdf5
+  io_chunks: 750
+  split: 
+    select: HoldOutCross
+    init_params:
+      split_path: '/mnt/ssd/lingyus/tyee_bciciv2a/split/A09'
+      group_by: session_id
+      val_size: 0.5
+      random_state: 4523
+      shuffle: false
+  
+  offline_signal_transform:
+    - select: Cheby2Filter
+      l_freq: 4
+      h_freq: 40
+      source: eeg
+      target: eeg
+    - select: Select
+      key: ['eeg']
+
+  online_signal_transform:
+    - select: ZScoreNormalize
+      mean: -0.000831605672567208
+      std: 9.915488018511994
+      epsilon: 0
+      source: eeg
+      target: eeg
+        
+model:
+  select: conformer.Conformer
+  n_outputs: 4
+  n_chans: 22
+  n_times: 1000
+
+optimizer:
+  lr:  0.0002
+  select: Adam
+
+task:
+  loss:
+    select: CrossEntropyLoss
+
+  select: bciciv2a_task.BCICIV2aTask
+
+trainer:
+  fp16: true
+  total_epochs: 2000
+  update_interval: 1
+  log_interval: 20
+  eval_metric:
+    select: accuracy
+    mode: max
+  metrics: [accuracy, cohen_kappa]
+    
+
+distributed:
+  backend: nccl
+  world_size: 1
+  distributed_no_spawn: false

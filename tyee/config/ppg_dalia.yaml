@@ -1,0 +1,193 @@
+common:
+  seed: 2025
+  verbose: true
+  exp_dir: experiments
+
+dataset:
+  batch_size: 128
+  dataset: dalia_dataset.DaLiADataset
+  num_workers: 8
+  root_path:
+    train: '/mnt/ssd/lingyus/ppg_dalia/PPG_FieldStudy'
+    val:
+    test: 
+  io_path:
+    train: "/mnt/ssd/lingyus/tyee_ppgdalia/train"
+    val:
+    test: 
+  io_mode: hdf5
+  io_chunks: 320
+  split: 
+    select: LosoRotatingCrossSplit
+    init_params:
+      split_path: /mnt/ssd/lingyus/tyee_ppgdalia/split_official
+      n_splits: 4
+      group_by: subject_id
+      shuffle: true
+      random_state: 7
+
+  
+  offline_signal_transform:
+    - select: Compose
+      transforms:
+        - select: SlideWindow
+          window_size: 512
+          stride: 128
+        - select: WindowExtract
+        - select: ForEach
+          transforms:
+            - select: Detrend
+            - select: Filter
+              l_freq: 0.4
+              h_freq: 4
+              method: iir
+              phase: forward
+              iir_params:
+                order: 4
+                ftype: butter
+            - select: ZScoreNormalize
+              axis: -1
+              epsilon: 1e-10
+            - select: Mean
+              axis: 0
+            - select: Resample
+              desired_freq: 25
+              window: boxcar
+              pad: constant
+              npad: 0
+            - select: FFTSpectrum
+              resolution: 535
+              min_hz: 0.5
+              max_hz: 3.5
+      source: ppg
+      target: ppg_spec
+    
+    - select: Compose
+      transforms:
+        - select: SlideWindow
+          window_size: 256
+          stride: 64
+        - select: WindowExtract
+        - select: ForEach
+          transforms:
+            - select: Detrend
+            - select: Filter
+              l_freq: 0.4
+              h_freq: 4
+              method: iir
+              phase: forward
+              iir_params:
+                order: 4
+                ftype: butter
+            - select: ZScoreNormalize
+              axis: -1
+              epsilon: 1e-10
+            - select: Resample
+              desired_freq: 25
+              window: boxcar
+              pad: constant
+              npad: 0
+            - select: FFTSpectrum
+              resolution: 535
+              min_hz: 0.5
+              max_hz: 3.5
+              axis: -1
+            - select: Mean
+              axis: 0
+      source: acc
+      target: acc_spec
+    - select: Stack
+      axis: -1
+      source: [ppg_spec, acc_spec]
+      target: ppg_acc
+    - select: Compose
+      transforms:
+        - select: ZScoreNormalize
+          epsilon: 1e-10
+        - select: SlideWindow
+          window_size: 7
+          stride: 1
+          axis: 0
+      source: ppg_acc
+      target: ppg_acc
+    - select: Compose
+      transforms:
+        - select: Detrend
+        - select: Filter
+          l_freq: 0.1
+          h_freq: 18
+          method: iir
+          phase: forward
+          iir_params:
+            order: 4
+            ftype: butter
+        - select: Mean
+          axis: 0
+        - select: ExpandDims
+          axis: -1
+        - select: ZScoreNormalize
+          epsilon: 1e-10
+        - select: SlideWindow
+          window_size: 1280
+          stride: 128
+          axis: 0
+      source: ppg
+      target: ppg_time
+    - select: Select
+      key: [ppg_acc, ppg_time]
+
+  offline_label_transform:
+    - select: Compose
+      transforms:
+        - select: Crop
+          crop_left: 6
+        - select: SlideWindow
+          window_size: 1
+          stride: 1
+          axis: 0
+      source: hr
+      target: hr
+      
+    
+
+
+lr_scheduler:
+  select: ReduceLROnPlateauScheduler
+  patience_epochs: 3
+  factor: 0.5
+  min_lr: 1e-6
+  metric_source: train
+  metric: loss
+
+model:
+  select: beliefppg.beliefppg.BeliefPPG
+
+optimizer:
+  lr: 2.5e-4
+  select: Adam
+
+task:
+  loss:
+    select: BinnedRegressionLoss
+    dim: 64
+    min_hz: 0.5
+    max_hz: 3.5
+    sigma_y: 1.5
+    # select: MSELoss
+  select: dalia_hr_task.DaLiaHREstimationTask
+
+trainer:
+  fp16: true
+  total_epochs: 50
+  update_interval: 1
+  log_interval: 20
+  eval_metric:
+    select: mae
+    mode: min
+  metrics: [mae, r2]
+    
+
+distributed:
+  backend: nccl
+  world_size: 1
+  distributed_no_spawn: false

@@ -1,0 +1,141 @@
+common:
+  seed: 42
+  verbose: true
+  exp_dir: experiments
+
+dataset:
+  batch_size: 128
+  dataset: cinc2018_dataset.CinC2018Dataset
+  num_workers: 16
+  root_path:
+    train: '/mnt/ssd/lingyus/challenge-2018-split/train'
+    val: '/mnt/ssd/lingyus/challenge-2018-split/valid'
+    test: '/mnt/ssd/lingyus/challenge-2018-split/test' 
+  io_path:
+    train: "/mnt/ssd/lingyus/tyee_cinc2018/train"
+    val: "/mnt/ssd/lingyus/tyee_cinc2018/valid"
+    test: "/mnt/ssd/lingyus/tyee_cinc2018/test"
+  io_mode: hdf5
+  io_chunks: 1
+  before_segment_transform:
+    - select: PickChannels
+      channels: ["C3-M2", "C4-M1", "O1-M2", "O2-M1"]
+      source: 'eeg'
+      target: 'eeg'
+    - select: Concat
+      axis: 0
+      source: ['eeg', 'eog']
+      target: 'ss'
+    - select: Concat
+      axis: 0
+      source: ['chest', 'sao2', 'abd']
+      target: 'resp'
+    - select: Resample
+      desired_freq: 256
+      source: 'ss'
+      target: 'ss'
+    - select: Resample
+      desired_freq: 256
+      source: 'resp'
+      target: 'resp'
+    - select: Resample
+      desired_freq: 256
+      source: 'ecg'
+      target: 'ecg'
+    - select: Select
+      key: ['ss', 'resp', 'ecg']
+
+  offline_signal_transform:
+    - select: SlideWindow
+      window_size: 1
+      stride: 1
+      axis: 0
+      source: 'ss'
+      target: 'ss'
+    - select: SlideWindow
+      window_size: 1
+      stride: 1
+      axis: 0
+      source: 'resp'
+      target: 'resp'
+    - select: SlideWindow
+      window_size: 1
+      stride: 1
+      axis: 0
+      source: 'ecg'
+      target: 'ecg'
+
+  offline_label_transform:
+    - select: SlideWindow
+      window_size: 1
+      stride: 1
+      axis: 0
+      source: 'stage'
+      target: 'stage'
+  online_signal_transform:
+    - select: Squeeze
+      axis: 0
+      source: 'ss'
+      target: 'ss'
+    - select: Squeeze
+      axis: 0
+      source: 'resp'
+      target: 'resp'
+    - select: Squeeze
+      axis: 0
+      source: 'ecg'
+      target: 'ecg'
+
+  online_label_transform:
+    - select: Squeeze
+      axis: 0
+      source: 'stage'
+      target: 'stage'
+  split: 
+    select: NoSplit
+  
+
+model:
+  select: sleepfm.sleepfm.SleepFM
+  num_classes: 5              
+  bas_in_channels: 5         
+  ecg_in_channels: 1          
+  resp_in_channels: 3        
+  embedding_dim: 512         
+  freeze_encoders: true       
+  pretrained_checkpoint_path: "/home/lingyus/code/PRL/models/sleepfm/checkpoints/best.pt" 
+  effnet_depth: [1, 2, 2, 3, 3, 3, 3] 
+  effnet_channels_config: [32, 16, 24, 40, 80, 112, 192, 320, 1280] 
+  effnet_expansion: 6         
+  effnet_stride: 2           
+  effnet_dilation: 1         
+
+
+
+optimizer:
+  lr:  0.001
+  select: Adam
+  weight_decay: 1e-4
+
+task:
+  loss:
+    select: CrossEntropyLoss
+
+  select: cinc2018_task.CinC2018Task
+
+trainer:
+  fp16: false
+  total_epochs: 100
+  update_interval: 1
+  log_interval: 20
+  eval_metric:
+    select: accuracy
+    mode: max
+  metrics: [accuracy, precision_macro, f1_macro, recall_macro, roc_auc_macro_ovr, pr_auc_macro,
+            precision_weighted, f1_weighted, recall_weighted, roc_auc_weighted_ovr, pr_auc_weighted]
+    
+
+distributed:
+  backend: nccl
+  world_size: 1
+  distributed_no_spawn: false

@@ -1,0 +1,66 @@
+common:
+  seed: 0
+  verbose: true
+  exp_dir: experiments
+
+dataset:
+  batch_size: 64
+  dataset: bciciv4_dataset.BCICIV4Dataset
+  num_workers: 8
+  root_path:
+    train: '/home/lingyus/data/BCICIV4/sub1'
+    val:
+    test: 
+  io_path:
+    train: "/home/lingyus/data/BCICIV4/sub1/processed_test"
+    val: 
+    test: 
+  io_mode: hdf5
+  io_chunks: 256
+  split: 
+    select: HoldOutCross
+    init_params:
+      split_path: /home/lingyus/data/BCICIV4/sub1/split
+      group_by: trial_id
+      val_size: 0.5
+      random_state: 0
+      shuffle: true
+ 
+
+model:
+  select: fingerflex.AutoEncoder1D
+  channels: [32, 32, 64, 64, 128, 128]
+  kernel_sizes: [7, 7, 5, 5, 5]
+  strides: [2, 2, 2, 2, 2]
+  dilation: [1, 1, 1, 1, 1]
+  n_electrodes: 62
+  n_freqs: 40
+  n_channels_out: 5
+
+    
+
+optimizer:
+  lr:  8.42e-5
+  select: Adam
+  weight_decay: 1e-6             
+
+task:
+  loss:
+    select: MSELoss
+  select: bciciv4_task.BCICIV4Task
+
+trainer:
+  fp16: false
+  total_epochs: 20
+  update_interval: 1
+  log_interval: 20
+  eval_metric:
+    select: mean_cc
+    mode: max
+  metrics: [mean_cc]
+    
+
+distributed:
+  backend: nccl
+  world_size: 1
+  distributed_no_spawn: false
