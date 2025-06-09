@@ -18,7 +18,11 @@
 
 Tyee is a PyTorch-based toolkit for intelligent analysis of physiological signals.  It aims to empower researchers and developers to efficiently perform task analysis on multi-source heterogeneous physiological signals and is dedicated to simplifying the entire workflow from data preprocessing to model training and evaluation, providing an integrated solution. 
 
+<div align="center">
+
 ![Tyee框架概览](./img/Tyee-tyee.png)
+
+</div>
 
 *Overview of Tyee's core features—demonstrating its unified interface support for multiple physiological signals like EEG, ECG, EMG, etc., flexible adaptability for diverse tasks such as sleep staging and emotion recognition, as well as its modular design and end-to-end integrated processing workflow.*
 
@@ -38,7 +42,11 @@ Tyee possesses the following core features:
 
 Tyee's core architecture adopts a modular design (as shown in the figure below), ensuring that each component is highly independent and easily extensible, achieving plug-and-play flexibility. 
 
+<div align="center">
+
 ![](./img/architecture.png)
+
+</div>
 
 *Tyee module structure diagram, illustrating core components such as configuration, trainer, task, entities (data, model, preprocessor, etc.), and their interactive relationships.* 
 
@@ -46,7 +54,7 @@ The following table details the main modules of Tyee and their functions.  Each 
 
 | Module Name             | Description                                                  |
 | ----------------------- | ------------------------------------------------------------ |
-| [Tyee.dataset](./docs/module/datset_English.md)            | Provides a unified and flexible data interface to handle heterogeneous data. |
+| [Tyee.dataset](./docs/module/dataset_English.md)            | Provides a unified and flexible data interface to handle heterogeneous data. |
 | [Tyee.dataset.io](./docs/module/dataset_io_English.md)         | Implements a unified input/output (I/O) to store the processing results of various heterogeneous datasets. |
 | [Tyee.dataset.transform](./docs/module/dataset_transform_English.md)  | Offers rich preprocessing methods for users to choose flexibly. |
 | [Tyee.dataset.split](./docs/module/dataset_split_English.md)      | Provides rich data splitting methods for users to choose, enabling settings at different granularities. |
@@ -127,7 +135,11 @@ Tyee integrates a series of commonly used physiological signal analysis models a
 
 To fully validate the performance and generalization capabilities of Tyee, we have conducted extensive experiments on 13 public physiological signal datasets.  The following shows the main experimental results and detailed configurations. These examples can also serve as a quick start reference for using this framework. 
 
+<div align="center">
+
 ![](./img/radar.png)
+
+</div>
 
 *Performance comparison of Tyee on (a) uni-modal and (b) multi-modal datasets. The blue lines in the figure represent the performance of official or other baseline models, and the red lines represent the corresponding results of Tyee, demonstrating Tyee's competitiveness on multiple datasets.*
 
