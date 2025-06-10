@@ -18,18 +18,35 @@
 
 ## 2. 准备工作 
 
-- **下载地址**：[BCICIV-2A](https://www.bbci.de/competition/iv/#datasets)
+### 2.1 数据下载
 
-- 目录结构：由于本实验是单受试者独立建模，请为每位受试者创建一个单独的文件夹，并将该受试者的训练 (`T`文件) 和评估 (`E`文件) 的 `.gdf` 和 `.mat` 文件放入其中。以受试者 `A09`为例，目录结构应如下：
+BCICIV 2a 数据集的信号数据和标签是分开提供的，需要分别下载：
 
-  ```
-  /path/to/data/BCICIV_2a/
-  └── A09/
-      ├── A09T.gdf
-      ├── A09T.mat
-      ├── A09E.gdf
-      └── A09E.mat
-  ```
+- **信号数据下载**：[BCICIV_2a_gdf.zip](https://www.bbci.de/competition/download/competition_iv/BCICIV_2a_gdf.zip)
+  - 包含所有受试者的 EEG 信号数据（.gdf 格式）
+  - 包含训练集和测试集的信号，但 .gdf 文件中的测试集**没有标签**
+
+- **完整标签下载**：[true_labels.zip](https://www.bbci.de/competition/iv/results/ds2a/true_labels.zip)
+  - 包含训练集和测试集的完整标签（.mat 格式）
+  - 这是官方后续提供的包含测试集真实标签的版本
+
+### 2.2 目录结构
+
+由于本实验是单受试者独立建模，请为每位受试者创建一个单独的文件夹，并将该受试者的训练 (`T`文件) 和评估 (`E`文件) 的 `.gdf` 文件以及对应的 `.mat` 标签文件放入其中。以受试者 `A09`为例，目录结构应如下：
+
+```
+/path/to/data/BCICIV_2a/
+└── A09/
+    ├── A09T.gdf          # 训练集信号数据
+    ├── A09T.mat          # 训练集标签
+    ├── A09E.gdf          # 测试集信号数据
+    └── A09E.mat          # 测试集标签
+```
+
+**重要说明**：
+- `.gdf` 文件来自 `BCICIV_2a_gdf.zip`
+- `.mat` 文件来自 `true_labels.zip`
+- 确保信号文件和标签文件的受试者编号一致
 
 ------
 

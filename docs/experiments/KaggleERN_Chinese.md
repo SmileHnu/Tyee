@@ -17,21 +17,31 @@
 
 ## 2. 准备工作
 
+### 2.1 数据下载
+
 - **下载地址**：[KaggleERN](https://www.kaggle.com/c/inria-bci-challenge/data)
 
-- 目录结构：请将下载并解压的数据集 (`train`和 `test`文件夹) 按以下结构存放：
+### 2.2 目录结构
 
-  ```
-  /path/to/data/KaggleERN/
-  ├── train/
-      ├── Data_S02_Sess01.csv
-      └── ...
-      └── TrainLabels.csv
-  └── test/
-      ├── Data_S01_Sess01.csv
-      └── ...
-      └── true_labels.csv
-  ```
+请将下载并解压的数据集按以下结构存放。**注意**：原始下载的 `TrainLabels.csv` 和 `true_labels.csv` 文件通常与 `train/` 和 `test/` 文件夹同级，需要手动移动到对应的文件夹内：
+
+```
+/path/to/data/KaggleERN/
+├── train/
+│   ├── Data_S02_Sess01.csv
+│   ├── ...
+│   └── TrainLabels.csv          # 需要移动到train文件夹内
+└── test/
+    ├── Data_S01_Sess01.csv
+    ├── ...
+    └── true_labels.csv          # 需要移动到test文件夹内
+```
+
+**重要说明**：
+- 原始下载后，标签文件 `TrainLabels.csv` 和 `true_labels.csv` 可能位于数据集根目录
+- 请确保将 `TrainLabels.csv` 移动到 `train/` 文件夹内
+- 请确保将 `true_labels.csv` 移动到 `test/` 文件夹内
+- 这样的结构便于 Tyee 框架正确读取数据和标签
 
 ------
 

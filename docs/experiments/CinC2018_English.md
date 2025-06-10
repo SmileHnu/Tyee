@@ -19,7 +19,7 @@ This experiment demonstrates how to use Tyee to perform a sleep staging task on 
 
 - **Download Location**: [CinC2018](https://physionet.org/content/challenge-2018/1.0.0/)
 
-- Directory Structure: Please download and decompress the dataset, and then manually organize it into `train`, `valid`, and `test` subdirectories according to the splitting method described in [Section 4.1](###4.1 Dataset Splitting). The final directory structure should be as follows:
+- Directory Structure: Please download and decompress the dataset, and then manually organize it into `train`, `valid`, and `test` subdirectories according to the splitting method described in [Section 4.1](#41-dataset-splitting). The final directory structure should be as follows:
 
   ```
   /path/to/data/challenge-2018-split/
@@ -76,7 +76,7 @@ All settings for this experiment are centrally managed by a single configuration
 ### 4.1 Dataset Splitting
 
 - **Splitting Strategy**: We strictly follow the dataset splitting method from the original SleepFM paper's code. The original authors divided the entire dataset into a **pre-training set (75%), a training set, a validation set, and a test set**.
-- **Implementation**: As this experiment only involves fine-tuning for a downstream task, the large pre-training set is not needed. We directly adopt the subject lists for the **training, validation, and test sets** as defined by the original authors (see [Appendix](https://www.google.com/search?q=%23appendix-dataset-split-details) for details). You will need to manually extract the corresponding subject files from the original dataset and place them into `train`, `valid`, and `test` folders respectively. Consequently, we provide these three paths for both `root_path` and `io_path` in the configuration file and use the `NoSplit` strategy, indicating that the pre-split data should be used directly.
+- **Implementation**: As this experiment only involves fine-tuning for a downstream task, the large pre-training set is not needed. We directly adopt the subject lists for the **training, validation, and test sets** as defined by the original authors (see [Appendix](#appendix-dataset-split-details) for details). You will need to manually extract the corresponding subject files from the original dataset and place them into `train`, `valid`, and `test` folders respectively. Consequently, we provide these three paths for both `root_path` and `io_path` in the configuration file and use the `NoSplit` strategy, indicating that the pre-split data should be used directly.
 
 ### 4.2 Data Processing Pipeline
 

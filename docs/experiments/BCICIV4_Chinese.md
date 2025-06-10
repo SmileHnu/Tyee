@@ -18,17 +18,36 @@
 
 ## 2. 准备工作
 
-- **下载地址**：[BCICIV-4](https://www.bbci.de/competition/iv/#datasets)
+### 2.1 数据下载
 
-- 目录结构：请将下载并解压的数据集按以下结构存放：
+BCICIV 4 数据集的信号数据和测试集标签是分开提供的，需要分别下载：
 
-  ```
-  /path/to/data/BCICIV4/
-  └── sub1/
-      ├── sub1_comp_ecog.mat
-      ├── sub1_comp_dg.mat
-      └── ... (其他受试者)
-  ```
+- **信号数据下载**：[BCICIV_4_mat.zip](https://www.bbci.de/competition/download/competition_iv/BCICIV_4_mat.zip)
+  - 包含所有受试者的 ECoG 信号数据和训练集标签（.mat 格式）
+  - 文件命名格式：`sub{X}_comp.mat`（如 `sub1_comp.mat`, `sub3_comp.mat`）
+  - 包含训练集的完整数据，但**没有测试集标签**
+
+- **测试集标签下载**：[true_labels.zip](https://www.bbci.de/competition/iv/results/ds4/true_labels.zip)
+  - 包含测试集的真实标签（.mat 格式）
+  - 文件命名格式：`sub{X}_testlabels.mat`（如 `sub1_testlabels.mat`, `sub3_testlabels.mat`）
+  - 这是官方后续提供的包含测试集真实标签的版本
+
+### 2.2 目录结构
+
+由于本实验是单受试者独立建模，请为每位受试者创建一个单独的文件夹，并将该受试者的信号数据文件和测试标签文件放入其中。以受试者1为例，目录结构应如下：
+
+```
+/path/to/data/BCICIV4/
+└── sub1/
+    ├── sub1_comp.mat          # 训练集信号数据和标签
+    └── sub1_testlabels.mat    # 测试集标签
+```
+
+**重要说明**：
+- `sub{X}_comp.mat` 文件来自 `BCICIV_4_mat.zip`
+- `sub{X}_testlabels.mat` 文件来自 `true_labels.zip`
+- 确保信号文件和标签文件的受试者编号一致
+- 原始的 `sub{X}_comp.mat` 文件包含训练数据和训练标签，但缺少测试集标签
 
 ------
 

@@ -18,18 +18,35 @@ This experiment demonstrates how to use Tyee to perform a 4-class motor imagery 
 
 ## 2. Prerequisites
 
-- **Download Location**: [BCICIV-2A](https://www.bbci.de/competition/iv/#datasets)
+### 2.1 Data Download
 
-- **Directory Structure**: As this experiment models each subject individually, please create a separate folder for each subject and place their corresponding training (`T` files) and evaluation (`E` files) in both `.gdf` and `.mat` formats inside it. For subject `A09`, the directory structure should be as follows:
+The BCICIV 2a dataset provides signal data and labels separately, requiring two separate downloads:
 
-  ```
-  /path/to/data/BCICIV_2a/
-  └── A09/
-      ├── A09T.gdf
-      ├── A09T.mat
-      ├── A09E.gdf
-      └── A09E.mat
-  ```
+- **Signal Data Download**: [BCICIV_2a_gdf.zip](https://www.bbci.de/competition/download/competition_iv/BCICIV_2a_gdf.zip)
+  - Contains EEG signal data for all subjects (.gdf format)
+  - Includes both training and test set signals, but the test set in .gdf files **has no labels**
+
+- **Complete Labels Download**: [true_labels.zip](https://www.bbci.de/competition/iv/results/ds2a/true_labels.zip)
+  - Contains complete labels for both training and test sets (.mat format)
+  - This is the official version that includes the true labels for the test set
+
+### 2.2 Directory Structure
+
+Since this experiment models each subject individually, please create a separate folder for each subject and place their corresponding training (`T` files) and evaluation (`E` files) from both downloads inside it. For subject `A09`, the directory structure should be as follows:
+
+```
+/path/to/data/BCICIV_2a/
+└── A09/
+    ├── A09T.gdf          # Training set signal data
+    ├── A09T.mat          # Training set labels
+    ├── A09E.gdf          # Test set signal data
+    └── A09E.mat          # Test set labels
+```
+
+**Important Notes**:
+- `.gdf` files come from `BCICIV_2a_gdf.zip`
+- `.mat` files come from `true_labels.zip`
+- Ensure that signal files and label files have matching subject IDs
 
 ------
 

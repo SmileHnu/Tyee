@@ -17,23 +17,31 @@ This experiment demonstrates how to use Tyee to perform an ERN detection task on
 
 ## 2. Prerequisites
 
-- **Download Location**:[KaggleERN](https://www.kaggle.com/c/inria-bci-challenge/data)
+### 2.1 Data Download
 
-- Directory Structure: Please download and decompress the dataset (
+- **Download Location**: [KaggleERN](https://www.kaggle.com/c/inria-bci-challenge/data)
 
-  `train`and `test` folders) and arrange it according to the following structure:
+### 2.2 Directory Structure
 
-  ```
-  /path/to/data/KaggleERN/
-  ├── train/
-      ├── Data_S02_Sess01.csv
-      └── ...
-      └── TrainLabels.csv
-  └── test/
-      ├── Data_S01_Sess01.csv
-      └── ...
-      └── true_labels.csv
-  ```
+Please download and decompress the dataset and arrange it according to the following structure. **Note**: The original downloaded `TrainLabels.csv` and `true_labels.csv` files are usually placed at the same level as the `train/` and `test/` folders, and need to be manually moved to their corresponding folders:
+
+```
+/path/to/data/KaggleERN/
+├── train/
+│   ├── Data_S02_Sess01.csv
+│   ├── ...
+│   └── TrainLabels.csv          # Move to train folder
+└── test/
+    ├── Data_S01_Sess01.csv
+    ├── ...
+    └── true_labels.csv          # Move to test folder
+```
+
+**Important Notes**:
+- After downloading, the label files `TrainLabels.csv` and `true_labels.csv` may be located in the dataset root directory
+- Please ensure that `TrainLabels.csv` is moved to the `train/` folder
+- Please ensure that `true_labels.csv` is moved to the `test/` folder
+- This structure facilitates proper data and label reading by the Tyee framework
 
 ------
 

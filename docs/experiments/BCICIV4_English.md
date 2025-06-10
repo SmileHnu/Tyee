@@ -18,20 +18,38 @@ This experiment demonstrates how to use Tyee to decode finger movement trajector
 
 ## 2. Prerequisites
 
-- **Download Location**: [BCICIV-4](https://www.bbci.de/competition/iv/#datasets)
+### 2.1 Data Download
 
-- Directory Structure: Please download and decompress the dataset and arrange it according to the following structure:
+The BCICIV 4 dataset provides signal data and test set labels separately, requiring two separate downloads:
 
-  ```
-  /path/to/data/BCICIV4/
-  └── sub1/
-      ├── sub1_comp_ecog.mat
-      ├── sub1_comp_dg.mat
-      └── ... (other subjects)
-  ```
+- **Signal Data Download**: [BCICIV_4_mat.zip](https://www.bbci.de/competition/download/competition_iv/BCICIV_4_mat.zip)
+  - Contains ECoG signal data and training labels for all subjects (.mat format)
+  - File naming format: `sub{X}_comp.mat` (e.g., `sub1_comp.mat`, `sub3_comp.mat`)
+  - Includes complete training data, but **no test set labels**
+
+- **Test Set Labels Download**: [true_labels.zip](https://www.bbci.de/competition/iv/results/ds4/true_labels.zip)
+  - Contains true labels for the test set (.mat format)
+  - File naming format: `sub{X}_testlabels.mat` (e.g., `sub1_testlabels.mat`, `sub3_testlabels.mat`)
+  - This is the official version that includes the true labels for the test set
+
+### 2.2 Directory Structure
+
+Since this experiment models each subject individually, please create a separate folder for each subject and place their corresponding signal data file and test label file inside it. For subject 1, the directory structure should be as follows:
+
+```
+/path/to/data/BCICIV4/
+└── sub1/
+    ├── sub1_comp.mat          # Training signal data and labels
+    └── sub1_testlabels.mat    # Test set labels
+```
+
+**Important Notes**:
+- `sub{X}_comp.mat` files come from `BCICIV_4_mat.zip`
+- `sub{X}_testlabels.mat` files come from `true_labels.zip`
+- Ensure that signal files and label files have matching subject IDs
+- The original `sub{X}_comp.mat` files contain training data and training labels, but lack test set labels
 
 ------
-
 ## 3. Model Configuration
 
 This experiment uses the **FingerFlex (`AutoEncoder1D`)** model for finger movement decoding. The model is **trained from scratch** in this experiment. Its key architectural parameters are set in the configuration file as follows:
