@@ -23,7 +23,7 @@ Tyee 是一款基于 PyTorch 的生理信号智能分析工具。它旨在赋能
 
 <div align="center">
 
-![Tyee框架概览](./img/Tyee-tyee.png)
+![Tyee框架概览](./img/Tyee-tyee.jpg)
 
 </div>
 
@@ -45,7 +45,7 @@ Tyee 的核心架构采用模块化设计（如下图所示），确保各组件
 
 <div align="center">
 
-![](./img/architecture.png)
+![](./img/architecture.jpg)
 
 </div>
 
@@ -186,7 +186,7 @@ Tyee框架集成了一系列常用的生理信号分析模型，同时也支持�
 
 <div align="center">
 
-![](./img/radar.png)
+![](./img/radar.jpg)
 
 </div>
 

@@ -24,7 +24,7 @@ Tyee is a PyTorch-based toolkit for intelligent analysis of physiological signal
 
 <div align="center">
 
-![Tyee框架概览](./img/Tyee-tyee.png)
+![Tyee框架概览](./img/Tyee-tyee.jpg)
 
 </div>
 
@@ -48,7 +48,7 @@ Tyee's core architecture adopts a modular design (as shown in the figure below),
 
 <div align="center">
 
-![](./img/architecture.png)
+![](./img/architecture.jpg)
 
 </div>
 
@@ -196,7 +196,7 @@ To fully validate the performance and generalization capabilities of Tyee, we ha
 
 <div align="center">
 
-![](./img/radar.png)
+![](./img/radar.jpg)
 
 </div>
 
