@@ -78,18 +78,42 @@ The following table details the main modules of Tyee and their functions.  Each 
 - Python 3.10 
 - PyTorch 2.5.0 
 
+### Method 1: Using Conda
+
 **Clone the Code Repository**: 
 
-```
+```bash
 $ git clone https://github.com/SmileHnu/Tyee.git
 $ cd Tyee
 ```
 
-**Create and Activate Virtual Environment (Recommended)**:
+**Create and Activate Virtual Environment**:
 
-```
+```bash
 $ conda env create -n tyee -f environment.yml
 $ conda activate tyee
+```
+
+### Method 2: Using Docker
+
+**Clone the Code Repository**: 
+
+```bash
+$ git clone https://github.com/SmileHnu/Tyee.git
+$ cd Tyee
+```
+
+**Build and Run Docker Container**:
+
+```bash
+# Build Docker image
+$ docker build -t tyee:latest .
+
+# Run container
+$ docker run -it --name tyee-dev \
+  -v $(pwd)/tyee:/tyee/tyee \
+  -p 6006:6006 \
+  tyee:latest bash
 ```
 
 ## 📊 Supported Datasets and Models
@@ -145,7 +169,7 @@ To fully validate the performance and generalization capabilities of Tyee, we ha
 
 </div>
 
-*Performance comparison of Tyee on (a) uni-modal and (b) multi-modal datasets. The blue lines in the figure represent the performance of official or other baseline models, and the red lines represent the corresponding results of Tyee, demonstrating Tyee's competitiveness on multiple datasets.*
+*Performance comparison of Tyee on (a) uni-modal and (b) multi-modal datasets. The blue lines in the figure represent the performance of official, and the red lines represent the corresponding results of Tyee, demonstrating Tyee's competitiveness on multiple datasets.*
 
 The following table summarizes the 13 datasets covered in this benchmark test, the corresponding signal types, analysis tasks, and the models used.  Each entry provides a link to the detailed experimental configuration (README) and the official repository of the relevant model, making it convenient for users to reproduce and conduct in-depth research.
 

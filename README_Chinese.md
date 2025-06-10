@@ -68,25 +68,49 @@ Tyee 的核心架构采用模块化设计（如下图所示），确保各组件
 | [Tyee.trainer](./docs/module/trainer_Chinese.md)            | 负责端到端的训练和验证过程                                   |
 | [Tyee.config](./docs/module/config_Chinese.md)             | 通过YAML文件提供对全框架的集中控制                           |
 
-## 🚀安装指南
+## 🚀 安装指南
 
-**环境要求**:
+**环境要求**: 
 
-- Python 3.10
-- PyTorch 2.5.0
+- Python 3.10 
+- PyTorch 2.5.0 
 
-**克隆代码仓库**:
+### 方法1：使用 Conda
 
-```
+**克隆代码仓库**: 
+
+```bash
 $ git clone https://github.com/SmileHnu/Tyee.git
 $ cd Tyee
 ```
 
-**创建并激活虚拟环境 (推荐)**:
+**创建并激活虚拟环境**:
 
-```
+```bash
 $ conda env create -n tyee -f environment.yml
 $ conda activate tyee
+```
+
+### 方法2：使用 Docker
+
+**克隆代码仓库**: 
+
+```bash
+$ git clone https://github.com/SmileHnu/Tyee.git
+$ cd Tyee
+```
+
+**构建并运行 Docker 容器**:
+
+```bash
+# 构建Docker镜像
+$ docker build -t tyee:latest .
+
+# 运行容器
+$ docker run -it --name tyee-dev \
+  -v $(pwd)/tyee:/tyee/tyee \
+  -p 6006:6006 \
+  tyee:latest bash
 ```
 
 ## 📊 支持的数据集和模型

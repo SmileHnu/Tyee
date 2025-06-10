@@ -1,0 +1,12 @@
+.git
+.gitignore
+*.md
+docs/
+experiments/
+data/
+*.log
+__pycache__/
+*.pyc
+.pytest_cache/
+.vscode/
+.idea/
