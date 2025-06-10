@@ -48,7 +48,7 @@ Tyee's core architecture adopts a modular design (as shown in the figure below),
 
 <div align="center">
 
-![](./img/architecture.jpg)
+<img src="./img/architecture.jpg" width="60%" alt="Framework Architecture">
 
 </div>
 

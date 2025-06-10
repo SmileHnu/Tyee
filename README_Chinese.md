@@ -45,7 +45,7 @@ Tyee 的核心架构采用模块化设计（如下图所示），确保各组件
 
 <div align="center">
 
-![](./img/architecture.jpg)
+<img src="./img/architecture.jpg" width="60%" alt="Framework Architecture">
 
 </div>
 
