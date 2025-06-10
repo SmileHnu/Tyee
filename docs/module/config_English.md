@@ -44,10 +44,57 @@ The core of using the Tyee framework is writing and adjusting the `config.yaml` 
 
 3. **Run an Experiment**: Once your `config.yaml` file is ready, you will typically start the experiment via a main training script, passing the path to your configuration file as an argument. For example:
 
-   Bash
-
-   ```
-   python train.py --config /path/to/your/experiment_config.yaml
+   ```bash
+   python main.py --config /path/to/your/experiment_config.yaml
    ```
 
    The `Trainer` will automatically load this file and build and run the entire experiment according to the definitions within it.
+
+4. **Command-line Parameter Override**: Tyee supports dynamically overriding any parameter in the configuration file through command-line arguments, without modifying the original YAML file. This is extremely useful for hyperparameter tuning and batch experiments.
+
+   **Basic Syntax**:
+   ```bash
+   python main.py --config config.yaml --[section] key=value key2=value2
+   ```
+
+   **Supported Configuration Sections**:
+   - `--trainer`: Override trainer configurations
+   - `--dataset`: Override dataset configurations  
+   - `--model`: Override model configurations
+   - `--task`: Override task configurations
+   - `--optimizer`: Override optimizer configurations
+   - `--lr_scheduler`: Override learning rate scheduler configurations
+   - `--common`: Override common configurations
+   - `--distributed`: Override distributed configurations
+
+   **Usage Examples**:
+
+   ```bash
+   # Basic parameter override (single level)
+   python main.py --config config.yaml --trainer log_interval=10 eval_interval=100
+   
+   # Nested parameter override (multi-level)  
+   python main.py --config config.yaml --trainer eval_metric.select=f1_macro
+   
+   # Combining multiple configuration sections
+   python main.py --config config.yaml \
+       --trainer total_epochs=200 log_interval=20 \
+       --optimizer lr=0.001 weight_decay=1e-4 \
+       --model hidden_size=512 \
+       --common seed=42
+   
+   # Dataset and task configuration override
+   python main.py --config config.yaml \
+       --dataset batch_size=64 num_workers=8 \
+       --task loss.weight_decay=0.01
+   
+   # Learning rate scheduler parameter override
+   python main.py --config config.yaml \
+       --lr_scheduler step_size=50 gamma=0.5
+   ```
+
+   **Important Notes**:
+   - Parameter format must be `key=value` with no spaces around the equals sign
+   - For nested fields, use dot notation, e.g., `eval_metric.select=f1_macro`
+   - Supports multiple data types: numbers (`lr=0.001`), strings (`device=cuda:0`), booleans (`fp16=true`)
+   - Command-line parameters will override corresponding configurations in the YAML file but will not modify the original file

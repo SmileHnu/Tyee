@@ -45,7 +45,56 @@ Tyee 使用 YAML 文件作为唯一的配置来源，来管理和驱动整个实
 3. **运行实验**: 准备好您的 `config.yaml` 文件后，通常您会通过一个主训练脚本来启动实验，并将配置文件的路径作为参数传入。例如：
 
    ```bash
-   python train.py --config /path/to/your/experiment_config.yaml
+   python main.py --config /path/to/your/experiment_config.yaml
    ```
 
    `Trainer` 会自动加载该文件，并根据其中的定义来搭建和运行整个实验。
+
+4. **命令行参数覆盖**: Tyee 支持通过命令行参数动态覆盖配置文件中的任何参数，无需修改原始的 YAML 文件。这对于超参数调优和批量实验非常有用。
+
+   **基本语法**：
+   ```bash
+   python main.py --config config.yaml --[section] key=value key2=value2
+   ```
+
+   **支持的配置节**：
+   - `--trainer`: 覆盖训练器配置
+   - `--dataset`: 覆盖数据集配置  
+   - `--model`: 覆盖模型配置
+   - `--task`: 覆盖任务配置
+   - `--optimizer`: 覆盖优化器配置
+   - `--lr_scheduler`: 覆盖学习率调度器配置
+   - `--common`: 覆盖通用配置
+   - `--distributed`: 覆盖分布式配置
+
+   **使用示例**：
+
+   ```bash
+   # 基础参数覆盖（单层级）
+   python main.py --config config.yaml --trainer log_interval=10 eval_interval=100
+   
+   # 嵌套参数覆盖（多层级）  
+   python main.py --config config.yaml --trainer eval_metric.select=f1_macro
+   
+   # 组合多个配置节
+   python main.py --config config.yaml \
+       --trainer total_epochs=200 log_interval=20 \
+       --optimizer lr=0.001 weight_decay=1e-4 \
+       --model hidden_size=512 \
+       --common seed=42
+   
+   # 数据集和任务配置覆盖
+   python main.py --config config.yaml \
+       --dataset batch_size=64 num_workers=8 \
+       --task loss.weight_decay=0.01
+   
+   # 学习率调度器参数覆盖
+   python main.py --config config.yaml \
+       --lr_scheduler step_size=50 gamma=0.5
+   ```
+
+   **注意事项**：
+   - 参数格式必须是 `key=value`，等号两边不能有空格
+   - 对于嵌套字段，使用点号分隔，如 `eval_metric.select=f1_macro`
+   - 支持多种数据类型：数字 (`lr=0.001`)、字符串 (`device=cuda:0`)、布尔值 (`fp16=true`)
+   - 命令行参数会覆盖 YAML 文件中的对应配置，但不会修改原始文件
