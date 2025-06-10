@@ -10,7 +10,11 @@
   <a href="./README_Chinese.md">
     <img src="https://img.shields.io/badge/语言-中文-red?style=flat-square&logo=google-translate" alt="中文">
   </a>
+  <a href="https://creativecommons.org/licenses/by-nc/4.0/">
+    <img src="https://img.shields.io/badge/License-CC%20BY--NC%204.0-lightgrey.svg" alt="License: CC BY-NC 4.0">
+  </a>
 </p>
+
 
 </div>
 
@@ -188,7 +192,16 @@ This work was supported by:
 
 ## 📝 License
 
-This repository is released under the MIT License. Please see the [`LICENSE`](./LICENSE) file for more details. 
+This work is licensed under a
+[Creative Commons Attribution-NonCommercial 4.0 International License][cc-by-nc].
+
+[![CC BY-NC 4.0][cc-by-nc-image]][cc-by-nc]
+
+Please see the [`LICENSE`](./LICENSE) file for the complete license text.
+
+[cc-by-nc]: https://creativecommons.org/licenses/by-nc/4.0/
+[cc-by-nc-image]: https://licensebuttons.net/l/by-nc/4.0/88x31.png
+[cc-by-nc-shield]: https://img.shields.io/badge/License-CC%20BY--NC%204.0-lightgrey.svg
 
 ## 📖 Citation
 

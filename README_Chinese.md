@@ -10,6 +10,9 @@
   <a href="./README_Chinese.md">
     <img src="https://img.shields.io/badge/语言-中文-red?style=flat-square&logo=google-translate" alt="中文">
   </a>
+  <a href="https://creativecommons.org/licenses/by-nc/4.0/">
+    <img src="https://img.shields.io/badge/License-CC%20BY--NC%204.0-lightgrey.svg" alt="许可证: CC BY-NC 4.0">
+  </a>
 </p>
 
 </div>
@@ -176,9 +179,20 @@ Tyee 的设计与实现借鉴了以下优秀的开源项目，并从中获益良
 - 广东省基础与应用基础研究基金（项目编号：2024A1515010112）
 - 长沙市科技局基金（项目编号：kq2402082）
 
-## 📝许可证
+## 📝 许可证
 
-本仓库代码基于 MIT 许可证 发布。详情请见 `LICENSE` 文件。
+[![CC BY-NC 4.0][cc-by-nc-shield]][cc-by-nc]
+
+本作品采用
+[知识共享署名-非商业性使用 4.0 国际许可协议][cc-by-nc] 进行许可。
+
+[![CC BY-NC 4.0][cc-by-nc-image]][cc-by-nc]
+
+详细许可证条款请参阅 [`LICENSE`](./LICENSE) 文件。
+
+[cc-by-nc]: https://creativecommons.org/licenses/by-nc/4.0/
+[cc-by-nc-image]: https://licensebuttons.net/l/by-nc/4.0/88x31.png
+[cc-by-nc-shield]: https://img.shields.io/badge/License-CC%20BY--NC%204.0-lightgrey.svg
 
 ## 📖引用
 
