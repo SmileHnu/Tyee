@@ -78,7 +78,7 @@ The following table details the main modules of Tyee and their functions.  Each 
 - Python 3.10 
 - PyTorch 2.5.0 
 
-### Method 1: Using Conda
+### Using Conda
 
 **Clone the Code Repository**: 
 
@@ -94,7 +94,7 @@ $ conda env create -n tyee -f environment.yml
 $ conda activate tyee
 ```
 
-### Method 2: Using Docker
+### Using Docker
 
 **Clone the Code Repository**: 
 
@@ -115,6 +115,37 @@ $ docker run -it --name tyee-dev \
   -p 6006:6006 \
   tyee:latest bash
 ```
+## ⚡ Quick Start
+
+The following demonstrates the basic usage of Tyee through a MIT-BIH arrhythmia detection experiment. For complete experimental configuration and detailed instructions, please refer to: [MIT-BIH Experiment Details](./docs/experiments/MITBIH_English.md)
+
+### Using Conda Environment
+
+```bash
+# Activate environment and run complete experiment workflow
+$ conda activate tyee
+$ cd tyee
+$ bash quick_start.sh
+```
+
+### Using Docker Container
+
+```bash
+# Enter container and run complete experiment workflow
+$ docker exec -it tyee-dev bash
+$ cd tyee
+$ bash quick_start.sh
+```
+
+After the experiment completes, you can view the experimental results in the `experiments/` directory, including training logs, model files, and TensorBoard visualization files. Use the following command to start TensorBoard:
+
+```bash
+$ tensorboard --logdir ./experiments/ --port 6006
+```
+
+### More Experiments
+
+To explore more dataset and model combinations, please refer to the [Performance Benchmarks and Application Examples](#🧪-performance-benchmarks-and-application-examples) section.
 
 ## 📊 Supported Datasets and Models
 

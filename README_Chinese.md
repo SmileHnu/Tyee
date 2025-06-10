@@ -75,7 +75,7 @@ Tyee 的核心架构采用模块化设计（如下图所示），确保各组件
 - Python 3.10 
 - PyTorch 2.5.0 
 
-### 方法1：使用 Conda
+### 使用 Conda
 
 **克隆代码仓库**: 
 
@@ -91,7 +91,7 @@ $ conda env create -n tyee -f environment.yml
 $ conda activate tyee
 ```
 
-### 方法2：使用 Docker
+### 使用 Docker
 
 **克隆代码仓库**: 
 
@@ -112,7 +112,37 @@ $ docker run -it --name tyee-dev \
   -p 6006:6006 \
   tyee:latest bash
 ```
+## ⚡ 快速开始
 
+以下通过 MIT-BIH 心律失常检测实验展示 Tyee 的基本使用流程。完整的实验配置和详细说明请参考：[MIT-BIH 实验详情](./docs/experiments/MITBIH_Chinese.md)
+
+### 使用 Conda 环境
+
+```bash
+# 激活环境并运行完整实验流程
+$ conda activate tyee
+$ cd tyee
+$ bash quick_start.sh
+```
+
+### 使用 Docker 容器
+
+```bash
+# 进入容器并运行完整实验流程
+$ docker exec -it tyee-dev bash
+$ cd tyee
+$ bash quick_start.sh
+```
+
+实验完成后，可在 `./experiments/` 目录下查看实验结果，包括训练日志、模型文件和 TensorBoard 可视化文件。使用以下命令启动 TensorBoard：
+
+```bash
+$ tensorboard --logdir ./experiments/ --port 6006
+```
+
+### 更多实验
+
+探索更多数据集和模型组合，请参考 [性能基准和应用示例](#🧪性能基准和应用示例) 部分。
 ## 📊 支持的数据集和模型
 
 我们在Tyee框架上支持了一些数据集，方便用户进行使用和扩展。下表汇总了已支持的数据集及其涉及的信号和任务：
