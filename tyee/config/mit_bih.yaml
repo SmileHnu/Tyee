@@ -8,11 +8,11 @@ dataset:
   dataset: mit_bih_dataset.MITBIHDataset
   num_workers: 8
   root_path:
-    train: '/mnt/ssd/lingyus/mit-bih-arrhythmia-database-1.0.0'
+    train: './data/original/physionet.org/files/mitdb/1.0.0'
     val:
     test: 
   io_path:
-    train: "/mnt/ssd/lingyus/tyee_mit_bih/train"
+    train: "./data/tyee/tyee_mit_bih/train"
     val: 
     test: 
   io_mode: hdf5
@@ -20,7 +20,7 @@ dataset:
   split: 
     select: HoldOut
     init_params:
-      split_path: /mnt/ssd/lingyus/tyee_mit_bih/split
+      split_path: ./data/tyee//tyee_mit_bih/split
       val_size: 0.1
       random_state: 7
       shuffle: true

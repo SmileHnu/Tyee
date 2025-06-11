@@ -54,7 +54,18 @@ The data preprocessing pipeline for this experiment is fully defined in the `bef
    - **Channel Selection (`PickChannels`)**: Only the 'MLII' lead signal is selected for analysis.
    - **Normalization (`ZScoreNormalize`)**: The signal is normalized using Z-score normalization.
 2. Label (Symbol) Processing:
-   - **Label Mapping (`Mapping`)**: Character labels for arrhythmia types, such as 'N', 'V', etc., are mapped to numerical class indices (0, 1, 2...).
+   - **Label Selection and Mapping (`Mapping`)**: From all arrhythmia types in the MIT-BIH dataset, 8 major types are selected for the classification task. The following mapping relationship is used to convert character labels to numerical class indices:
+     ```
+     'N': 0  # Normal beat
+     'V': 1  # Premature ventricular contraction
+     '/': 2  # Paced beat
+     'R': 3  # Right bundle branch block beat
+     'L': 4  # Left bundle branch block beat
+     'A': 5  # Atrial premature beat
+     '!': 6  # Ventricular flutter wave
+     'E': 7  # Ventricular escape beat
+     ```
+   - **Label Filtering**: Through the Mapping operation, arrhythmia type labels other than the above 8 types are automatically filtered out, ensuring the classification task focuses on these 8 major categories.
 
 ### 4.3 Task Definition
 

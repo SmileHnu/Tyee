@@ -52,7 +52,18 @@
    - **通道选择 (`PickChannels`)**: 仅选择 'MLII' 导联的信号进行分析。
    - **标准化 (`ZScoreNormalize`)**: 对信号进行 Z-score 标准化。
 2. 标签 (Symbol) 处理:
-   - **标签映射 (`Mapping`)**: 将 'N', 'V' 等心律类型的字符标签映射为 0, 1, 2... 等数字类别索引。
+   - **标签选择与映射 (`Mapping`)**: 从MIT-BIH数据集的所有心律类型中选择8种主要类型进行分类任务，使用以下映射关系将字符标签转换为数字类别索引：
+     ```
+     'N': 0  # Normal beat (正常心跳)
+     'V': 1  # Premature ventricular contraction (室性早搏)
+     '/': 2  # Paced beat (起搏心跳)
+     'R': 3  # Right bundle branch block beat (右束支传导阻滞)
+     'L': 4  # Left bundle branch block beat (左束支传导阻滞)
+     'A': 5  # Atrial premature beat (房性早搏)
+     '!': 6  # Ventricular flutter wave (心室扑动)
+     'E': 7  # Ventricular escape beat (心室逸搏)
+     ```
+   - **标签过滤**: 通过Mapping操作，自动过滤掉上述8种类型之外的其他心律类型标签，确保分类任务聚焦于这8个主要类别。
 
 ### 4.3 任务定义
 
