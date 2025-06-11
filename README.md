@@ -14,7 +14,18 @@
     <img src="https://img.shields.io/badge/License-CC%20BY--NC%204.0-lightgrey.svg" alt="License: CC BY-NC 4.0">
   </a>
 </p>
-
+<!-- Installation Badges with Links -->
+<p>
+  <a href="#using-conda">
+    <img src="https://img.shields.io/badge/Install-Conda-green?style=flat-square&logo=anaconda" alt="Conda Installation">
+  </a>
+  <a href="#using-docker">
+    <img src="https://img.shields.io/badge/Install-Docker-blue?style=flat-square&logo=docker" alt="Docker Installation">
+  </a>
+  <a href="#-quick-start">
+    <img src="https://img.shields.io/badge/Quick-Start-yellow?style=flat-square&logo=lightning" alt="Quick Start">
+  </a>
+</p>
 
 </div>
 
