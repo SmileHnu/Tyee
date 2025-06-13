@@ -239,11 +239,6 @@ Tyee 的设计与实现借鉴了以下优秀的开源项目，并从中获益良
 * [fairseq](https://github.com/facebookresearch/fairseq) 
 *  [torcheeg](https://github.com/torcheeg/torcheeg)
 
-### 资助致谢
-
-本工作得到以下基金项目的支持：
-- 广东省基础与应用基础研究基金（项目编号：2024A1515010112）
-- 长沙市科技局基金（项目编号：kq2402082）
 
 ## 📝 许可证
 

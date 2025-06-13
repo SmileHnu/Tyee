@@ -250,11 +250,7 @@ The design and implementation of Tyee have been inspired by and benefited greatl
 - [fairseq](https://github.com/facebookresearch/fairseq) 
 - [torcheeg](https://github.com/torcheeg/torcheeg)
 
-### Funding Acknowledgments
 
-This work was supported by:
-- The Guangdong Basic and Applied Basic Research Foundation under Grant Nr. 2024A1515010112
-- The Changsha Science and Technology Bureau Foundation under Grant Nr. kq2402082
 
 ## 📝 License
 
