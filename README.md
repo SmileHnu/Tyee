@@ -39,7 +39,7 @@ Tyee is a PyTorch-based toolkit for intelligent analysis of physiological signal
 
 </div>
 
-*Overview of Tyee's core features—demonstrating its unified interface support for multiple physiological signals like EEG, ECG, EMG, etc., flexible adaptability for diverse tasks such as sleep staging and emotion recognition, as well as its modular design and end-to-end integrated processing workflow.*
+*Architecture of the Tyee toolkit. It features modular components and end-to-end configurability, supporting a diverse range of physiological signals and healthcare applications via unified data and task interfaces.*
 
 Tyee is committed to streamlining the research and development process for physiological signal analysis, offering comprehensive support from data preprocessing to model training and evaluation.
 
@@ -211,7 +211,7 @@ To fully validate the performance and generalization capabilities of Tyee, we ha
 
 </div>
 
-*Performance comparison of Tyee on (a) uni-modal and (b) multi-modal datasets. The blue lines in the figure represent the performance of official, and the red lines represent the corresponding results of Tyee, demonstrating Tyee's competitiveness on multiple datasets.*
+*Radar plots comparing Tyee (red) vs. baselines (blue) in (a) unimodal and (b) multimodal healthcare tasks. Tyee matches or outperforms the baselines on 12 out of 13 datasets, demonstrating reliable and consistent benchmark reproduction.*
 
 The following table summarizes the 13 datasets covered in this benchmark test, the corresponding signal types, analysis tasks, and the models used.  Each entry provides a link to the detailed experimental configuration (README) and the official repository of the relevant model, making it convenient for users to reproduce and conduct in-depth research.
 
