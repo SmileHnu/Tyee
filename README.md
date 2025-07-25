@@ -268,3 +268,13 @@ Please see the [`LICENSE`](./LICENSE) file for the complete license text.
 ## 📖 Citation
 
 If you use Tyee in your research, please consider citing it as follows:
+```
+@inproceedings{
+zhou2025tyee,
+title={Tyee: A Unified, Modular, and Fully-Integrated Configurable Toolkit for Intelligent Physiological Health Care},
+author={Tao Zhou and Lingyu Shu and Zixing Zhang and Jing Han},
+booktitle={ACM Multimedia 2025 Open Source Track},
+year={2025},
+url={https://openreview.net/forum?id=k4zQNEMJrL}
+}
+```

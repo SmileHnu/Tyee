@@ -260,4 +260,14 @@ Tyee 的设计与实现借鉴了以下优秀的开源项目，并从中获益良
 [cc-by-nc-shield]: https://img.shields.io/badge/License-CC%20BY--NC%204.0-lightgrey.svg
 
 ## 📖引用
-
+如果您在研究中使用 Tyee，请考虑按如下方式引用它：
+```
+@inproceedings{
+zhou2025tyee,
+title={Tyee: A Unified, Modular, and Fully-Integrated Configurable Toolkit for Intelligent Physiological Health Care},
+author={Tao Zhou and Lingyu Shu and Zixing Zhang and Jing Han},
+booktitle={ACM Multimedia 2025 Open Source Track},
+year={2025},
+url={https://openreview.net/forum?id=k4zQNEMJrL}
+}
+```
