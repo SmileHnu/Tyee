@@ -168,7 +168,7 @@ $ tensorboard --logdir ./experiments/ --port 6006
 | [KaggleERN](https://www.kaggle.com/c/inria-bci-challenge/data) | EEG                                 | ERN Detection        |
 | [PhysioP300](https://physionet.org/content/erpbci/1.0.0/)    | EEG                                 | P300 Recognition     |
 | [MIT-BIH](https://physionet.org/content/mitdb/1.0.0/)        | ECG                                 | Arrhythmia Detection |
-| [NinaproDB5](https://ninapro.hevs.ch/instructions/DB5.html)  | EMG                                 | Gesture Recogntion   |
+| [NinaproDB5](https://ninapro.hevs.ch/instructions/DB5.html)  | EMG                                 | Gesture Recognition   |
 | [PPG-DaLiA](https://archive.ics.uci.edu/dataset/495/ppg+dalia) | PPG, 3D Acc, HR                     | HR Estimation        |
 | [SEED-V](https://bcmi.sjtu.edu.cn/home/seed/seed-v.html)     | EEG, EOG                            | Emotion Recognition  |
 | [DEAP](http://eecs.qmul.ac.uk/mmv/datasets/deap/)            | EEG, EOG, EMG, GSR, RESP, PPG, TEMP | Emotion Recognition  |
