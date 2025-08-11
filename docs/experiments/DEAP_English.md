@@ -202,3 +202,13 @@ After successfully reproducing this experiment, you should be able to obtain val
 | -------- | -------- |
 | Tyee     | 59.82    |
 | Official | 47.3     |
+
+### Result Analysis
+
+The Tyee implementation shows significantly better performance (+12.52% accuracy) compared to the official results. This improvement can be attributed to the following factors:
+
+**Reproduction Methodology**: During our reproduction process, we encountered technical issues with the original official codebase that prevented it from running properly. As a result, we:
+
+1. **Referenced Official Results**: We used the accuracy reported in the original repository (47.3%) as the baseline.
+2. **Implemented Equivalent Processing**: We recreated the same data processing pipeline and model architecture in the Tyee framework, ensuring methodological consistency with the original approach.
+3. **Framework Optimizations**: The Tyee implementation may benefit from ptimized training procedures.

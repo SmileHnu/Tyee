@@ -190,3 +190,31 @@ After successfully reproducing this experiment, you should be able to obtain tes
 | -------- | ----------------- | ----------- | ------- |
 | Tyee     | 66.51             | 37.74       | 81.16   |
 | Official | 65.02             | 29.99       | 71.68   |
+
+### Result Analysis
+
+The Tyee implementation shows notably better performance, particularly in ROC AUC (+9.48), compared to the official results. This improvement is primarily attributed to a critical preprocessing logic error discovered in the original codebase.
+
+**Preprocessing Issue in Official Code**: 
+
+The original preprocessing code contains a significant bug that causes sample overwriting and loss:
+
+```python
+spath = dataset_fold+f'{y}/'
+os.makedirs(path,exist_ok=True)
+spath = spath + f'{i}.sub{sub}'
+torch.save(x, spath)
+```
+
+As shown in the code above, different files from the same subject generate identical sample names, causing later samples to overwrite earlier ones. This results in substantial sample loss during preprocessing.
+
+**Verification Experiments**:
+
+To validate this issue, we corrected the preprocessing logic and tested both versions on the original codebase:
+
+| Version | Balanced Accuracy | Cohen Kappa | ROC AUC |
+|---------|------------------|-------------|---------|
+| Original (Buggy) | 71.62 | 42.91 | 77.71 |
+| Corrected | 67.11 | 37.24 | 80.12 |
+
+Both results differ from the official reported results. The original buggy version shows inflated performance due to reduced sample size (fewer samples available for training/testing), while the corrected version provides more reliable results with the complete dataset.

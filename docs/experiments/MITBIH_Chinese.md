@@ -65,6 +65,24 @@
      ```
    - **标签过滤**: 通过Mapping操作，自动过滤掉上述8种类型之外的其他心律类型标签，确保分类任务聚焦于这8个主要类别。
 
+#### 预期的预处理警告
+
+在预处理阶段，你可能会遇到类似以下的错误信息：
+
+```
+[Transform Error] PickChannels: "The following channels are not found in the result dictionary: ['MLII']"
+Skip file 102 due to transform error.
+[Transform Error] Mapping: '+'
+Skip segment 0_105 due to transform error.
+```
+
+**这些错误是预期的，不会影响实验运行**。产生这些错误的原因是：
+
+- **通道选择**: MIT-BIH数据集中的某些记录可能不包含'MLII'通道。`PickChannels`变换会自动跳过这些文件。
+- **标签映射**: 某些心律失常类型标签（如'+'）不包含在我们预定义的映射字典中。`Mapping`变换会跳过具有未映射标签的片段。
+
+这种过滤行为是有意设计的，因为实验只使用与分类任务相关的特定通道和心律失常类型。
+
 ### 4.3 任务定义
 
 - **任务类型**: `mit_bih_task.MITBIHTask`

@@ -67,6 +67,24 @@ The data preprocessing pipeline for this experiment is fully defined in the `bef
      ```
    - **Label Filtering**: Through the Mapping operation, arrhythmia type labels other than the above 8 types are automatically filtered out, ensuring the classification task focuses on these 8 major categories.
 
+#### Expected Preprocessing Warnings
+
+During the preprocessing stage, you may encounter error messages similar to the following:
+
+```
+[Transform Error] PickChannels: "The following channels are not found in the result dictionary: ['MLII']"
+Skip file 102 due to transform error.
+[Transform Error] Mapping: '+'
+Skip segment 0_105 due to transform error.
+```
+
+**These errors are expected and do not affect the experiment**. They occur because:
+
+- **Channel Selection**: Some records in the MIT-BIH dataset may not contain the 'MLII' channel. The `PickChannels` transform will skip these files automatically.
+- **Label Mapping**: Some arrhythmia type labels (like '+') are not included in our predefined mapping dictionary. The `Mapping` transform will skip segments with unmapped labels.
+
+This filtering behavior is intentional, as the experiment only uses specific channels and arrhythmia types that are relevant to the classification task.
+
 ### 4.3 Task Definition
 
 - **Task Type**: `mit_bih_task.MITBIHTask`
