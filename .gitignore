@@ -1,6 +1,27 @@
 .vscode/
+
+# experiments and data
 tyee/experiments/
 tyee/data/
+
+# Data files
+*.pth
+*.pt
+*.log
+*.ckpt
+*.csv
+*.tsv
+*.h5
+*.hdf5
+*.db
+*.lmdb
+*.npy
+*.npz
+*.pkl
+*.pickle
+
+# test files
+test.py
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

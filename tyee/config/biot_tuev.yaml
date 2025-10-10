@@ -1,0 +1,90 @@
+common:
+  seed: 4523
+  verbose: true
+  exp_dir: experiments
+
+dataset:
+  batch_size: 64
+  dataset: tuev_dataset.TUEVDataset
+  num_workers: 4
+  root_path:
+    train: '/home/lingyus/data/tuh_eeg_events/v2.0.1/edf/train/'
+    val:
+    test: '/home/lingyus/data/tuh_eeg_events/v2.0.1/edf/eval/'
+  io_path:
+    train: "/home/lingyus/data/tuh_eeg_events/v2.0.1/edf/processed_biot_train"
+    val:
+    test: "/home/lingyus/data/tuh_eeg_events/v2.0.1/edf/processed_biot_eval"
+  io_mode: hdf5
+  split: 
+    select: HoldOutCross
+    init_params:
+      split_path: /mnt/ssd/lingyus/tuh_eeg_events/v2.0.1/edf/split
+      group_by: subject_id
+      val_size: 0.1
+      random_state: 4523
+      shuffle: true
+  before_segment_transform:
+    - select: Scale
+      scale_factor: 1e-6
+      source: eeg
+      target: eeg
+    - select: UniToBiTransform
+      target_channels: BIOT_CHANNELS
+      source: eeg
+      target: eeg
+  online_signal_transform:
+    - select: Resample
+      desired_freq: 200
+      source: eeg
+      target: eeg
+    - select: QuantileNormalize
+      q: 0.95
+      epsilon: 1e-8
+      source: eeg
+      target: eeg
+  online_label_transform:
+    - select: Offset
+      offset: -1
+      source: event
+      target: event
+    - select: Select
+      key: event
+
+
+model:
+  select: biot.BIOTClassifier
+  pretrain_model_path: /home/lingyus/code/PRL/models/upstream/biot/checkpoint/EEG-six-datasets-18-channels.ckpt
+  n_classes: 6
+  in_channels: 18
+  token_size: 200
+  hop_length: 100
+  sampling_rate: 200
+
+    
+
+optimizer:
+  lr: 1e-3
+  select: Adam
+  weight_decay: 1e-5             
+
+task:
+  loss:
+    select: CrossEntropyLoss
+  select: biot_tuev_task.TUEVTask
+
+trainer:
+  fp16: false
+  total_epochs: 30
+  update_interval: 8
+  log_interval: 20
+  eval_metric:
+    select: blanced_accuracy
+    mode: max
+  metrics: [balanced_accuracy, accuracy, f1_weighted, cohen_kappa]
+    
+
+distributed:
+  backend: nccl
+  world_size: 1
+  distributed_no_spawn: false
