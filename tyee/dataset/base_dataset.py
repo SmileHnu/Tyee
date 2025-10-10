@@ -351,6 +351,12 @@ class BaseDataset(Dataset):
         self.signals_info = merge_info(signals_info_merged)
         self.labels_info = merge_info(labels_info_merged)
 
+        # Set 'sample_id' as the index for fast lookups
+        for signal_type in self.signals_info.keys():
+            self.signals_info[signal_type].set_index('sample_id', inplace=True)
+        for label_type in self.labels_info.keys():
+            self.labels_info[label_type].set_index('sample_id', inplace=True)
+
     def is_lazy(self) -> bool:
         """
         Initialize IO for the dataset.
@@ -367,92 +373,6 @@ class BaseDataset(Dataset):
         if hasattr(self, 'signal_paths') and self.signal_paths is not None and len(self.signal_paths) > 0:
             return True
         raise ValueError("Both signal_io_router and signal_paths are empty.")
-
-    def write_signal(self, record: str, key: str, signals: dict):
-        """
-        Write a signal to the dataset.
-
-        Args:
-            record (str): The record identifier.
-            key (str): The key of the signal to write.
-            signal (Any): The signal data to write.
-            signal_type (str): The type of signal to write.
-        """
-        for signal_type, signal in signals.items():
-            info = deepcopy(signal['info'])
-            del signal['info']
-            # write signal data
-            signal_path = os.path.join(self.io_path, record, 'signals')
-            signal_io = PhysioSignalIO(
-                signal_path, 
-                io_size=self.io_size, 
-                io_mode=self.io_mode, 
-                io_chunks=self.io_chunks)
-            signal_io.write_signal(signal, signal_type, key)
-            # write info
-            info_path = os.path.join(signal_path, signal_type, 'info.csv')
-            info_io = MetaInfoIO(info_path)
-            for sample_id, win in zip(info['sample_ids'], info['windows']):
-                info_row = {
-                    'sample_id': sample_id,
-                    'segment_id': key,
-                    'start': win['start'],
-                    'end': win['end'],
-                }
-                info_io.write_info(info_row)
-
-    def write_label(self, record: str, key: str, labels: dict):
-        for label_type, label in labels.items():
-            info = deepcopy(label['info'])
-            del label['info']
-            # write signal data
-            signal_path = os.path.join(self.io_path, record, 'labels')
-            signal_io = PhysioSignalIO(
-                signal_path, 
-                io_size=self.io_size, 
-                io_mode=self.io_mode,
-                io_chunks=self.io_chunks
-                )
-            signal_io.write_signal(label, label_type, key)
-            # write info
-            info_path = os.path.join(signal_path, label_type, 'info.csv')
-            info_io = MetaInfoIO(info_path)
-            if 'windows' not in info:
-                for sample_id in info['sample_ids']:
-                    info_row = {
-                        'sample_id': sample_id,
-                        'segment_id': key,
-                    }
-                    info_io.write_info(info_row)
-            else:
-                for sample_id, win in zip(info['sample_ids'], info['windows']):
-                    info_row = {
-                        'sample_id': sample_id,
-                        'segment_id': key,
-                        'start': win['start'],
-                        'end': win['end'],
-                    }
-                    info_io.write_info(info_row)
-    
-    def write_info(self, record: str, info: dict):
-        """
-        Write metadata information to MetaInfoIO.
-
-        Args:
-            record (str): The record identifier.
-            key (str): The key of the signal to write.
-            info (dict): The metadata information to write.
-        """
-        info_path = os.path.join(self.io_path, record, 'info.csv')
-        info_io = MetaInfoIO(info_path)
-        sample_ids = deepcopy(info['sample_ids'])
-        del info['sample_ids']
-        for sample_id in sample_ids:
-            info_row = {
-                'sample_id': sample_id
-            }
-            info_row.update(info)
-            info_io.write_info(info_row)
 
     def read_signal(self, record: str, sample_id: str) -> dict:
         """
@@ -479,7 +399,7 @@ class BaseDataset(Dataset):
         signals = {}
         for signal_type in signal_io.signal_types():
             df = self.signals_info[signal_type]
-            info = df[df['sample_id'] == sample_id].iloc[0].to_dict()
+            info = df.loc[sample_id].to_dict()
             key = str(info['segment_id'])
             start = int(info['start'])
             end = int(info['end'])
@@ -513,7 +433,7 @@ class BaseDataset(Dataset):
         labels = {}
         for label_type in label_io.signal_types():
             df = self.labels_info[label_type]
-            info = df[df['sample_id'] == sample_id].iloc[0].to_dict()
+            info = df.loc[sample_id].to_dict()
             key = str(info['segment_id'])
             start = info.get('start', None)
             end = info.get('end', None)
@@ -746,40 +666,95 @@ class BaseDataset(Dataset):
         kwargs.update(self.read_record(**kwargs))
         gen = self.process_record(**kwargs)
 
-        if record_id == 0:
-            pbar = tqdm(disable=not self.verbose,
-                        desc=f"[RECORD {record}]",
-                        position=1,
-                        leave=None)
+        # --- Optimization: Collect all data and write in batches ---
+        all_signals_to_write = defaultdict(list)
+        all_labels_to_write = defaultdict(list)
+        all_info_to_write = []
+        all_signal_meta_to_write = defaultdict(list)
+        all_label_meta_to_write = defaultdict(list)
 
-        while True:
-            try:
-                obj = next(gen)
-                if record_id == 0:
-                    pbar.update(1)
-            except StopIteration:
-                break
+        # Use a simplified description for the progress bar
+        try:
+            record_name = os.path.basename(record[0])
+        except:
+            record_name = str(record)
 
+        pbar = tqdm(disable=not self.verbose,
+                    desc=f"[RECORD {record_name}]",
+                    position=int(record_id) % 20 + 1, # Avoid overlap
+                    leave=False)
+
+        for obj in gen:
+            pbar.update(1)
             if obj and 'key' in obj:
+                key = obj['key']
                 if 'signals' in obj:
-                    # write signal
-                    signals = obj['signals']
-                    self.write_signal(_record_id, obj['key'], signals)
+                    for sig_type, sig_data in obj['signals'].items():
+                        # Remove info from signal data before appending
+                        info = deepcopy(sig_data['info'])
+                        del sig_data['info']
+                        all_signals_to_write[sig_type].append({'key': key, 'signal': sig_data})
+                        for sample_id, win in zip(info['sample_ids'], info['windows']):
+                            all_signal_meta_to_write[sig_type].append({
+                                'sample_id': sample_id, 'segment_id': key,
+                                'start': win['start'], 'end': win['end']
+                            })
+
                 if 'labels' in obj:
-                    # write label
-                    labels = obj['labels']
-                    self.write_label(_record_id, obj['key'], labels)
+                    for lbl_type, lbl_data in obj['labels'].items():
+                        info = deepcopy(lbl_data['info'])
+                        del lbl_data['info']
+                        all_labels_to_write[lbl_type].append({'key': key, 'signal': lbl_data})
+                        if 'windows' not in info:
+                            for sample_id in info['sample_ids']:
+                                all_label_meta_to_write[lbl_type].append({
+                                    'sample_id': sample_id, 'segment_id': key
+                                })
+                        else:
+                            for sample_id, win in zip(info['sample_ids'], info['windows']):
+                                all_label_meta_to_write[lbl_type].append({
+                                    'sample_id': sample_id, 'segment_id': key,
+                                    'start': win['start'], 'end': win['end']
+                                })
+                
                 if 'info' in obj:
-                    # write info
-                    info = obj['info']
-                    self.write_info(_record_id, info)
+                    all_info_to_write.append(obj['info'])
+        pbar.close()
 
-        if record_id == 0:
-            pbar.close()
+        # --- Batch Write Signals ---
+        signal_path = os.path.join(self.io_path, _record_id, 'signals')
+        os.makedirs(signal_path, exist_ok=True)
+        signal_io = PhysioSignalIO(signal_path, io_size=self.io_size, io_mode=self.io_mode, io_chunks=self.io_chunks)
+        for sig_type, data_list in all_signals_to_write.items():
+            signal_io.write_signals_batch(data_list, sig_type)
+            # Batch write signal meta
+            meta_df = pd.DataFrame(all_signal_meta_to_write[sig_type])
+            info_path = os.path.join(signal_path, sig_type, 'info.csv')
+            os.makedirs(os.path.dirname(info_path), exist_ok=True)
+            meta_df.to_csv(info_path, index=False)
 
-        return {
-            'record': _record_id
-        }
+        # --- Batch Write Labels ---
+        label_path = os.path.join(self.io_path, _record_id, 'labels')
+        os.makedirs(label_path, exist_ok=True)
+        label_io = PhysioSignalIO(label_path, io_size=self.io_size, io_mode=self.io_mode, io_chunks=self.io_chunks)
+        for lbl_type, data_list in all_labels_to_write.items():
+            label_io.write_signals_batch(data_list, lbl_type)
+            # Batch write label meta
+            meta_df = pd.DataFrame(all_label_meta_to_write[lbl_type])
+            info_path = os.path.join(label_path, lbl_type, 'info.csv')
+            os.makedirs(os.path.dirname(info_path), exist_ok=True)
+            meta_df.to_csv(info_path, index=False)
+
+        # --- Batch Write Main Info ---
+        if all_info_to_write:
+            main_info_df = pd.DataFrame(all_info_to_write)
+            # Explode sample_ids to have one row per sample
+            if 'sample_ids' in main_info_df.columns:
+                main_info_df = main_info_df.explode('sample_ids').rename(columns={'sample_ids': 'sample_id'})
+            info_path = os.path.join(self.io_path, _record_id, 'info.csv')
+            main_info_df.to_csv(info_path, index=False)
+
+        return {'record': _record_id}
     
     def read_record(self, record: str | tuple, **kwargs) -> Dict:
         """

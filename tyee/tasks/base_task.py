@@ -17,6 +17,9 @@ from utils import lazy_import_module, get_nested_field
 from torch.utils.data import Dataset, Sampler, DataLoader, DistributedSampler
 from typing import Tuple, List, Dict, Any
 
+import logging
+log = logging.getLogger(__name__)
+
 class PRLTask(object):
     def __init__(self, cfg: dict) -> None:
         self.cfg = cfg
@@ -260,6 +263,9 @@ class PRLTask(object):
         :raises ValueError: If dataset is empty and no sampler is provided.
         :raises RuntimeError: If creating DataLoader fails.
         """
+        if self.num_workers == 0:
+            log.warning("num_workers is set to 0. This might become a bottleneck. "
+                        "Consider setting a positive value for num_workers in your config file for better performance.")
         if not isinstance(dataset, Dataset):
             raise TypeError(f"Expected 'dataset' to be of type torch.utils.data.Dataset, but got {type(dataset)}")
         
@@ -277,7 +283,9 @@ class PRLTask(object):
                 data_loader = DataLoader(dataset, 
                                          batch_size=batch_size, 
                                          shuffle=shuffle, 
-                                         num_workers=self.num_workers, 
+                                         num_workers=self.num_workers,
+                                         pin_memory=True,
+                                        persistent_workers=True if self.num_workers > 0 else False,
                                          collate_fn=dataset.collate_fn)
             except Exception as e:
                 raise RuntimeError(f"Failed to create DataLoader: {e}")
@@ -287,7 +295,9 @@ class PRLTask(object):
                 data_loader = DataLoader(dataset, 
                                          batch_size=batch_size, 
                                          sampler=sampler,
-                                         num_workers=self.num_workers, 
+                                         num_workers=self.num_workers,
+                                         pin_memory=True,
+                                         persistent_workers=True if self.num_workers > 0 else False,
                                          collate_fn=dataset.collate_fn)
             except Exception as e:
                 raise RuntimeError(f"Failed to create DataLoader: {e}")

@@ -22,8 +22,10 @@ class MetaInfoIO:
             os.makedirs(os.path.dirname(io_path), exist_ok=True)
             open(self.io_path, 'x').close()
             self.write_pointer = 0
+            self.info_df = pd.DataFrame()
         else:
             self.write_pointer = len(self)
+            self.info_df = pd.read_csv(self.io_path)
 
     def __len__(self):
         if os.path.getsize(self.io_path) == 0:
@@ -43,15 +45,13 @@ class MetaInfoIO:
         return key
 
     def read_info(self, key: int) -> pd.DataFrame:
-        info = pd.read_csv(self.io_path).iloc[key]
-        if 'channels' in info:
+        info = self.info_df.iloc[key]
+        if 'channels' in info and isinstance(info['channels'], str):
             info['channels'] = info['channels'].split(',')
         return info
 
     def read_all(self) -> pd.DataFrame:
-        if os.path.getsize(self.io_path) == 0:
-            return pd.DataFrame()  
-        df = pd.read_csv(self.io_path)
+        df = self.info_df.copy()
         if 'channels' in df.columns:
             df['channels'] = df['channels'].apply(lambda x: x.split(',') if isinstance(x, str) else x)
         return df

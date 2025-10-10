@@ -12,13 +12,14 @@
 
 import pickle
 import os
-from typing import Union
+from typing import Union, List, Dict, Any
 
 import torch
 import lmdb
 import h5py
 import numpy as np
-
+import logging
+log = logging.getLogger(__name__)
 
 class _PhysioSignalIO:
     def get_total_length(self):
@@ -47,6 +48,10 @@ class _PhysioSignalIO:
                   signal_type: str,
                   key: Union[str, None] = None) -> str:
         raise NotImplementedError
+    
+    def write_signals_batch(self, signals: list, signal_type: str):
+        for item in signals:
+            self.write_signal(item['signal'], signal_type, item['key'])
 
 class LMDBPhysioSignalIO(_PhysioSignalIO):
     def __init__(self, io_path: str, io_size: int = 1048576):
@@ -64,6 +69,23 @@ class LMDBPhysioSignalIO(_PhysioSignalIO):
             self._envs[signal_type] = lmdb.open(signal_db_path, map_size=self.io_size, lock=False)
 
         return self._envs[signal_type]
+
+    def write_signals_batch(self, signals: List[Dict], signal_type: str):
+        env = self._get_env(signal_type)
+        with env.begin(write=True) as transaction:
+            for item in signals:
+                key = item.get('key')
+                signal = item.get('signal')
+
+                if key is None:
+                    # This might not be thread-safe if keys are generated based on length
+                    key = f"{signal_type}_{transaction.stat()['entries'] + 1}"
+                
+                if signal is None:
+                    log.warning(f'Attempted to save None to LMDB with key {key}. Skipping.')
+                    continue
+                
+                transaction.put(f"{signal_type}_{key}".encode(), pickle.dumps(signal))
 
     def __del__(self):
         for env in self._envs.values():
@@ -328,6 +350,40 @@ class HDF5PhysioSignalIO(_PhysioSignalIO):
         f.flush()
         return key
 
+    def write_signals_batch(self, signals: list, signal_type: str):
+        """
+        Write a batch of signals to the HDF5 file.
+        'signals' is a list of dictionaries, each with 'key' and 'signal'
+        """
+        f = self._get_file(signal_type, mode='a')
+        group = f.require_group('signals')
+
+        for item in signals:
+            key = item['key']
+            signal = item['signal']
+
+            if key in group:
+                # Or log a warning, or update, depending on desired behavior
+                print(f"Warning: Key {key} already exists in {signal_type}. Skipping.")
+                continue
+
+            data = signal['data']
+            axis = signal.get('axis', -1)
+            
+            if self.io_chunks is not None and isinstance(data, np.ndarray):
+                chunks = list(data.shape)
+                chunks[axis] = self.io_chunks if self.io_chunks < data.shape[axis] else data.shape[axis]
+                chunks = tuple(chunks)
+            else:
+                chunks = None
+
+            dset = group.create_dataset(key, data=data, chunks=chunks)
+            dset.attrs['freq'] = signal.get('freq', -1)
+            dset.attrs['channels'] = np.array(signal.get('channels', []), dtype='S')
+            dset.attrs['axis'] = axis
+        
+        f.flush()
+
     def read_signal(self, signal_type: str, key: str, start: int = None, end: int = None) -> dict:
         f = self._get_file(signal_type, mode='r')
         group = f['signals']
@@ -421,6 +477,9 @@ class PhysioSignalIO:
     def write_signal(self, signal: Union[any, torch.Tensor], signal_type: str, key: Union[str, None] = None) -> str:
         return self._io.write_signal(signal, signal_type, key)
     
+    def write_signals_batch(self, signals: list, signal_type: str):
+        return self._io.write_signals_batch(signals, signal_type)
+
     def __copy__(self):
         cls = self.__class__
         result = cls.__new__(cls)
