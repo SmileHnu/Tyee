@@ -24,6 +24,7 @@ from utils import init_logging
 from utils.log_utils import create_experiment_directories, init_logging, save_config
 from utils.distributed_utils import call_main
 from utils.cfg_utils import get_nested_field, merge_config, convert_sci_notation
+from utils.import_utils import import_user_module
 
 # Argument parser for command-line options
 parser = ArgumentParser(description="The Physiological signal Representation Learning (PRL) framework.")
@@ -87,6 +88,10 @@ def main(cfg: dict, rank: int, world_size: int, **kwargs):
 if __name__ == "__main__":
     # Load configuration
     cfg = load_cfg()
+
+    # Import user-defined modules
+    user_dir = get_nested_field(cfg, "common.user_dir", None)
+    import_user_module(user_dir)
 
     # Get experiment root directory and task name
     root = get_nested_field(cfg, "common.root", "./experiments/")
