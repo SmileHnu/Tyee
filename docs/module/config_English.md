@@ -7,7 +7,7 @@ Tyee uses YAML files as the sole source of configuration to manage and drive the
 A typical `config.yaml` file is composed of the following top-level fields, each responsible for a specific module:
 
 - **`common`**: General configuration settings.
-  - Used to set global parameters such as the random seed (`seed`), logging verbosity (`verbose`), and the output directory for experiments (`exp_dir`).
+  - Used to set global parameters such as the random seed (`seed`), logging verbosity (`verbose`), and the output directory for experiments (`exp_dir`), , and `user_dir`. The `user_dir` allows you to specify a path to a custom directory for loading external modules (e.g., custom models, tasks, or datasets), enabling easy extension of the framework.
 - **`dataset`**: All configurations related to data.
   - **Data Source**: `dataset` (specifies the dataset class to use), `root_path` (path to raw data), `io_path` (cache path for preprocessed data).
   - **Loading Parameters**: `batch_size`, `num_workers`.

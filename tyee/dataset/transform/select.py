@@ -10,7 +10,7 @@
 @Desc    : 
 """
 from typing import Union, List, Dict, Any, Optional
-from .base_transform import BaseTransform
+from tyee.dataset.transform import BaseTransform
 
 class Select(BaseTransform):
     def __init__(self, key: Union[str, List[str]], source: Optional[str] = None, target: Optional[str] = None):

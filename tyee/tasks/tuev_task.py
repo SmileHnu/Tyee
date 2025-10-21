@@ -17,10 +17,10 @@ import math
 import numpy as np
 from torch import nn
 from pathlib import Path
-from tasks import PRLTask
+from tyee.tasks import BaseTask
 from einops import rearrange
 from collections import OrderedDict
-from utils import lazy_import_module, get_nested_field
+from tyee.utils import lazy_import_module, get_nested_field
 
 standard_1020 = [
     'FP1', 'FPZ', 'FP2', 
@@ -39,7 +39,7 @@ standard_1020 = [
     "FP1-F7", "F7-T7", "T7-P7", "P7-O1", "FP2-F8", "F8-T8", "T8-P8", "P8-O2", "FP1-F3", "F3-C3", "C3-P3", "P3-O1", "FP2-F4", "F4-C4", "C4-P4", "P4-O2"
 ]
 
-class TUEVTask(PRLTask):
+class TUEVTask(BaseTask):
     def __init__(self, cfg):
         super().__init__(cfg)
 

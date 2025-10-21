@@ -2,7 +2,9 @@
 
 # experiments and data
 tyee/experiments/
+.experiments/
 tyee/data/
+.data/
 
 # Data files
 *.pth

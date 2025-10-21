@@ -10,7 +10,7 @@
 @Desc    : 
 """
 
-from dataset.transform import BaseTransform
+from tyee.dataset.transform import BaseTransform
 import numpy as np
 
 class ForEach(BaseTransform):

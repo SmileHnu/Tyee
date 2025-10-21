@@ -5,8 +5,8 @@ from copy import copy
 from typing import List, Tuple, Union, Dict, Generator
 import pandas as pd
 from sklearn import model_selection
-from dataset.base_dataset import BaseDataset
-from .base_split import BaseSplit
+from tyee.dataset.base_dataset import BaseDataset
+from tyee.dataset.split.base_split import BaseSplit
 
 log = logging.getLogger('split')
 
@@ -169,7 +169,7 @@ class HoldOutPerSubject(BaseSplit):
         return format_string
 
 
-from .train_test_split import train_test_split
+from tyee.dataset.split.train_test_split import train_test_split
 class HoldOutPerSubjectET(BaseSplit):
     def __init__(
         self,

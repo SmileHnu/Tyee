@@ -11,7 +11,7 @@
 """
 
 
-from dataset.transform import BaseTransform
+from tyee.dataset.transform import BaseTransform
 from typing import Dict, Any, List, Optional
 
 class Compose(BaseTransform):

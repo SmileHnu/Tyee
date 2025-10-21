@@ -10,7 +10,7 @@
 @Desc    : 
 """
 
-from .base_transform import BaseTransform
+from tyee.dataset.transform import BaseTransform
 
 class Crop(BaseTransform):
     def __init__(self, crop_left=0, crop_right=0, axis=-1, source=None, target=None):

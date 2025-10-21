@@ -15,7 +15,7 @@ import mne
 import pywt
 from typing import Optional, Dict, Any
 from scipy.fft import rfft, rfftfreq
-from .base_transform import BaseTransform
+from tyee.dataset.transform import BaseTransform
 
 class CWTSpectrum(BaseTransform):
     """

@@ -12,7 +12,7 @@
 
 import numpy as np
 from typing import Dict, Any, Optional
-from dataset.transform import BaseTransform
+from tyee.dataset.transform import BaseTransform
 
 class Scale(BaseTransform):
     def __init__(self, scale_factor: float = 1.0, source: Optional[str] = None, target: Optional[str] = None):

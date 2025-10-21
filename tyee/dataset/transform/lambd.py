@@ -11,7 +11,7 @@
 """
 
 from typing import Callable, Optional
-from dataset.transform import BaseTransform
+from tyee.dataset.transform import BaseTransform
 
 class Lambda(BaseTransform):
     def __init__(self, lambd: Callable, source: Optional[str] = None, target: Optional[str] = None):

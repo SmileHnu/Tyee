@@ -19,12 +19,12 @@ import numpy as np
 from argparse import ArgumentParser
 from torch import multiprocessing as mp
 
-from trainer import Trainer
-from utils import init_logging
-from utils.log_utils import create_experiment_directories, init_logging, save_config
-from utils.distributed_utils import call_main
-from utils.cfg_utils import get_nested_field, merge_config, convert_sci_notation
-from utils.import_utils import import_user_module
+from tyee.trainer import Trainer
+from tyee.utils import init_logging
+from tyee.utils.log_utils import create_experiment_directories, init_logging, save_config
+from tyee.utils.distributed_utils import call_main
+from tyee.utils.cfg_utils import get_nested_field, merge_config, convert_sci_notation
+from tyee.utils.import_utils import import_user_module
 
 # Argument parser for command-line options
 parser = ArgumentParser(description="The Physiological signal Representation Learning (PRL) framework.")
@@ -85,7 +85,12 @@ def main(cfg: dict, rank: int, world_size: int, **kwargs):
     trainer = Trainer(cfg, rank, world_size)
     trainer.run()
 
-if __name__ == "__main__":
+def cli_main():
+    """
+    Command-line interface main function.
+    This function orchestrates the whole process from loading configuration
+    to calling the main training function.
+    """
     # Load configuration
     cfg = load_cfg()
 
@@ -115,5 +120,8 @@ if __name__ == "__main__":
 
     # Call the main function with distributed training support
     call_main(cfg, main)
+
+if __name__ == "__main__":
+    cli_main()
 
 

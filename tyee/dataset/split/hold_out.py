@@ -5,10 +5,10 @@ from typing import Union, Tuple, Generator
 
 import numpy as np
 import pandas as pd
-from .train_test_split import train_test_split
+from tyee.dataset.split.train_test_split import train_test_split
 
-from dataset.base_dataset import BaseDataset
-from .base_split import BaseSplit
+from tyee.dataset.base_dataset import BaseDataset
+from tyee.dataset.split.base_split import BaseSplit
 
 log = logging.getLogger('split')
 

@@ -15,7 +15,7 @@ import scipy
 import numpy as np
 from pathlib import Path
 from typing import Callable, Union, Dict, List, Tuple
-from dataset.base_dataset import BaseDataset
+from tyee.dataset import BaseDataset
 
 class DaLiADataset(BaseDataset):
     def __init__(

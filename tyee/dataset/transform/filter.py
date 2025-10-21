@@ -13,7 +13,7 @@
 import mne
 import numpy as np
 from typing import Dict, Any, List, Optional
-from dataset.transform import BaseTransform
+from tyee.dataset.transform import BaseTransform
 from scipy.signal import cheby2, filtfilt, detrend
 mne.set_log_level('WARNING')
 

@@ -12,7 +12,7 @@
 
 import numpy as np
 from typing import Dict, Any, Optional
-from dataset.transform import BaseTransform
+from tyee.dataset.transform import BaseTransform
 
 class SlideWindow(BaseTransform):
     """

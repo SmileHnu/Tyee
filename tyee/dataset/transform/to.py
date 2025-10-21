@@ -14,7 +14,7 @@ import numpy as np
 import matplotlib as mpl
 from torchvision import transforms
 from typing import Dict, Any
-from .base_transform import BaseTransform
+from tyee.dataset.transform import BaseTransform
 
 class ToImage(BaseTransform):
     def __init__(self, length: int, width: int, resize_length_factor: float, native_resnet_size: int,

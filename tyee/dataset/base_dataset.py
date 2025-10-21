@@ -25,8 +25,8 @@ import torch
 from joblib import Parallel, delayed
 from torch.utils.data import Dataset
 from tqdm import tqdm
-from dataset.io import PhysioSignalIO
-from dataset.io import MetaInfoIO
+from tyee.dataset.io import PhysioSignalIO
+from tyee.dataset.io import MetaInfoIO
 
 
 log = logging.getLogger('dataset')

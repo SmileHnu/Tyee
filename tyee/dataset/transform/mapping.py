@@ -12,7 +12,7 @@
 
 from typing import Dict, Any
 import numpy as np
-from .base_transform import BaseTransform
+from tyee.dataset.transform import BaseTransform
 
 class Mapping(BaseTransform):
     def __init__(self, mapping: dict, source: str = None, target: str = None):

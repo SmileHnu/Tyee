@@ -11,10 +11,10 @@
 """
 
 import torch
-from tasks import PRLTask
-from utils import get_nested_field, lazy_import_module
+from tyee.tasks import BaseTask
+from tyee.utils import get_nested_field, lazy_import_module
 
-class SEEDVFeatureTask(PRLTask):
+class SEEDVFeatureTask(BaseTask):
     def __init__(self, cfg):
         super().__init__(cfg)
 

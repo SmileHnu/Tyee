@@ -12,7 +12,7 @@
 
 import os
 import logging
-from dataset import BaseDataset
+from tyee.dataset import BaseDataset
 from typing import Generator, Tuple, List
 
 log = logging.getLogger('split')

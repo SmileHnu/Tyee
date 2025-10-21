@@ -15,7 +15,7 @@ import numpy as np
 import torch
 from torchvision.transforms import Resize
 from PIL import Image
-from dataset.transform import BaseTransform
+from tyee.dataset.transform import BaseTransform
 
 class Reshape(BaseTransform):
     """

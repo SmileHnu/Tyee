@@ -17,7 +17,7 @@ import pickle
 import numpy as np
 from pathlib import Path
 from typing import Callable, Union, Dict, List, Tuple, Any
-from dataset.base_dataset import BaseDataset
+from tyee.dataset import BaseDataset
 
 class DEAPDataset(BaseDataset):
     def __init__(

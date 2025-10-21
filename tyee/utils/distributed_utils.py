@@ -15,8 +15,8 @@ import random
 import yaml
 import logging
 import torch.distributed as dist
-from utils.cfg_utils import get_nested_field
-from utils import log_utils
+from tyee.utils.cfg_utils import get_nested_field
+from tyee.utils import log_utils
 
 
 def infer_init_method(cfg, force_distributed=False):

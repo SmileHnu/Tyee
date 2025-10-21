@@ -12,7 +12,7 @@
 
 import numpy as np
 from typing import List, Dict, Any, Optional, Union
-from dataset.transform.base_transform import BaseTransform
+from tyee.dataset.transform import BaseTransform
 
 class Concat(BaseTransform):
     def __init__(self, axis: int = 0, source: Optional[Union[str, List[str]]] = None, target: Optional[str] = None):

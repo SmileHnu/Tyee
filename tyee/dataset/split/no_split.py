@@ -1,5 +1,5 @@
-from dataset import BaseDataset
-from .base_split import BaseSplit
+from tyee.dataset.base_dataset import BaseDataset
+from tyee.dataset.split.base_split import BaseSplit
 from typing import Generator, Tuple
 
 

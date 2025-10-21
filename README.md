@@ -83,38 +83,42 @@ The following table details the main modules of Tyee and their functions.  Each 
 | [Tyee.config](./docs/module/config_English.md)             | Provides centralized control over the entire framework through YAML files. |
 
 ## 🚀 Installation Guide
-
-**Environment Requirements**: 
+This guide provides two main paths to get started with Tyee: **Direct Execution** (for quick development) and **Package Installation** (for stable use and deployment). Both methods require setting up a Conda or Docker environment first.
+### Environment Requirements: 
 
 - Python 3.10 
 - PyTorch 2.5.0 
 
-### Using Conda
+### Step 1: Set Up Your Environment
 
-**Clone the Code Repository**: 
+First, prepare your Python environment using either Conda or Docker.
+
+#### Using Conda
+
+**1. Clone the Code Repository**: 
 
 ```bash
 $ git clone https://github.com/SmileHnu/Tyee.git
 $ cd Tyee
 ```
 
-**Create and Activate Virtual Environment**:
+**2. Create and Activate Virtual Environment**:
 
 ```bash
 $ conda env create -n tyee -f environment.yml
 $ conda activate tyee
 ```
 
-### Using Docker
+#### Using Docker
 
-**Clone the Code Repository**: 
+**1. Clone the Code Repository**: 
 
 ```bash
 $ git clone https://github.com/SmileHnu/Tyee.git
 $ cd Tyee
 ```
 
-**Build and Run Docker Container**:
+**2. Build and Run Docker Container**:
 
 ```bash
 # Build Docker image
@@ -122,10 +126,42 @@ $ docker build -t tyee:latest .
 
 # Run container
 $ docker run -it --name tyee-dev \
-  -v $(pwd)/tyee:/tyee/tyee \
+  -v $(pwd):/workspace/Tyee \
   -p 6006:6006 \
+  --workdir /workspace/Tyee \
   tyee:latest bash
 ```
+
+### Step 2: Choose Your Execution Method
+After setting up the environment, you can run experiments in two ways.
+
+#### Method 1: Direct Execution (No Installation Required)
+This is the fastest way to get started. It's ideal for development and debugging as it doesn't require installing the package.
+
+Simply run the train.py script from the project's root directory (Tyee/).
+
+```bash
+# Make sure you are in the project root directory (e.g., Tyee/)
+# and your conda environment is activated.
+
+$ python train.py -c tyee/config/mit_bih.yaml
+```
+
+#### Method 2: Package Installation (Recommended)
+This method installs tyee as a standard Python package, providing the tyee-train command-line tool that can be run from anywhere.
+
+##### 1. Install Tyee in Editable Mode:
+This command should be run from the project root directory.
+```bash
+$ pip install -e .
+```
+##### 2. Run an Experiment:
+You can now use the tyee-train command.
+```bash
+# Note that you need to provide the full or relative path to the config file.
+$ tyee-train -c /path/to/your/Tyee/tyee/config/mit_bih.yaml
+```
+
 ## ⚡ Quick Start
 
 The following demonstrates the basic usage of Tyee through a MIT-BIH arrhythmia detection experiment. For complete experimental configuration and detailed instructions, please refer to: [MIT-BIH Experiment Details](./docs/experiments/MITBIH_English.md)
@@ -135,7 +171,6 @@ The following demonstrates the basic usage of Tyee through a MIT-BIH arrhythmia 
 ```bash
 # Activate environment and run complete experiment workflow
 $ conda activate tyee
-$ cd tyee
 $ bash quick_start.sh
 ```
 
@@ -144,7 +179,6 @@ $ bash quick_start.sh
 ```bash
 # Enter container and run complete experiment workflow
 $ docker exec -it tyee-dev bash
-$ cd tyee
 $ bash quick_start.sh
 ```
 

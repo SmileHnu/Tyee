@@ -13,10 +13,7 @@
 
 from typing import Dict, Any, Optional
 import numpy as np
-from .base_transform import BaseTransform
-
-import numpy as np
-from dataset.transform import BaseTransform
+from tyee.dataset.transform import BaseTransform
 
 class CommonAverageRef(BaseTransform):
     """

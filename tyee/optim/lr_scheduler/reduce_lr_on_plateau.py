@@ -12,7 +12,7 @@
 
 import torch
 from typing import Optional, List
-from .base_lr_scheduler import BaseLRScheduler
+from tyee.optim.lr_scheduler import BaseLRScheduler
 
 
 class ReduceLROnPlateauScheduler(BaseLRScheduler):

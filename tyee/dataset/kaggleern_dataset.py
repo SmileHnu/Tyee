@@ -18,7 +18,7 @@ import torch
 import pandas as pd
 import numpy as np
 import scipy.io as scio
-from dataset import BaseDataset
+from tyee.dataset import BaseDataset
 from typing import Any, Callable, Union, Dict, Generator
 
 class KaggleERNDataset(BaseDataset):

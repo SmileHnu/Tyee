@@ -1,3 +1,4 @@
+from .base_lr_scheduler import *
 from .cosine_lr_scheduler import *
 from .inverse_square_root_scheduler import *
 from .manual_lr_scheduler import *

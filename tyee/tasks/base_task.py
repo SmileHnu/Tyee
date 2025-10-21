@@ -13,14 +13,14 @@ import os
 import torch
 import numpy as np
 from torch.utils.data import Dataset
-from utils import lazy_import_module, get_nested_field
+from tyee.utils import lazy_import_module, get_nested_field
 from torch.utils.data import Dataset, Sampler, DataLoader, DistributedSampler
 from typing import Tuple, List, Dict, Any
 
 import logging
 log = logging.getLogger(__name__)
 
-class PRLTask(object):
+class BaseTask(object):
     def __init__(self, cfg: dict) -> None:
         self.cfg = cfg
         

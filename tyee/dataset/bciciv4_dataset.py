@@ -13,7 +13,7 @@
 import os
 import scipy.io as scio
 import numpy as np
-from dataset import BaseDataset
+from tyee.dataset import BaseDataset
 from typing import Any, Callable, Union, Dict, Generator, List
 
 

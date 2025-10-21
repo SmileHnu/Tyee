@@ -15,7 +15,7 @@ import mne
 import torch
 import numpy as np
 import scipy.io as scio
-from dataset import BaseDataset
+from tyee.dataset import BaseDataset
 from typing import Any, Callable, Union, Generator, Dict, List
 
 class MMAADDataset(BaseDataset):
@@ -214,3 +214,4 @@ class MMAADDataset(BaseDataset):
     
     def get_sample_ids(self, segment_id, sample_len) -> str:
         return [f"{i}_{segment_id}" for i in range(sample_len)]
+    

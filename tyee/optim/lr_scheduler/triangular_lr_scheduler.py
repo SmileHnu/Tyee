@@ -13,14 +13,7 @@
 import math
 from typing import Optional, List
 from torch.optim import Optimizer
-from .base_lr_scheduler import BaseLRScheduler
-
-
-import math
-from typing import Optional, List
-from torch.optim import Optimizer
-from .base_lr_scheduler import BaseLRScheduler
-
+from tyee.optim.lr_scheduler import BaseLRScheduler
 
 class TriangularLRScheduler(BaseLRScheduler):
     """

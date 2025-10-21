@@ -11,9 +11,9 @@
 """
 
 import numpy as np
-from dataset.transform import BaseTransform
+from tyee.dataset.transform import BaseTransform
 from typing import List, Dict, Union, Any
-from utils import lazy_import_module
+from tyee.utils import lazy_import_module
 
 class PickChannels(BaseTransform):
     def __init__(self, channels: Union[str, List[str]], source: str = None, target: str = None):

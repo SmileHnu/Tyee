@@ -11,7 +11,7 @@
 """
 import mne
 import numpy as np
-from dataset.transform import BaseTransform
+from tyee.dataset.transform import BaseTransform
 from scipy.interpolate import interp1d
 from mne.filter import resample
 from typing import Optional

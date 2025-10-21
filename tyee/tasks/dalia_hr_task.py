@@ -11,11 +11,11 @@
 """
 import torch
 import numpy as np
-from tasks import PRLTask
-from utils import get_nested_field, lazy_import_module
+from tyee.tasks import BaseTask
+from tyee.utils import get_nested_field, lazy_import_module
 
 
-class DaLiaHREstimationTask(PRLTask):
+class DaLiaHREstimationTask(BaseTask):
     def __init__(self, cfg):
         super().__init__(cfg)
 

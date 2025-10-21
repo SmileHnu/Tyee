@@ -12,8 +12,8 @@
 
 import numpy as np
 from typing import Dict, Any, List, Union
-from dataset.transform import BaseTransform
-from utils import lazy_import_module
+from tyee.dataset.transform import BaseTransform
+from tyee.utils import lazy_import_module
 
 class UniToBiTransform(BaseTransform):
     def __init__(self, target_channels: Union[str, List[str]], source: str = None, target: str = None):

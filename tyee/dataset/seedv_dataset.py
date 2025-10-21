@@ -15,7 +15,7 @@ import re
 import torch
 import pickle
 import numpy as np
-from dataset import BaseDataset
+from tyee.dataset import BaseDataset
 from typing import Any, Callable, Union, Dict, Generator
 
 class SEEDVFeatureDataset(BaseDataset):

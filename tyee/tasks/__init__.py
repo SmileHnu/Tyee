@@ -1,1 +1,1 @@
-from .base_task import PRLTask
+from .base_task import BaseTask

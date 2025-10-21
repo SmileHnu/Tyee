@@ -9,7 +9,7 @@
 @Time    : 2025/05/21 20:53:39
 @Desc    : 
 """
-from .base_transform import BaseTransform
+from tyee.dataset.transform import BaseTransform
 import numpy as np
 
 class OneHotEncode(BaseTransform):

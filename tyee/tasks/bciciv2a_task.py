@@ -12,11 +12,11 @@
 import torch
 from torch import nn
 from pathlib import Path
-from tasks.base_task import PRLTask
-from utils import lazy_import_module, get_nested_field
+from tyee.tasks import BaseTask
+from tyee.utils import lazy_import_module, get_nested_field
 
 
-class BCICIV2aTask(PRLTask):
+class BCICIV2aTask(BaseTask):
     def __init__(self, cfg):
         super().__init__(cfg)
         self.train_dataset = None

@@ -81,48 +81,80 @@ Tyee 的核心架构采用模块化设计（如下图所示），确保各组件
 | [Tyee.config](./docs/module/config_Chinese.md)             | 通过YAML文件提供对全框架的集中控制                           |
 
 ## 🚀 安装指南
-
-**环境要求**: 
+本指南提供两种主要的使用路径：**直接执行** (适用于快速开发) 和 **包安装** (适用于稳定使用和部署)。两种方法都首先需要设置 Conda 或 Docker 环境。
+### 环境要求: 
 
 - Python 3.10 
 - PyTorch 2.5.0 
 
-### 使用 Conda
+### 第一步：设置您的环境
 
-**克隆代码仓库**: 
+首先，使用 Conda 或 Docker 准备您的 Python 环境。
+#### 使用 Conda
+
+**1. 克隆代码仓库**: 
 
 ```bash
 $ git clone https://github.com/SmileHnu/Tyee.git
 $ cd Tyee
 ```
 
-**创建并激活虚拟环境**:
+**2. 创建并激活虚拟环境**:
 
 ```bash
 $ conda env create -n tyee -f environment.yml
 $ conda activate tyee
 ```
 
-### 使用 Docker
+#### 使用 Docker
 
-**克隆代码仓库**: 
+**1. 克隆代码仓库**: 
 
 ```bash
 $ git clone https://github.com/SmileHnu/Tyee.git
 $ cd Tyee
 ```
 
-**构建并运行 Docker 容器**:
+**2. 构建并运行 Docker 容器**:
 
 ```bash
 # 构建Docker镜像
 $ docker build -t tyee:latest .
 
-# 运行容器
+# 运行容器，并挂载整个项目目录
 $ docker run -it --name tyee-dev \
-  -v $(pwd)/tyee:/tyee/tyee \
+  -v $(pwd):/workspace/Tyee \
   -p 6006:6006 \
+  --workdir /workspace/Tyee \
   tyee:latest bash
+```
+### 第二步：选择您的执行方式
+环境设置好后，您可以通过两种方式来运行实验。
+
+#### 方式一：直接执行 (无需安装)
+这是开始使用的最快方法，非常适合开发和调试，因为它不需要安装任何包。
+
+只需从项目的根目录 (Tyee/) 运行 train.py 脚本。
+```bash
+# 确保您位于项目根目录 (例如 Tyee/)
+# 并且您的 conda 环境已激活
+
+$ python train.py -c tyee/config/mit_bih.yaml
+```
+#### 方式二：包安装 (推荐)
+此方法会将 tyee 安装为标准的 Python 包，并提供一个可以从任何位置运行的 tyee-train 命令行工具。
+
+**1. 以可编辑模式安装 Tyee**
+此命令应在项目根目录下运行。
+```bash
+$ pip install -e .
+```
+
+**2. 运行一个实验**
+现在您可以使用 tyee-train 命令。
+```bash
+# 请注意，您需要提供配置文件的完整或相对路径
+$ tyee-train -c /path/to/your/Tyee/tyee/config/mit_bih.yaml
 ```
 ## ⚡ 快速开始
 

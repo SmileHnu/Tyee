@@ -13,10 +13,10 @@
 
 import torch
 import scipy
-from tasks import PRLTask
+from tyee.tasks import BaseTask
 from torch import nn
 import torch.nn.functional as F
-from utils import get_nested_field, lazy_import_module
+from tyee.utils import get_nested_field, lazy_import_module
 
 def correlation_metric(x, y):
     """
@@ -28,7 +28,7 @@ def correlation_metric(x, y):
 
     return cos_sim
 
-class BCICIV4Task(PRLTask):
+class BCICIV4Task(BaseTask):
     def __init__(self, cfg):
         super().__init__(cfg)
 

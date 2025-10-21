@@ -14,7 +14,7 @@ import mne
 import torch
 import numpy as np
 import scipy.io as scio
-from dataset import BaseDataset
+from tyee.dataset import BaseDataset
 from typing import Any, Callable, Union, Generator, Dict, List
 
 class BCICIV2ADataset(BaseDataset):

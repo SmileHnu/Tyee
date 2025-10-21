@@ -5,8 +5,8 @@ from copy import copy
 from typing import List, Tuple, Union, Generator
 import pandas as pd
 
-from dataset.base_dataset import BaseDataset
-from .base_split import BaseSplit
+from tyee.dataset.base_dataset import BaseDataset
+from tyee.dataset.split.base_split import BaseSplit
 
 
 log = logging.getLogger('split')
@@ -294,7 +294,7 @@ class LeaveOneOutEAndT(BaseSplit):
                 yield train_dataset, val_dataset, test_dataset
 
 
-from .train_test_split import train_test_split
+from tyee.dataset.split.train_test_split import train_test_split
 class LeaveOneOutAndHoldOutET(BaseSplit):
     def __init__(
         self, 

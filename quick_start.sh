@@ -25,7 +25,7 @@ echo "Dataset downloaded successfully!"
 # Step 3: Return to project directory and run experiment
 cd ../../
 echo "Step 3/3: Starting model training..."
-python main.py -c config/mit_bih.yaml
+python train.py -c tyee/config/mit_bih.yaml
 
 echo "=== Experiment completed! ==="
 echo "Results saved in ./experiments/ directory"

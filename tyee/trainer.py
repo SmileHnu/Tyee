@@ -14,9 +14,9 @@ import math
 import torch
 import logging
 import torch.distributed as dist
-from utils import MetricEvaluator
+from tyee.utils import MetricEvaluator
 from torch.utils.tensorboard import SummaryWriter
-from utils import lazy_import_module, get_nested_field, get_grad_norm, format_value
+from tyee.utils import lazy_import_module, get_nested_field, get_grad_norm, format_value
 from torch.nn.parallel import DistributedDataParallel as DDP
 
 INT_MAX = 2**31 - 1

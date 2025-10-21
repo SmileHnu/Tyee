@@ -15,7 +15,7 @@ import os
 import mne
 import torch
 import numpy as np
-from dataset import BaseDataset
+from tyee.dataset import BaseDataset
 from typing import Any, Callable, Union, Dict, List, Tuple, Generator
 
 def list_records(root_path):
