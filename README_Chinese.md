@@ -294,12 +294,21 @@ Tyee 的设计与实现借鉴了以下优秀的开源项目，并从中获益良
 ## 📖引用
 如果您在研究中使用 Tyee，请考虑按如下方式引用它：
 ```
-@inproceedings{
-zhou2025tyee,
-title={Tyee: A Unified, Modular, and Fully-Integrated Configurable Toolkit for Intelligent Physiological Health Care},
-author={Tao Zhou and Lingyu Shu and Zixing Zhang and Jing Han},
-booktitle={ACM Multimedia 2025 Open Source Track},
-year={2025},
-url={https://openreview.net/forum?id=k4zQNEMJrL}
+@inproceedings{10.1145/3746027.3756868,
+author = {Zhou, Tao and Shu, Lingyu and Zhang, Zixing and Han, Jing},
+title = {Tyee: A Unified, Modular, and Fully-Integrated Configurable Toolkit for Intelligent Physiological Health Care},
+year = {2025},
+isbn = {9798400720352},
+publisher = {Association for Computing Machinery},
+address = {New York, NY, USA},
+url = {https://doi.org/10.1145/3746027.3756868},
+doi = {10.1145/3746027.3756868},
+abstract = {Deep learning has shown great promise in physiological signal analysis, yet its progress is hindered by heterogeneous data formats, inconsistent preprocessing strategies, fragmented model pipelines, and non-reproducible experimental setups. To address these limitations, we present Tyee, a unified, modular, and fully-integrated configurable toolkit designed for intelligent physiological healthcare. Tyee introduces three key innovations: (1) a unified data interface and configurable preprocessing pipeline for 12 kinds of signal modalities; (2) a modular and extensible architecture enabling flexible integration and rapid prototyping across tasks; and (3) end-to-end workflow configuration, promoting reproducible and scalable experimentation. Tyee demonstrates consistent practical effectiveness and generalizability, outperforming or matching baselines across all evaluated tasks (with state-of-the-art results on 12 of 13 datasets). The Tyee toolkit is released at https://github.com/SmileHnu/Tyee and actively maintained.},
+booktitle = {Proceedings of the 33rd ACM International Conference on Multimedia},
+pages = {13628–13631},
+numpages = {4},
+keywords = {health and well-being, open source, physiological signal},
+location = {Dublin, Ireland},
+series = {MM '25}
 }
 ```
