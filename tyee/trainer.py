@@ -528,3 +528,134 @@ class Trainer:
         self.start_step = ckpt_params["step"] + 1
         self.best_metric_value = ckpt_params["best_metric_value"]
         self.logger.info(f"Checkpoint loaded from {filename}")
+
+    def infer(self, checkpoint: str = None, split: str = 'test', output_file: str = None):
+        """
+        Run inference on an already-initialized Trainer (requires _init_components to have been called).
+
+        Args:
+            checkpoint (str, optional): Path to checkpoint to load before inference. If None, uses current model state.
+            split (str, optional): Which split to run inference on. One of 'test' or 'val'. Defaults to 'test'.
+            output_file (str, optional): Path to save predictions (.npz). If None, defaults to
+                {self.checkpoint_dir}/inference_outputs.npz.
+
+        Returns:
+            tuple: (metrics_dict, output_path)
+        """
+        import numpy as _np
+
+        if checkpoint:
+            if not os.path.exists(checkpoint):
+                raise FileNotFoundError(f"Checkpoint {checkpoint} not found for inference")
+            self._load_checkpoint(checkpoint)
+
+        # choose loader
+        if split == 'test':
+            loader = getattr(self, 'test_loader', None)
+        elif split == 'val' or split == 'validation':
+            loader = getattr(self, 'val_loader', None)
+        else:
+            raise ValueError(f"Unknown split '{split}' for inference. Use 'test' or 'val'.")
+
+        if loader is None:
+            raise ValueError(f"No dataloader available for split '{split}'. Did you call _init_components()?")
+
+        # storage for predictions
+        inputs = []
+        preds = []
+        labels = []
+        metas = []
+
+        self.model.eval()
+        with torch.no_grad():
+            iterator = self.task.get_batch_iterator(loader)
+            self.task.on_valid_start(self)
+            for _ in range(len(loader)):
+                sample = self.task.load_sample(iterator, self.device)
+                with torch.amp.autocast('cuda', enabled=self.fp16):
+                    result = self.task.valid_step(self.model, sample)
+
+                # collect outputs/labels
+                input = result.get('input', None)
+                out = result.get('output', None)
+                lab = result.get('label', None)
+
+                def _to_numpy(x):
+                    if isinstance(x, torch.Tensor):
+                        return x.detach().cpu().numpy()
+                    return x
+
+                preds.append(_to_numpy(out))
+                labels.append(_to_numpy(lab))
+                inputs.append(_to_numpy(input))
+
+                # try collect simple meta if present
+                meta = None
+                if isinstance(sample, dict):
+                    meta = sample.get('meta', None) or sample.get('id', None)
+                metas.append(meta)
+
+                # update metric evaluator for compatibility with _evaluate
+                self._metrics_evaluator.update_metrics(result)
+
+            self.task.on_valid_end(self)
+
+        metrics = self._metrics_evaluator.calculate_metrics()
+
+        # concat or fallback to object array
+        try:
+
+            preds_arr = _np.concatenate(preds, axis=0) if len(preds) > 0 else _np.array([])
+            labels_arr = _np.concatenate(labels, axis=0) if len(labels) > 0 else _np.array([])
+            inputs_arr = _np.concatenate(inputs, axis=0) if len(inputs) > 0 else _np.array([])
+        except Exception:
+            preds_arr = _np.array(preds, dtype=object)
+            labels_arr = _np.array(labels, dtype=object)
+            inputs_arr = _np.array(inputs, dtype=object)
+
+        out_path = output_file or os.path.join(self.checkpoint_dir, 'inference_outputs.npz')
+        # ensure parent directory exists
+        out_dir = os.path.dirname(out_path)
+        if out_dir:
+            os.makedirs(out_dir, exist_ok=True)
+        try:
+            # include inputs so downstream code can read 'input'
+            _np.savez(out_path, input=inputs_arr, pred=preds_arr, label=labels_arr, meta=metas)
+        except Exception as e:
+            # if saving as .npz fails, fallback to saving a simple numpy pickle
+            fallback = out_path + '.npy'
+            try:
+                _np.save(fallback, {'input': inputs_arr, 'pred': preds_arr, 'label': labels_arr, 'meta': metas})
+                out_path = fallback
+            except Exception:
+                raise e
+
+        if self.rank == 0:
+            try:
+                self.logger.info(f"Inference saved to {out_path}, metrics: {metrics}")
+            except Exception:
+                pass
+
+        return metrics, out_path
+
+    def infer_fold(self, fold: int = 0, checkpoint: str = None, split: str = 'test', output_file: str = None):
+        """
+        Convenience wrapper: build datasets/components for a specific fold and run inference.
+
+        Args:
+            fold (int): Fold index (default 0).
+            checkpoint (str, optional): Path to checkpoint to load before inference.
+            split (str, optional): Which split to run on ('test' or 'val').
+            output_file (str, optional): Where to save outputs.
+
+        Returns:
+            tuple: (metrics_dict, output_path)
+        """
+        # build splits and initialize components for the requested fold
+        splits = list(self.task.get_datasets())
+        if fold < 0 or fold >= len(splits):
+            raise IndexError(f"Fold {fold} is out of range (0..{len(splits)-1})")
+
+        train_dataset, val_dataset, test_dataset = splits[fold]
+        self._init_components(fold, train_dataset, val_dataset, test_dataset)
+        return self.infer(checkpoint=checkpoint, split=split, output_file=output_file)
