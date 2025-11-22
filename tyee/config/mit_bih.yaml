@@ -45,6 +45,7 @@ dataset:
         'A': 5
         '!': 6
         'E': 7
+      drop_unmapped: true
       source: symbol
       target: symbol
 

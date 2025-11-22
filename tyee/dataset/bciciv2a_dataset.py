@@ -152,41 +152,10 @@ class BCICIV2ADataset(BaseDataset):
         }
 
     
-    def process_record(
-        self,
-        signals,
-        labels,
-        meta,
-        **kwargs
-    ) -> Generator[Dict[str, Any], None, None]:
-        signals = self.apply_transform(self.before_segment_transform, signals)
-        if signals is None:
-            print(f"Skip file {meta['file_name']} due to transform error.")
-            return None
-        for idx, segment in enumerate(self.segment_split(signals, labels)):
-            seg_signals = segment['signals']
-            seg_label = segment['labels']
-            seg_info = segment['info']
-            segment_id = self.get_segment_id(meta['file_name'], idx)
-            seg_signals = self.apply_transform(self.offline_signal_transform, seg_signals)
-            seg_label = self.apply_transform(self.offline_label_transform, seg_label)
-            if seg_signals is None or seg_label is None:
-                print(f"Skip segment {segment_id} due to transform error.")
-                continue
-            
-            seg_info.update({
-                'subject_id': self.get_subject_id(meta['file_name']),
-                'session_id': self.get_session_id(meta['file_name']),
-                'segment_id': self.get_segment_id(meta['file_name'], idx),
-                'run_id': self.get_run_id(meta['file_name'], idx),
-                'trial_id': self.get_trial_id(idx),
-            })
-            yield self.assemble_segment(
-                key=segment_id,
-                signals=seg_signals,
-                labels=seg_label,
-                info=seg_info,
-            )
+    def update_segment_info(self, seg_info: Dict, meta: Dict, idx: int, segment: Dict):
+        seg_info.update({
+            'run_id': self.get_run_id(meta['file_name'], idx),
+        })
 
     def get_subject_id(self, file_name) -> str:
         return file_name[0:3]
@@ -200,11 +169,6 @@ class BCICIV2ADataset(BaseDataset):
     def get_run_id(self, file_name, idx) -> str:
         run_idx = idx % 48
         return f'{run_idx}'
-    def get_segment_id(self, file_name, idx) -> str:
-        return f'{idx}_{file_name}'
-    
-    def get_trial_id(self, idx) -> str:
-        return str(idx)
     
     def get_sample_ids(self, segment_id, sample_len) -> str:
         return [f"{i}_{segment_id}" for i in range(sample_len)]

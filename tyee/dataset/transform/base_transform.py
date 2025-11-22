@@ -12,6 +12,10 @@
 
 from typing import Dict, Any, List, Optional, Union
 
+class DropSample(Exception):
+    """Exception raised when a sample should be dropped during transformation."""
+    pass
+
 class BaseTransform:
     def __init__(self, source: Optional[Union[str, List[str]]] = None, target: Optional[str] = None):
         """

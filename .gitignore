@@ -1,10 +1,8 @@
 .vscode/
 
 # experiments and data
-tyee/experiments/
-.experiments/
-tyee/data/
-.data/
+experiments/
+data/
 
 # Data files
 *.pth

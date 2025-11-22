@@ -24,10 +24,16 @@ class MetaInfoIO:
             self.write_pointer = 0
             self.info_df = pd.DataFrame()
         else:
-            self.write_pointer = len(self)
-            self.info_df = pd.read_csv(self.io_path)
+            if os.path.getsize(self.io_path) == 0:
+                self.info_df = pd.DataFrame()
+                self.write_pointer = 0
+            else:
+                self.info_df = pd.read_csv(self.io_path)
+                self.write_pointer = len(self.info_df)
 
     def __len__(self):
+        if self.info_df is not None and not self.info_df.empty:
+            return len(self.info_df)
         if os.path.getsize(self.io_path) == 0:
             return 0
         info_list = pd.read_csv(self.io_path)

@@ -16,7 +16,7 @@ import shutil
 import ast
 from copy import copy, deepcopy
 from collections import defaultdict, OrderedDict
-from typing import Any, Callable, Dict, Union, List, Tuple
+from typing import Any, Callable, Dict, Union, List, Tuple, Generator
 from sklearn.model_selection import KFold, train_test_split
 
 import numpy as np
@@ -27,6 +27,7 @@ from torch.utils.data import Dataset
 from tqdm import tqdm
 from tyee.dataset.io import PhysioSignalIO
 from tyee.dataset.io import MetaInfoIO
+from tyee.dataset.transform.base_transform import DropSample
 
 
 log = logging.getLogger('dataset')
@@ -47,6 +48,31 @@ def merge_info(info_merged: List[Dict]) -> Dict[str, List]:
             merged_info[key].append(value)
     merged_info = {k: pd.concat(v, ignore_index=True) for k,v in merged_info.items()}
     return merged_info
+
+def _load_record_meta(io_path, record):
+    meta_info_io_path = os.path.join(io_path, record, 'info.csv')
+    info_io = MetaInfoIO(meta_info_io_path)
+    info_df = info_io.read_all()
+    if info_df.empty:
+        return None
+    
+    signal_path = os.path.join(io_path, record, 'signals')
+    signal_info_df = {}
+    if os.path.exists(signal_path):
+        for signal_type in os.listdir(signal_path):
+            signal_info_path = os.path.join(signal_path, signal_type, 'info.csv')
+            signal_info_io = MetaInfoIO(signal_info_path)
+            signal_info_df[signal_type] = signal_info_io.read_all()
+            
+    label_path = os.path.join(io_path, record, 'labels')
+    label_info_df = {}
+    if os.path.exists(label_path):
+        for label_type in os.listdir(label_path):
+            label_info_path = os.path.join(label_path, label_type, 'info.csv')
+            label_info_io = MetaInfoIO(label_info_path)
+            label_info_df[label_type] = label_info_io.read_all()
+            
+    return (record, info_df, signal_path, signal_info_df, label_path, label_info_df)
 
 class BaseDataset(Dataset):
     """
@@ -260,41 +286,29 @@ class BaseDataset(Dataset):
             # Store paths instead of PhysioSignalIO instances
             self.signal_paths = {}
             self.label_paths = {}
-            for record in records:
-                meta_info_io_path = os.path.join(io_path, record, 'info.csv')
-                info_io = MetaInfoIO(meta_info_io_path)
-                info_df = info_io.read_all()
-                # check DataFrame is empty
-                if info_df.empty:
-                    log.warning(f"Empty DataFrame for record: {record}, skipping.")
-                    continue
+            
+            if self.num_worker > 0:
+                results = Parallel(n_jobs=self.num_worker)(
+                    delayed(_load_record_meta)(io_path, record) 
+                    for record in tqdm(records, disable=not self.verbose, desc="[LOAD META]")
+                )
+            else:
+                results = [_load_record_meta(io_path, record) for record in tqdm(records, disable=not self.verbose, desc="[LOAD META]")]
+
+            for res in results:
+                if res is None: continue
+                record, info_df, signal_path, signal_info_df, label_path, label_info_df = res
                 
                 assert 'record_id' not in info_df.columns, \
                     "column 'record_id' is a forbidden reserved word."
                 info_df['record_id'] = record
                 info_merged.append(info_df)
 
-                self.signal_paths[record] = {}
-                signal_path = os.path.join(io_path, record, 'signals')
                 self.signal_paths[record] = signal_path
-                signal_info_df = {}
-                for signal_type in os.listdir(signal_path):
-                    signal_info_path = os.path.join(signal_path, signal_type, 'info.csv')
-                    signal_info_io = MetaInfoIO(signal_info_path)
-                    signal_info_df[signal_type] = signal_info_io.read_all()
-                    signals_info_merged.append(signal_info_df)
-                    
+                signals_info_merged.append(signal_info_df)
 
-
-                label_path = os.path.join(io_path, record, 'labels')
                 self.label_paths[record] = label_path
-                label_info_df = {}
-                for label_type in os.listdir(label_path):
-                    label_info_path = os.path.join(label_path, label_type, 'info.csv')
-                    label_info_io = MetaInfoIO(label_info_path)
-                    label_info_df[label_type] = label_info_io.read_all()
-                    labels_info_merged.append(label_info_df)
-
+                labels_info_merged.append(label_info_df)
 
             self.signal_io_router = {}  # Not used in lazy mode
             self.label_io_router = {}
@@ -573,8 +587,7 @@ class BaseDataset(Dataset):
 
         return batch_signals  
 
-    @staticmethod
-    def get_subject_id(**kwargs) -> str:
+    def get_subject_id(self, file_name: str) -> str:
         """
         Retrieve the subject ID for a specific record.
 
@@ -586,8 +599,7 @@ class BaseDataset(Dataset):
         """
         return "0"
 
-    @staticmethod
-    def get_session_id(**kwargs) -> str:
+    def get_session_id(self, file_name: str = None) -> str:
         """
         Retrieve the session ID for a specific record.
 
@@ -599,8 +611,7 @@ class BaseDataset(Dataset):
         """
         return "0"
 
-    @staticmethod
-    def get_trial_id(**kwargs) -> str:
+    def get_trial_id(self, idx: int) -> str:
         """
         Retrieve the trial ID for a specific record.
 
@@ -610,7 +621,19 @@ class BaseDataset(Dataset):
         Returns:
             str: The trial ID. Default is '0'.
         """
-        return "0"
+        return str(idx)
+
+    def get_segment_id(self, file_name: str, idx: int) -> str:
+        """
+        Retrieve the segment ID for a specific record.
+
+        Args:
+            **kwargs: Additional parameters.
+
+        Returns:
+            str: The segment ID. Default is '0'.
+        """
+        return f'{idx}_{file_name}'
 
     def set_records(self, **kwargs) -> List:
         """
@@ -664,7 +687,11 @@ class BaseDataset(Dataset):
 
         kwargs['record'] = record
         kwargs.update(self.read_record(**kwargs))
-        gen = self.process_record(**kwargs)
+        
+        try:
+            gen = self.process_record(**kwargs)
+        except DropSample:
+            return None
 
         # --- Optimization: Collect all data and write in batches ---
         all_signals_to_write = defaultdict(list)
@@ -679,46 +706,49 @@ class BaseDataset(Dataset):
         except:
             record_name = str(record)
 
-        pbar = tqdm(disable=not self.verbose,
+        # Disable inner progress bar if running in parallel to avoid display issues
+        disable_inner_pbar = (not self.verbose) or (self.num_worker > 0)
+
+        pbar = tqdm(disable=disable_inner_pbar,
                     desc=f"[RECORD {record_name}]",
-                    position=int(record_id) % 20 + 1, # Avoid overlap
                     leave=False)
 
-        for obj in gen:
-            pbar.update(1)
-            if obj and 'key' in obj:
-                key = obj['key']
-                if 'signals' in obj:
-                    for sig_type, sig_data in obj['signals'].items():
-                        # Remove info from signal data before appending
-                        info = deepcopy(sig_data['info'])
-                        del sig_data['info']
-                        all_signals_to_write[sig_type].append({'key': key, 'signal': sig_data})
-                        for sample_id, win in zip(info['sample_ids'], info['windows']):
-                            all_signal_meta_to_write[sig_type].append({
-                                'sample_id': sample_id, 'segment_id': key,
-                                'start': win['start'], 'end': win['end']
-                            })
-
-                if 'labels' in obj:
-                    for lbl_type, lbl_data in obj['labels'].items():
-                        info = deepcopy(lbl_data['info'])
-                        del lbl_data['info']
-                        all_labels_to_write[lbl_type].append({'key': key, 'signal': lbl_data})
-                        if 'windows' not in info:
-                            for sample_id in info['sample_ids']:
-                                all_label_meta_to_write[lbl_type].append({
-                                    'sample_id': sample_id, 'segment_id': key
-                                })
-                        else:
+        if gen is not None:
+            for obj in gen:
+                pbar.update(1)
+                if obj and 'key' in obj:
+                    key = obj['key']
+                    if 'signals' in obj:
+                        for sig_type, sig_data in obj['signals'].items():
+                            # Remove info from signal data before appending
+                            info = deepcopy(sig_data['info'])
+                            del sig_data['info']
+                            all_signals_to_write[sig_type].append({'key': key, 'signal': sig_data})
                             for sample_id, win in zip(info['sample_ids'], info['windows']):
-                                all_label_meta_to_write[lbl_type].append({
+                                all_signal_meta_to_write[sig_type].append({
                                     'sample_id': sample_id, 'segment_id': key,
                                     'start': win['start'], 'end': win['end']
                                 })
-                
-                if 'info' in obj:
-                    all_info_to_write.append(obj['info'])
+
+                    if 'labels' in obj:
+                        for lbl_type, lbl_data in obj['labels'].items():
+                            info = deepcopy(lbl_data['info'])
+                            del lbl_data['info']
+                            all_labels_to_write[lbl_type].append({'key': key, 'signal': lbl_data})
+                            if 'windows' not in info:
+                                for sample_id in info['sample_ids']:
+                                    all_label_meta_to_write[lbl_type].append({
+                                        'sample_id': sample_id, 'segment_id': key
+                                    })
+                            else:
+                                for sample_id, win in zip(info['sample_ids'], info['windows']):
+                                    all_label_meta_to_write[lbl_type].append({
+                                        'sample_id': sample_id, 'segment_id': key,
+                                        'start': win['start'], 'end': win['end']
+                                    })
+                    
+                    if 'info' in obj:
+                        all_info_to_write.append(obj['info'])
         pbar.close()
 
         # --- Batch Write Signals ---
@@ -810,23 +840,66 @@ class BaseDataset(Dataset):
             "Method read_record is not implemented in class BaseDataset"
         )
 
-    def process_record(self, result: Dict, **kwargs) -> Dict:
+    def process_record(
+        self,
+        signals,
+        labels,
+        meta,
+        **kwargs
+    ) -> Generator[Dict[str, Any], None, None]:
         """
-        Process a record to generate the database.
-
-        This method describes how to process a file to generate the database. It is called
-        in the `__init__` method of the class and executed in parallel using `joblib.Parallel`.
-
-        Args:
-            result (Any): The result to process. It is an Dict returned by `read_records`.
-            **kwargs: Parameters derived from the class `__init__`.
-
-
-        Raises:
-            NotImplementedError: If the method is not implemented in the subclass.
+        Default implementation of process_record.
+        Can be overridden by subclasses if custom processing is needed.
         """
-        raise NotImplementedError(
-            "Method process_record is not implemented in class BaseDataset")
+        try:
+            signals = self.apply_transform(self.before_segment_transform, signals)
+        except DropSample:
+            return None
+            
+        if signals is None:
+            print(f"Skip file {meta['file_name']} due to transform error.")
+            return None
+
+        for idx, segment in enumerate(self.segment_split(signals, labels)):
+            seg_signals = segment['signals']
+            seg_label = segment['labels']
+            seg_info = segment['info']
+            segment_id = self.get_segment_id(meta['file_name'], idx)
+            
+            # Update info with IDs
+            # Subclasses can override get_*_id methods to customize IDs
+            seg_info.update({
+                'subject_id': self.get_subject_id(meta['file_name']),
+                'session_id': self.get_session_id(meta.get('file_name')), # Pass file_name if needed, default ignores kwargs
+                'segment_id': segment_id,
+                'trial_id': self.get_trial_id(idx),
+            })
+            
+            # Allow subclasses to add extra info
+            self.update_segment_info(seg_info, meta, idx, segment)
+
+            try:
+                seg_signals = self.apply_transform(self.offline_signal_transform, seg_signals)
+                seg_label = self.apply_transform(self.offline_label_transform, seg_label)
+            except DropSample:
+                continue
+
+            if seg_signals is None or seg_label is None:
+                print(f"Skip segment {segment_id} due to transform error.")
+                continue
+
+            yield self.assemble_segment(
+                key=segment_id,
+                signals=seg_signals,
+                labels=seg_label,
+                info=seg_info,
+            )
+
+    def update_segment_info(self, seg_info: Dict, meta: Dict, idx: int, segment: Dict):
+        """
+        Hook for subclasses to add extra info to seg_info.
+        """
+        pass
 
     def segment_split(
         self,
@@ -887,6 +960,11 @@ class BaseDataset(Dataset):
                     signals = transform(signals)
                     # print(transform.__class__.__name__)
                     # print(signals['eeg']['data'])
+                except DropSample as e:
+                    if self.verbose:
+                        # Log as info/debug, indicating it's a filtered sample, not an error
+                        print(f"[Filter Drop] {transform.__class__.__name__}: {e}")
+                    raise e
                 except Exception as e:
                     print(f"[Transform Error] {transform.__class__.__name__}: {e}")
                     return None

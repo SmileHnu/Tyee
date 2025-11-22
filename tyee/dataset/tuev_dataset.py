@@ -96,7 +96,7 @@ class TUEVDataset(BaseDataset):
         eventData = np.genfromtxt(RecFile, delimiter=",")
         Rawdata.close()
         eeg = {
-            'data': data,
+            'data': np.concatenate([data, data, data], axis=1),
             'freq': freq,
             'channels': eeg_channels,
         }
@@ -130,46 +130,6 @@ class TUEVDataset(BaseDataset):
                 'file_name': os.path.splitext(os.path.basename(record))[0],
             }
         }
-
-    def process_record(
-        self,
-        signals,
-        labels,
-        meta,
-        **kwargs
-    ) -> Generator[Dict[str, Any], None, None]:
-        signals = self.apply_transform(self.before_segment_transform, signals)
-        if signals is None:
-            print(f"Skip file {meta['file_name']} due to transform error.")
-            return None
-        signals['eeg']['data'] = np.concatenate(
-            [signals['eeg']['data'], signals['eeg']['data'], signals['eeg']['data']], 
-             axis=1)
-        for idx, segment in enumerate(self.segment_split(signals, labels)):
-            seg_signals = segment['signals']
-            seg_label = segment['labels']
-            seg_info = segment['info']
-            # print(signals['eeg']['data'].shape)
-            # print(label['label']['data'])
-            segment_id = self.get_segment_id(meta['file_name'], idx)
-            seg_signals = self.apply_transform(self.offline_signal_transform, seg_signals)
-            seg_label = self.apply_transform(self.offline_label_transform, seg_label)
-            if seg_signals is None or seg_label is None:
-                print(f"Skip segment {segment_id} due to transform error.")
-                continue
-            
-            seg_info.update({
-                'subject_id': self.get_subject_id(meta['file_name']),
-                'session_id': self.get_session_id(),
-                'segment_id': self.get_segment_id(meta['file_name'], idx),
-                'trial_id': self.get_trial_id(idx),
-            })
-            yield self.assemble_segment(
-                key=segment_id,
-                signals=seg_signals,
-                labels=seg_label,
-                info=seg_info,
-            )
 
     def __getitem__(self, index: int) -> Dict:
         """
