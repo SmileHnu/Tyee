@@ -432,6 +432,18 @@ class HDF5PhysioSignalIO(_PhysioSignalIO):
         result._file_handlers = {}
         return result
 
+    def __getstate__(self):
+        state = self.__dict__.copy()
+        # Do not pickle file handlers
+        state['_file_handlers'] = {}
+        return state
+
+    def __setstate__(self, state):
+        self.__dict__.update(state)
+        # Ensure file handlers dict exists
+        if '_file_handlers' not in self.__dict__:
+            self._file_handlers = {}
+
 class PhysioSignalIO:
     def __init__(
         self,

@@ -105,7 +105,7 @@ def distributed_main(rank, main, cfg, kwargs):
     distributed_init(cfg, rank)
 
     # Reinitialize logging for each process
-    log_utils.init_logging(cfg['common']['exp_dir'])
+    log_utils.init_logging(cfg['common']['exp_dir'], rank=rank)
 
     main(cfg, rank, get_nested_field(cfg, 'distributed.world_size', 1), **kwargs)
 

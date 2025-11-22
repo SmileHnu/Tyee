@@ -12,6 +12,7 @@
 import os
 import torch
 import numpy as np
+import multiprocessing
 from torch.utils.data import Dataset
 from tyee.utils import lazy_import_module, get_nested_field
 from torch.utils.data import Dataset, Sampler, DataLoader, DistributedSampler
@@ -278,6 +279,16 @@ class BaseTask(object):
         if sampler is None and len(dataset) == 0:
             raise ValueError("Dataset is empty, cannot create DataLoader without a sampler.")
         
+        # Determine multiprocessing context
+        mp_context = None
+        if self.num_workers > 0 and multiprocessing.get_start_method(allow_none=True) != 'fork':
+            # If we are in a spawned process (like DDP), try to use fork for workers if possible
+            # This avoids re-pickling the entire dataset for each worker
+            try:
+                mp_context = multiprocessing.get_context('fork')
+            except ValueError:
+                pass
+
         if sampler is None:
             try:
                 data_loader = DataLoader(dataset, 
@@ -285,8 +296,9 @@ class BaseTask(object):
                                          shuffle=shuffle, 
                                          num_workers=self.num_workers,
                                          pin_memory=True,
-                                        persistent_workers=True if self.num_workers > 0 else False,
-                                         collate_fn=dataset.collate_fn)
+                                         persistent_workers=True if self.num_workers > 0 else False,
+                                         collate_fn=dataset.collate_fn,
+                                         multiprocessing_context=mp_context)
             except Exception as e:
                 raise RuntimeError(f"Failed to create DataLoader: {e}")
 
@@ -298,7 +310,8 @@ class BaseTask(object):
                                          num_workers=self.num_workers,
                                          pin_memory=True,
                                          persistent_workers=True if self.num_workers > 0 else False,
-                                         collate_fn=dataset.collate_fn)
+                                         collate_fn=dataset.collate_fn,
+                                         multiprocessing_context=mp_context)
             except Exception as e:
                 raise RuntimeError(f"Failed to create DataLoader: {e}")
         

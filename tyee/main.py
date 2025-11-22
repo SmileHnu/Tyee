@@ -10,6 +10,13 @@
 @Desc    : 
 """
 import os
+# Set environment variables to avoid thread explosion in dataloader workers
+os.environ["NUMEXPR_MAX_THREADS"] = "1"
+os.environ["OMP_NUM_THREADS"] = "1"
+os.environ["MKL_NUM_THREADS"] = "1"
+os.environ["VECLIB_MAXIMUM_THREADS"] = "1"
+os.environ["OPENBLAS_NUM_THREADS"] = "1"
+
 import yaml
 import torch
 import random
@@ -107,7 +114,7 @@ def cli_main():
     tb_dir, checkpoint_dir = create_experiment_directories(exp_dir)
 
     # Initialize logging
-    init_logging(exp_dir)
+    init_logging(exp_dir, rank=0)
     logger = logging.getLogger(__name__)
 
     # Save the configuration file

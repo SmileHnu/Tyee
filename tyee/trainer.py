@@ -77,11 +77,31 @@ class Trainer:
         """
         Execute the training process, including initialization, training, evaluation, and checkpointing.
         """
-        for fold, (train_dataset, val_dataset, eval_dataset) in enumerate(self.task.get_datasets()):
+        # Ensure datasets are built on rank 0 first to avoid race conditions in cache creation
+        datasets_cache = None
+        if self.world_size > 1:
+            if self.rank == 0:
+                logging.getLogger(__name__).info("Checking/Building datasets on rank 0...")
+                # Iterate to trigger dataset initialization/caching
+                datasets_cache = list(self.task.get_datasets())
+            
+            # Wait for rank 0 to finish building datasets
+            dist.barrier()
+            if self.rank == 0:
+                logging.getLogger(__name__).info("Datasets ready. Starting distributed training.")
+
+        # Use cached datasets on Rank 0, or fetch them on other ranks
+        if self.rank == 0 and datasets_cache is not None:
+            datasets_source = datasets_cache
+        else:
+            datasets_source = self.task.get_datasets()
+
+        for fold, (train_dataset, val_dataset, eval_dataset) in enumerate(datasets_source):
             self._init_components(fold, train_dataset, val_dataset, eval_dataset)
-            self.logger.info(f"Start training for fold {fold + 1}")
+            if self.rank == 0:
+                self.logger.info(f"Start training for fold {fold + 1}")
             self.run_loop()
-            if self.best_metric_value is not None:
+            if self.best_metric_value is not None and self.rank == 0:
                 self.logger.info(f"Best {self.eval_metric}: {self.best_metric_value}")
 
     def _build_task(self) -> object:
@@ -161,13 +181,19 @@ class Trainer:
             if not os.path.exists(resume_checkpoint):
                 raise FileNotFoundError(f"Resume checkpoint file {resume_checkpoint} does not exist!")
             self._load_checkpoint(resume_checkpoint)
-            self.logger.info(f"Model loaded from checkpoint {resume_checkpoint}")
+            if self.rank == 0:
+                self.logger.info(f"Model loaded from checkpoint {resume_checkpoint}")
  
     def run_loop(self):
         """
         Run the training and evaluation loop, including logging and checkpointing.
         """
+        if self.rank == 0:
+            self.logger.info("Initializing dataloader workers...")
         iterator = self.task.get_batch_iterator(self.train_loader)
+        if self.rank == 0:
+            self.logger.info("Dataloader ready. Starting training loop...")
+
         self.task.on_train_epoch_start(self, self.start_step)
         # Skip to the current step's batch
         for _ in range((self.start_step - 1) % len(self.train_loader)):
@@ -185,6 +211,9 @@ class Trainer:
                 if self.train_sampler is not None:
                     # Update epoch for distributed training
                     self.train_sampler.set_epoch(step // len(self.train_loader))
+                
+                if self.rank == 0:
+                    self.logger.info(f"Epoch {step // len(self.train_loader)} finished. Restarting iterator...")
                 iterator = self.task.get_batch_iterator(self.train_loader)
                 self.task.on_train_epoch_start(self, step)
 
@@ -527,7 +556,8 @@ class Trainer:
             self.lr_scheduler.load_state_dict(ckpt_params["lr_scheduler"])
         self.start_step = ckpt_params["step"] + 1
         self.best_metric_value = ckpt_params["best_metric_value"]
-        self.logger.info(f"Checkpoint loaded from {filename}")
+        if self.rank == 0:
+            self.logger.info(f"Checkpoint loaded from {filename}")
 
     def infer(self, checkpoint: str = None, split: str = 'test', output_file: str = None):
         """

@@ -12,12 +12,13 @@
 import os
 import yaml
 import logging
-def init_logging(log_dir: str):
+def init_logging(log_dir: str, rank: int = 0):
     """
     Initialize the logger with basic configurations.
 
     Args:
         log_dir (str): Directory where the log file will be stored.
+        rank (int): The rank of the current process.
 
     Returns:
         None
@@ -29,16 +30,19 @@ def init_logging(log_dir: str):
     # Define the log format
     log_format = "[%(asctime)s][%(name)s][%(levelname)s] - %(message)s"
 
+    handlers = [logging.FileHandler(log_file)]
+    if rank == 0:
+        handlers.append(logging.StreamHandler())
+
     # Configure the logging system
     logging.basicConfig(
         level=logging.INFO,
         format=log_format,
-        handlers=[
-            logging.StreamHandler(),  # Log to the console
-            logging.FileHandler(log_file),  # Log to a file
-        ]
+        handlers=handlers,
+        force=True
     )
-    print("Logging initialized successfully!")
+    if rank == 0:
+        print("Logging initialized successfully!")
 
 
 def save_config(cfg: dict, exp_dir: str):
