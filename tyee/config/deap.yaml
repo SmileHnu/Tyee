@@ -84,7 +84,10 @@ optimizer:
 task:
   loss:
     select: CrossEntropyLoss
-  select: deap_task.DEAPTask
+  select: base_task.BaseTask
+  model:
+    input_map: ['mulit4']
+  target_map: ['arousal']
 
 trainer:
   fp16: false

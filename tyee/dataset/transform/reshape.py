@@ -157,3 +157,25 @@ class ImageResize(BaseTransform):
         
         result_copy['data'] = data
         return result_copy
+
+class Rearrange(BaseTransform):
+    """
+    Rearrange transform using einops.
+    """
+    def __init__(self, pattern: str, source: Optional[str] = None, target: Optional[str] = None, **kwargs):
+        """
+        Args:
+            pattern: einops pattern string
+            source/target: specify signal field
+            **kwargs: additional arguments for einops.rearrange (e.g. dimensions)
+        """
+        super().__init__(source, target)
+        self.pattern = pattern
+        self.kwargs = kwargs
+
+    def transform(self, result: Dict[str, Any]) -> Dict[str, Any]:
+        from einops import rearrange
+        data = result['data']
+        result = result.copy()
+        result['data'] = rearrange(data, self.pattern, **self.kwargs)
+        return result

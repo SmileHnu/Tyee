@@ -619,30 +619,25 @@ class BeliefPPG(nn.Module):
     def fit_prior_layer(self, seq_data, distr_type = "gauss", sparse=False):
         self.prior_layer.fit_prior_layer(seq_data, distr_type, sparse)
 
-
-if __name__ == "__main__":
-    n_frames = 7
-    n_bins = 64
-    freq = 64
-    attn_channels=32
-    init_channels=12
-
-    model = HybridUNet(
-        attn_channels=attn_channels,
-        init_channels=init_channels,
-        down_fac=4,
-        n_frames=n_frames,
-        n_bins=n_bins,
-        use_time_backbone=True
-    )
-    # model = BeliefPPG(n_frames, n_bins, freq, use_time_backbone=True)
-    # (batch, frames, bins, 2)
-    spec_input = torch.randn(2, n_frames, n_bins, 2)
-    # (batch, seq_len, 1)
-    # (freq * (n_frames - 1) * InputConfig.STRIDE + freq * InputConfig.WINSIZE, 1)
-    # WINSIZE: 8, STRIDE: 2
-    winsize = 8
-    stride = 2
-    time_input = torch.randn(2, freq * (n_frames - 1) * stride + freq * winsize, 1)
-    output = model(spec_input, time_input)
-    print("Output shape:", output.shape)  #  (batch, n_bins)
+    def on_train_start(self, train_loader):
+        """
+        Initialize prior layer using training data labels.
+        Called by BaseTask.on_train_start.
+        """
+        import numpy as np
+        print("Initializing prior layer from training data...")
+        with torch.no_grad():
+            train_labels = []
+            for sample in train_loader:
+                # Try to find 'hr' or 'label' in sample
+                if "hr" in sample:
+                    train_labels.append(sample["hr"].numpy())
+                elif "label" in sample:
+                    train_labels.append(sample["label"].numpy())
+        
+        if train_labels:
+            train_ys = np.concatenate(train_labels)
+            print(f"Fitting prior layer with {len(train_ys)} samples.")
+            self.fit_prior_layer([train_ys])
+        else:
+            print("Warning: No 'hr' or 'label' found in train_loader for prior initialization.")

@@ -61,7 +61,10 @@ optimizer:
 task:
   loss:
     select: CrossEntropyLoss
-  select: mit_bih_task.MITBIHTask
+  select: base_task.BaseTask
+  model:
+    input_map: ['ecg']
+  target_map: ['symbol']
 
 trainer:
   fp16: false

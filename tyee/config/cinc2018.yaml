@@ -121,7 +121,10 @@ task:
   loss:
     select: CrossEntropyLoss
 
-  select: cinc2018_task.CinC2018Task
+  select: base_task.BaseTask
+  model:
+    input_map: ['ss', 'ecg', 'resp']
+  target_map: ['stage']
 
 trainer:
   fp16: false

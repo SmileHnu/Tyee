@@ -74,6 +74,10 @@ class BaseTask(object):
         self.val_dataset = None
         self.test_dataset = None
         self.loss = self.build_loss()
+        
+        # Pre-parse input/target maps once during initialization
+        self.input_map = get_nested_field(self.cfg, 'task.model.input_map', None)
+        self.target_map = get_nested_field(self.cfg, 'task.target_map', None)
 
     def build_transforms(self, transform_cfg: list):
         """
@@ -149,8 +153,20 @@ class BaseTask(object):
         return splitter_cls(**self.split_init_params)
 
     def build_model(self):
-        """Build model"""
-        raise NotImplementedError
+        """
+        Build model dynamically based on config.
+        This generic implementation should work for most cases.
+        """
+        if not self.model_select:
+            raise ValueError("Model selection ('model.select') not specified in config.")
+        
+        try:
+            module_name, class_name = self.model_select.rsplit('.', 1)
+            model_cls = lazy_import_module(f'models.{module_name}', class_name)
+        except (ValueError, ImportError) as e:
+            raise ImportError(f"Failed to import model '{self.model_select}'. Error: {e}")
+
+        return model_cls(**self.model_params)
 
     def build_loss(self):
         """Build loss function"""
@@ -177,13 +193,81 @@ class BaseTask(object):
     
     def set_optimizer_params(self, model: torch.nn.Module, lr: float, layer_decay: float, weight_decay: float = 1e-5):
         """
-        Set learning rate for each layer of the model based on lr and layer_decay, construct corresponding parameter groups
-        :param model: Model that needs learning rate setting
-        :param lr: Base learning rate
-        :param layer_decay: Learning rate decay rate
-        :return: List of parameter groups for optimizer creation
+        Set learning rate for each layer of the model based on lr and layer_decay, construct corresponding parameter groups.
+        Supports:
+        1. Layer-wise learning rate decay (if layer_decay < 1.0)
+        2. Parameter freezing (via config 'optimizer.freeze_patterns')
+        3. Custom weight decay rules (e.g. skip bias/norm)
         """
-        param_groups = [{'params': model.parameters(), 'lr': lr, 'weight_decay': weight_decay}]
+        import re
+        
+        # 1. Get freeze patterns from config
+        freeze_patterns = get_nested_field(self.cfg, 'optimizer.freeze_patterns', [])
+        if isinstance(freeze_patterns, str):
+            freeze_patterns = [freeze_patterns]
+            
+        # 2. Freeze parameters
+        if freeze_patterns:
+            for name, param in model.named_parameters():
+                for pattern in freeze_patterns:
+                    if re.search(pattern, name):
+                        param.requires_grad = False
+                        log.info(f"Freezing parameter: {name}")
+                        break
+
+        # 3. Layer-wise decay logic
+        # If layer_decay is 1.0 (default), we use simple grouping
+        if layer_decay == 1.0:
+            param_groups = [{'params': [p for p in model.parameters() if p.requires_grad], 'lr': lr, 'weight_decay': weight_decay}]
+            return param_groups
+
+        # If layer_decay < 1.0, we need model-specific layer ID logic
+        # We try to call model.get_layer_id(name, num_layers) if it exists
+        # Otherwise we fall back to a simple heuristic or error
+        
+        if not hasattr(model, 'get_num_layers'):
+             log.warning("Model does not have 'get_num_layers' method, but layer_decay < 1.0. Falling back to global LR.")
+             return [{'params': [p for p in model.parameters() if p.requires_grad], 'lr': lr, 'weight_decay': weight_decay}]
+
+        if not hasattr(model, 'get_layer_id') and not hasattr(self, 'get_layer_id'):
+             log.warning("Model/Task does not have 'get_layer_id' method, but layer_decay < 1.0. Falling back to global LR.")
+             return [{'params': [p for p in model.parameters() if p.requires_grad], 'lr': lr, 'weight_decay': weight_decay}]
+
+        num_layers = model.get_num_layers()
+        layer_scales = [layer_decay ** (num_layers + 1 - i) for i in range(num_layers + 2)]
+        
+        # Common skip list for weight decay
+        skip_list = set()
+        if hasattr(model, 'no_weight_decay'):
+            skip_list = model.no_weight_decay()
+        
+        param_groups = []
+        for name, param in model.named_parameters():
+            if not param.requires_grad:
+                continue
+            
+            # Determine layer ID
+            if hasattr(model, 'get_layer_id'):
+                layer_id = model.get_layer_id(name, num_layers + 2)
+            else:
+                layer_id = self.get_layer_id(name, num_layers + 2)
+            
+            scale = layer_scales[layer_id]
+            
+            # Determine weight decay
+            # Skip weight decay for 1D params (bias, norm) and special tokens
+            if param.ndim <= 1 or name.endswith(".bias") or name in skip_list:
+                this_wd = 0.0
+            else:
+                this_wd = weight_decay
+                
+            param_groups.append({
+                'params': param,
+                'lr': lr * scale,
+                'weight_decay': this_wd
+            })
+            # log.debug(f"Layer {layer_id}: {name}, lr_scale={scale:.4f}, lr={lr*scale:.2e}, wd={this_wd}")
+            
         return param_groups
 
     def build_lr_scheduler(self, optimizer, niter_per_epoch):
@@ -334,33 +418,150 @@ class BaseTask(object):
         
         return sample
 
+    
+    def _map_inputs(self, sample, mapping):
+        """
+        Helper to map sample data to function arguments based on configuration.
+        mapping can be:
+        - list: ['ecg', 'mask'] -> returns args=[sample['ecg'], sample['mask']], kwargs={}
+        - dict: {'x': 'ecg', 'mask': 'mask'} -> returns args=[], kwargs={'x': sample['ecg'], ...}
+        """
+        if isinstance(mapping, list):
+            args = [sample[k] for k in mapping]
+            return args, {}
+        elif isinstance(mapping, dict):
+            kwargs = {k: sample[v] for k, v in mapping.items()}
+            return [], kwargs
+        return [], {}
+
     def train_step(self, model: torch.nn.Module, sample: dict[str, torch.Tensor], *args, **kwargs):
-        raise NotImplementedError
+        """
+        Generic train_step that uses config to map inputs.
+        """
+        # 1. Prepare Model Inputs
+        if self.input_map is None:
+            # Fallback for legacy subclasses that might rely on overriding this method
+            # If they didn't override and didn't provide config, we can't proceed.
+            raise NotImplementedError("train_step is not implemented and 'task.model.input_map' is not configured.")
+        
+        model_args, model_kwargs = self._map_inputs(sample, self.input_map)
+        
+        # 2. Forward Pass
+        # Ensure inputs are float if they are tensors (common requirement)
+        # You can also use transforms for this, but a safety check here is helpful
+        model_args = [arg.float() if isinstance(arg, torch.Tensor) and arg.dtype != torch.float32 else arg for arg in model_args]
+        model_kwargs = {k: (v.float() if isinstance(v, torch.Tensor) and v.dtype != torch.float32 else v) for k, v in model_kwargs.items()}
+        
+        pred = model(*model_args, **model_kwargs)
+
+        # 3. Prepare Loss Inputs
+        # Default: assume loss takes (pred, target)
+        
+        if self.target_map:
+            target_args, target_kwargs = self._map_inputs(sample, self.target_map)
+            loss = self.loss(pred, *target_args, **target_kwargs)
+            # Assuming the first target is the main label for metrics/logging
+            label = target_args[0] if target_args else list(target_kwargs.values())[0]
+        else:
+            # Naive fallback: try to find a 'label' or 'target' key
+            if 'label' in sample:
+                label = sample['label']
+            elif 'target' in sample:
+                label = sample['target']
+            else:
+                # If we can't find a label, maybe the loss doesn't need one (unsupervised)?
+                # But usually it does. Let's assume None and let Loss handle it or crash.
+                label = None
+            
+            if label is not None:
+                loss = self.loss(pred, label)
+            else:
+                loss = self.loss(pred)
+
+        return {
+            'loss': loss,
+            'output': pred,
+            'label': label
+        }
 
     @torch.no_grad()
     def valid_step(self, model: torch.nn.Module, sample: dict[str, torch.Tensor], *args, **kwargs):
-        raise NotImplementedError
+        """
+        Generic valid_step that uses config to map inputs.
+        """
+        # Logic is identical to train_step, but wrapped in no_grad (handled by decorator)
+        # We duplicate logic to allow independent customization if needed, 
+        # but for the generic case, it's the same mapping.
+        
+        if self.input_map is None:
+             raise NotImplementedError("valid_step is not implemented and 'task.model.input_map' is not configured.")
+
+        model_args, model_kwargs = self._map_inputs(sample, self.input_map)
+        
+        model_args = [arg.float() if isinstance(arg, torch.Tensor) and arg.dtype != torch.float32 else arg for arg in model_args]
+        model_kwargs = {k: (v.float() if isinstance(v, torch.Tensor) and v.dtype != torch.float32 else v) for k, v in model_kwargs.items()}
+
+        pred = model(*model_args, **model_kwargs)
+
+        if self.target_map:
+            target_args, target_kwargs = self._map_inputs(sample, self.target_map)
+            loss = self.loss(pred, *target_args, **target_kwargs)
+            label = target_args[0] if target_args else list(target_kwargs.values())[0]
+        else:
+            if 'label' in sample:
+                label = sample['label']
+            elif 'target' in sample:
+                label = sample['target']
+            else:
+                label = None
+            
+            if label is not None:
+                loss = self.loss(pred, label)
+            else:
+                loss = self.loss(pred)
+
+        return {
+            'loss': loss,
+            'output': pred,
+            'label': label
+        }
     
     def on_train_start(self, trainer, *args, **kwargs):
         """Processing before each training process starts"""
-        pass
+        # Unwrap DDP if necessary to get the actual model
+        model = trainer.model.module if hasattr(trainer.model, 'module') else trainer.model
+        
+        # Delegate to model if it has a hook
+        if hasattr(model, 'on_train_start'):
+            log.info(f"Invoking {model.__class__.__name__}.on_train_start hook")
+            model.on_train_start(trainer.train_loader)
 
     def on_train_end(self, trainer, *args, **kwargs):
         """Processing after each training process ends"""
-        pass
+        model = trainer.model.module if hasattr(trainer.model, 'module') else trainer.model
+        if hasattr(model, 'on_train_end'):
+            model.on_train_end()
 
     def on_train_epoch_start(self, trainer, step: int, *args, **kwargs):
         """Processing before each training epoch starts"""
-        pass
+        model = trainer.model.module if hasattr(trainer.model, 'module') else trainer.model
+        if hasattr(model, 'on_train_epoch_start'):
+            model.on_train_epoch_start(step)
 
     def on_train_epoch_end(self, trainer, step: int, *args, **kwargs):
         """Processing after each training epoch ends"""
-        pass
+        model = trainer.model.module if hasattr(trainer.model, 'module') else trainer.model
+        if hasattr(model, 'on_train_epoch_end'):
+            model.on_train_epoch_end(step)
 
     def on_valid_start(self, trainer, *args, **kwargs):
         """Processing before each validation process starts"""
-        pass
+        model = trainer.model.module if hasattr(trainer.model, 'module') else trainer.model
+        if hasattr(model, 'on_valid_start'):
+            model.on_valid_start()
 
     def on_valid_end(self, trainer, *args, **kwargs):
         """Processing after each validation process ends"""
-        pass
+        model = trainer.model.module if hasattr(trainer.model, 'module') else trainer.model
+        if hasattr(model, 'on_valid_end'):
+            model.on_valid_end()

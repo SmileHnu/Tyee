@@ -117,7 +117,10 @@ optimizer:
 task:
   loss:
     select: CrossEntropyLoss
-  select: ninapro_db5_task.NinaproDB5Task
+  select: base_task.BaseTask
+  model:
+    input_map: ['emg']
+  target_map: ['gesture']
 
 trainer:
   fp16: false

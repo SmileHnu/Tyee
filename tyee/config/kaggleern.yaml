@@ -63,7 +63,10 @@ optimizer:
 task:
   loss:
     select: CrossEntropyLoss
-  select: kaggleern_task.KaggleERNTask
+  select: base_task.BaseTask
+  model:
+    input_map: ['eeg']
+  target_map: ['label']
 
 trainer:
   fp16: true

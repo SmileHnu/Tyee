@@ -10,6 +10,8 @@
 
 import math
 from functools import partial
+from collections import OrderedDict
+import logging
 
 import torch
 import torch.nn as nn
@@ -17,6 +19,24 @@ import torch.nn.functional as F
 from torch.nn.init import trunc_normal_
 from einops import rearrange
 
+log = logging.getLogger(__name__)
+
+standard_1020 = [
+    'FP1', 'FPZ', 'FP2', 
+    'AF9', 'AF7', 'AF5', 'AF3', 'AF1', 'AFZ', 'AF2', 'AF4', 'AF6', 'AF8', 'AF10', \
+    'F9', 'F7', 'F5', 'F3', 'F1', 'FZ', 'F2', 'F4', 'F6', 'F8', 'F10', \
+    'FT9', 'FT7', 'FC5', 'FC3', 'FC1', 'FCZ', 'FC2', 'FC4', 'FC6', 'FT8', 'FT10', \
+    'T9', 'T7', 'C5', 'C3', 'C1', 'CZ', 'C2', 'C4', 'C6', 'T8', 'T10', \
+    'TP9', 'TP7', 'CP5', 'CP3', 'CP1', 'CPZ', 'CP2', 'CP4', 'CP6', 'TP8', 'TP10', \
+    'P9', 'P7', 'P5', 'P3', 'P1', 'PZ', 'P2', 'P4', 'P6', 'P8', 'P10', \
+    'PO9', 'PO7', 'PO5', 'PO3', 'PO1', 'POZ', 'PO2', 'PO4', 'PO6', 'PO8', 'PO10', \
+    'O1', 'OZ', 'O2', 'O9', 'CB1', 'CB2', \
+    'IZ', 'O10', 'T3', 'T5', 'T4', 'T6', 'M1', 'M2', 'A1', 'A2', \
+    'CFC1', 'CFC2', 'CFC3', 'CFC4', 'CFC5', 'CFC6', 'CFC7', 'CFC8', \
+    'CCP1', 'CCP2', 'CCP3', 'CCP4', 'CCP5', 'CCP6', 'CCP7', 'CCP8', \
+    'T1', 'T2', 'FTT9h', 'TTP7h', 'TPP9h', 'FTT10h', 'TPP8h', 'TPP10h', \
+    "FP1-F7", "F7-T7", "T7-P7", "P7-O1", "FP2-F8", "F8-T8", "T8-P8", "P8-O2", "FP1-F3", "F3-C3", "C3-P3", "P3-O1", "FP2-F4", "F4-C4", "C4-P4", "P4-O2"
+]
 
 def _cfg(url='', **kwargs):
     return {
@@ -271,10 +291,25 @@ class NeuralTransformer(nn.Module):
                  num_heads=10, mlp_ratio=4., qkv_bias=False, qk_norm=None, qk_scale=None, drop_rate=0., attn_drop_rate=0.,
                  drop_path_rate=0., norm_layer=nn.LayerNorm, init_values=None,
                  use_abs_pos_emb=True, use_rel_pos_bias=False, use_shared_rel_pos_bias=False,
-                 use_mean_pooling=True, init_scale=0.001, **kwargs):
+                 use_mean_pooling=True, init_scale=0.001, trainable=True, 
+                 finetune='', freeze_backbone=False, model_key='model|module', model_prefix='', model_filter_name='gzp',
+                 input_chans_list=None,
+                 **kwargs):
         super().__init__()
         self.num_classes = num_classes
         self.num_features = self.embed_dim = embed_dim  # num_features for consistency with other models
+        
+        # Handle input_chans_list: convert strings to indices if necessary
+        if input_chans_list is not None and len(input_chans_list) > 0:
+            if isinstance(input_chans_list[0], str):
+                # Convert channel names to indices
+                # Index 0 is reserved for CLS token, so we shift by +1
+                self.input_chans_list = [0] + [standard_1020.index(ch) + 1 for ch in input_chans_list]
+            else:
+                # Assume already indices
+                self.input_chans_list = input_chans_list
+        else:
+            self.input_chans_list = None
 
         # To identify whether it is neural tokenizer or neural decoder. 
         # For the neural decoder, use linear projection (PatchEmbed) to project codebook dimension to hidden dimension.
@@ -320,6 +355,121 @@ class NeuralTransformer(nn.Module):
         if isinstance(self.head, nn.Linear):
             self.head.weight.data.mul_(init_scale)
             self.head.bias.data.mul_(init_scale)
+        
+        # Handle explicit trainable flag (legacy)
+        if not trainable:
+            for name, param in self.named_parameters():
+                if 'head' not in name:
+                    param.requires_grad = False
+                else:
+                    print(f"Unfrozen parameter for training: {name}")
+        
+        # Handle finetuning loading
+        if finetune:
+            self.load_pretrained_weights(finetune, model_key, model_prefix, model_filter_name)
+            
+        # Handle backbone freezing
+        if freeze_backbone:
+            self.freeze_backbone_layers()
+
+    def freeze_backbone_layers(self):
+        print("Freezing backbone, only training the head.")
+        for name, param in self.named_parameters():
+            if 'head' not in name:
+                param.requires_grad = False
+            else:
+                print(f"Unfrozen parameter for training: {name}")
+
+    def load_pretrained_weights(self, finetune_path, model_key='model|module', model_prefix='', model_filter_name='gzp'):
+        if finetune_path.startswith('https'):
+            checkpoint = torch.hub.load_state_dict_from_url(
+                finetune_path, map_location='cpu', check_hash=True)
+        else:
+            checkpoint = torch.load(finetune_path, map_location='cpu')
+
+        print("Load ckpt from %s" % finetune_path)
+        checkpoint_model = None
+        for key in model_key.split('|'):
+            if key in checkpoint:
+                checkpoint_model = checkpoint[key]
+                print("Load state_dict by model_key = %s" % key)
+                break
+        if checkpoint_model is None:
+            checkpoint_model = checkpoint
+            
+        if (checkpoint_model is not None) and (model_filter_name != ''):
+            all_keys = list(checkpoint_model.keys())
+            new_dict = OrderedDict()
+            for key in all_keys:
+                if key.startswith('student.'):
+                    new_dict[key[8:]] = checkpoint_model[key]
+                else:
+                    pass
+            # If we filtered and got something, use it. Otherwise fall back or keep original if logic dictates.
+            # The original logic implies if we find student keys we switch to new_dict.
+            if new_dict:
+                checkpoint_model = new_dict
+
+        state_dict = self.state_dict()
+        for k in ['head.weight', 'head.bias']:
+            if k in checkpoint_model and checkpoint_model[k].shape != state_dict[k].shape:
+                print(f"Removing key {k} from pretrained checkpoint due to shape mismatch")
+                del checkpoint_model[k]
+
+        all_keys = list(checkpoint_model.keys())
+        for key in all_keys:
+            if "relative_position_index" in key:
+                checkpoint_model.pop(key)
+
+        self.load_custom_state_dict(checkpoint_model, prefix=model_prefix)
+
+    def load_custom_state_dict(self, state_dict, prefix='', ignore_missing="relative_position_index"):
+        missing_keys = []
+        unexpected_keys = []
+        error_msgs = []
+        # copy state_dict so _load_from_state_dict can modify it
+        metadata = getattr(state_dict, '_metadata', None)
+        state_dict = state_dict.copy()
+        if metadata is not None:
+            state_dict._metadata = metadata
+
+        def load(module, prefix=''):
+            local_metadata = {} if metadata is None else metadata.get(
+                prefix[:-1], {})
+            module._load_from_state_dict(
+                state_dict, prefix, local_metadata, True, missing_keys, unexpected_keys, error_msgs)
+            for name, child in module._modules.items():
+                if child is not None:
+                    load(child, prefix + name + '.')
+
+        load(self, prefix=prefix)
+
+        warn_missing_keys = []
+        ignore_missing_keys = []
+        for key in missing_keys:
+            keep_flag = True
+            for ignore_key in ignore_missing.split('|'):
+                if ignore_key in key:
+                    keep_flag = False
+                    break
+            if keep_flag:
+                warn_missing_keys.append(key)
+            else:
+                ignore_missing_keys.append(key)
+
+        missing_keys = warn_missing_keys
+
+        if len(missing_keys) > 0:
+            print("Weights of {} not initialized from pretrained model: {}".format(
+                self.__class__.__name__, missing_keys))
+        if len(unexpected_keys) > 0:
+            print("Weights from pretrained model not used in {}: {}".format(
+                self.__class__.__name__, unexpected_keys))
+        if len(ignore_missing_keys) > 0:
+            print("Ignored weights of {} not initialized from pretrained model: {}".format(
+                self.__class__.__name__, ignore_missing_keys))
+        if len(error_msgs) > 0:
+            print('\n'.join(error_msgs))
 
     def fix_init_weight(self):
         def rescale(param, layer_id):
@@ -341,6 +491,19 @@ class NeuralTransformer(nn.Module):
     def get_num_layers(self):
         return len(self.blocks)
 
+    def get_layer_id(self, var_name, num_max_layer):
+        if var_name in ("cls_token", "mask_token", "pos_embed"):
+            return 0
+        elif var_name.startswith("patch_embed"):
+            return 0
+        elif var_name.startswith("rel_pos_bias"):
+            return num_max_layer - 1
+        elif var_name.startswith("blocks"):
+            layer_id = int(var_name.split('.')[1])
+            return layer_id + 1
+        else:
+            return num_max_layer - 1
+
     @torch.jit.ignore
     def no_weight_decay(self):
         return {'pos_embed', 'cls_token', 'time_embed'}
@@ -360,6 +523,10 @@ class NeuralTransformer(nn.Module):
         cls_tokens = self.cls_token.expand(batch_size, -1, -1)  # stole cls_tokens impl from Phil Wang, thanks
 
         x = torch.cat((cls_tokens, x), dim=1)
+
+        # Use self.input_chans_list if input_chans is not provided
+        if input_chans is None:
+            input_chans = self.input_chans_list
 
         pos_embed_used = self.pos_embed[:, input_chans] if input_chans is not None else self.pos_embed
         if self.pos_embed is not None:

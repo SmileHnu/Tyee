@@ -114,7 +114,10 @@ task:
   loss:
     select: LabelSmoothingCrossEntropy
     smoothing: 0.01
-  select: seedv_task.SEEDVFeatureTask
+  select: base_task.BaseTask
+  model:
+    input_map: ['eeg_eog']
+  target_map: ['emotion']
 
 trainer:
   fp16: false

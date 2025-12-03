@@ -38,10 +38,14 @@ dataset:
       source: eeg
       target: eeg
   
-  offline_signal_transform:
-    - select: SlideWindow
-      window_size: 1000
-      stride: 1000
+  online_signal_transform:
+    - select: Scale
+      scale_factor: 0.01
+      source: eeg
+      target: eeg
+    - select: Rearrange
+      pattern: 'n (a t) -> n a t'
+      t: 200
       source: eeg
       target: eeg
   
@@ -64,6 +68,7 @@ lr_scheduler:
 
 model:
   select: labram.labram_base_patch200_200
+  input_chans_list: ['FP1', 'FP2', 'F3', 'F4', 'C3', 'C4', 'P3', 'P4', 'O1', 'O2', 'F7', 'F8', 'T3', 'T4', 'T5', 'T6', 'A1', 'A2', 'FZ', 'CZ', 'PZ', 'T1', 'T2']
   trainable: true
   finetune: /home/lingyus/code/PRL/models/labram/checkpoints/labram-base.pth
   nb_classes: 6
@@ -88,7 +93,10 @@ task:
   loss:
     select: LabelSmoothingCrossEntropy
     smoothing: 0.1
-  select: tuev_task.TUEVTask
+  select: base_task.BaseTask
+  model:
+    input_map: ['eeg']
+  target_map: ['event']
 
 trainer:
   fp16: true

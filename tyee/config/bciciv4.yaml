@@ -47,7 +47,10 @@ optimizer:
 task:
   loss:
     select: MSELoss
-  select: bciciv4_task.BCICIV4Task
+  select: base_task.BaseTask
+  model:
+    input_map: ['ecog']
+  target_map: ['dg']
 
 trainer:
   fp16: false

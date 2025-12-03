@@ -174,7 +174,10 @@ task:
     max_hz: 3.5
     sigma_y: 1.5
     # select: MSELoss
-  select: dalia_hr_task.DaLiaHREstimationTask
+  select: base_task.BaseTask
+  model:
+    input_map: ['ppg_acc', 'ppg_time']
+  target_map: ['hr']
 
 trainer:
   fp16: true

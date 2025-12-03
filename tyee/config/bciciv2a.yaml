@@ -57,7 +57,10 @@ task:
   loss:
     select: CrossEntropyLoss
 
-  select: bciciv2a_task.BCICIV2aTask
+  select: base_task.BaseTask
+  model:
+    input_map: ['eeg']
+  target_map: ['event']
 
 trainer:
   fp16: true

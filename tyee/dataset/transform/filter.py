@@ -157,3 +157,73 @@ class Detrend(BaseTransform):
         detrended_signal = detrend(signal_data, axis=self.axis)
         result['data'] = detrended_signal
         return result
+
+
+class FFTNotchFilter(BaseTransform):
+    def __init__(self, 
+                 notch_freq: float = 50.0, 
+                 notch_width: float = 1.0,
+                 source: Optional[str] = None,
+                 target: Optional[str] = None):
+        super().__init__(source, target)
+        self.notch_freq = notch_freq
+        self.notch_width = notch_width
+
+    def transform(self, result: Dict[str, Any]) -> Dict[str, Any]:
+        signal_data = result['data']
+        sfreq = result['freq']
+        
+        # 确保数据是二维的 (channels, timepoints)
+        if signal_data.ndim == 1:
+            signal_data = signal_data.reshape(1, -1)
+
+        N = signal_data.shape[-1]
+        fft_coeffs = np.fft.fft(signal_data, axis=-1)
+        freqs = np.fft.fftfreq(N, d=1/sfreq)
+        
+        freqs_mask = np.ones(N, dtype=bool)
+        
+        # 50Hz 陷波滤波
+        notch_min = self.notch_freq - self.notch_width
+        notch_max = self.notch_freq + self.notch_width
+        notch_indices = np.where((np.abs(freqs) >= notch_min) & (np.abs(freqs) <= notch_max))[0]
+        freqs_mask[notch_indices] = False
+
+        fft_coeffs = fft_coeffs * freqs_mask
+        filtered_data = np.fft.ifft(fft_coeffs, axis=-1).real
+        
+        result['data'] = filtered_data
+        return result
+
+class DecomposeBands(BaseTransform):
+    def __init__(self, 
+                 bands: List[tuple] = [(0.5, 8), (8, 14), (14, 30)],
+                 butter_order: int = 4,
+                 source: Optional[str] = None,
+                 target: Optional[str] = None):
+        super().__init__(source, target)
+        self.bands = bands
+        self.butter_order = butter_order
+
+    def transform(self, result: Dict[str, Any]) -> Dict[str, Any]:
+        from scipy.signal import butter, filtfilt
+        
+        data = result['data']
+        fs = result['freq']
+        nyq = 0.5 * fs
+        
+        decomposed_list = []
+        
+        for low, high in self.bands:
+            # 设计带通滤波器
+            b, a = butter(self.butter_order, [low / nyq, high / nyq], btype='band')
+            
+            # 应用零相位滤波
+            filtered = filtfilt(b, a, data, axis=-1)
+            decomposed_list.append(filtered)
+            
+        # 在通道维度堆叠
+        stacked_data = np.concatenate(decomposed_list, axis=-2)
+        
+        result['data'] = stacked_data
+        return result

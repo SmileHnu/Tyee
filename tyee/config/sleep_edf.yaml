@@ -114,7 +114,10 @@ task:
   loss:
     select: CrossEntropyLoss
     weight: [1.0, 1.80, 1.0, 1.20, 1.25]
-  select: sleepedfx_task.SleepEDFxTask
+  select: base_task.BaseTask
+  model:
+    input_map: ['eeg', 'eog']
+  target_map: ['stage']
 
 trainer:
   fp16: false
