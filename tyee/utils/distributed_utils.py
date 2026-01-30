@@ -106,13 +106,30 @@ def distributed_main(rank, main, cfg, kwargs):
 
     # Reinitialize logging for each process
     log_utils.init_logging(cfg['common']['exp_dir'], rank=rank)
+    logger = logging.getLogger(__name__)
 
-    main(cfg, rank, get_nested_field(cfg, 'distributed.world_size', 1), **kwargs)
+    try:
+        main(cfg, rank, get_nested_field(cfg, 'distributed.world_size', 1), **kwargs)
 
-    if dist.is_initialized():
-        dist.barrier()
-
-    dist.destroy_process_group()
+        if dist.is_initialized():
+            dist.barrier()
+    except Exception:
+        logger.exception("Unhandled exception on rank %s, aborting distributed training.", rank)
+        if dist.is_initialized():
+            try:
+                if hasattr(dist, "abort"):
+                    dist.abort()
+                else:
+                    dist.destroy_process_group()
+            except Exception:
+                logger.exception("Failed to abort/destroy process group on rank %s.", rank)
+        raise
+    finally:
+        if dist.is_initialized():
+            try:
+                dist.destroy_process_group()
+            except Exception:
+                logger.exception("Failed to destroy process group on rank %s.", rank)
 
 
 def call_main(cfg, main, **kwargs):
