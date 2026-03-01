@@ -16,7 +16,7 @@ class LeaveOneOut(BaseSplit):
     def __init__(
         self, 
         group_by: str,
-        split_path: Union[None, str] = None,
+        dst_path: Union[None, str] = None,
         **kwargs
     ) -> None:
         """
@@ -24,10 +24,10 @@ class LeaveOneOut(BaseSplit):
 
         Args:
             group_by (str): The column name to group by (e.g., 'subject_id', 'session_id', 'trial_id').
-            split_path (Union[None, str]): Path to save split files.
+            dst_path (Union[None, str]): Path to save split files.
         """
         self.group_by = group_by
-        self.split_path = split_path
+        self.dst_path = dst_path
 
     def split_info_constructor(self, info: pd.DataFrame) -> None:
         """
@@ -50,11 +50,11 @@ class LeaveOneOut(BaseSplit):
             val_info = info[info[self.group_by] == val_group]
 
             train_info.to_csv(
-                os.path.join(self.split_path, f'train_{self.group_by}_{val_group}.csv'),
+                os.path.join(self.dst_path, f'train_{self.group_by}_{val_group}.csv'),
                 index=False
             )
             val_info.to_csv(
-                os.path.join(self.split_path, f'val_{self.group_by}_{val_group}.csv'),
+                os.path.join(self.dst_path, f'val_{self.group_by}_{val_group}.csv'),
                 index=False
             )
 
@@ -66,7 +66,7 @@ class LeaveOneOut(BaseSplit):
         Returns:
             List: Sorted list of unique group IDs.
         """
-        indice_files = list(os.listdir(self.split_path))
+        indice_files = list(os.listdir(self.dst_path))
 
         def indice_file_to_group(indice_file):
             # Extract group ID dynamically based on `group_by`
@@ -98,14 +98,14 @@ class LeaveOneOut(BaseSplit):
         if not self.check_split_path():
             log.info('📊 | Creating the split of train and validation sets.')
             log.info(
-                f'😊 | Please set \033[92msplit_path\033[0m to \033[92m{self.split_path}\033[0m '
+                f'😊 | Please set \033[92msplit_path\033[0m to \033[92m{self.dst_path}\033[0m '
                 'for the next run, if you want to use the same setting for the experiment.'
             )
-            os.makedirs(self.split_path)
+            os.makedirs(self.dst_path)
             self.split_info_constructor(dataset.info)
         else:
             log.info(
-                f'📊 | Detected existing split of train and validation sets. Using existing split from {self.split_path}.'
+                f'📊 | Detected existing split of train and validation sets. Using existing split from {self.dst_path}.'
             )
             log.info(
                 '💡 | If the dataset is re-generated, you need to re-generate the split instead of using the previous split.'
@@ -114,10 +114,10 @@ class LeaveOneOut(BaseSplit):
         groups = self.groups
         if group is not None:
             train_info = pd.read_csv(
-                os.path.join(self.split_path, f'train_{self.group_by}_{group}.csv')
+                os.path.join(self.dst_path, f'train_{self.group_by}_{group}.csv')
             )
             val_info = pd.read_csv(
-                os.path.join(self.split_path, f'val_{self.group_by}_{group}.csv')
+                os.path.join(self.dst_path, f'val_{self.group_by}_{group}.csv')
             )
             train_dataset = copy(dataset)
             train_dataset.info = train_info
@@ -129,10 +129,10 @@ class LeaveOneOut(BaseSplit):
         else:
             for group in groups:
                 train_info = pd.read_csv(
-                    os.path.join(self.split_path, f'train_{self.group_by}_{group}.csv')
+                    os.path.join(self.dst_path, f'train_{self.group_by}_{group}.csv')
                 )
                 val_info = pd.read_csv(
-                    os.path.join(self.split_path, f'val_{self.group_by}_{group}.csv')
+                    os.path.join(self.dst_path, f'val_{self.group_by}_{group}.csv')
                 )
 
                 train_dataset = copy(dataset)
@@ -303,7 +303,7 @@ class LeaveOneOutAndHoldOutET(BaseSplit):
         shuffle: bool = True,
         random_state: int = 42,
         stratify: str = None,
-        split_path: Union[None, str] = None,
+        dst_path: Union[None, str] = None,
         **kwargs
     ) -> None:
         """
@@ -311,11 +311,11 @@ class LeaveOneOutAndHoldOutET(BaseSplit):
 
         Args:
             group_by (str): The column name to group by (e.g., 'subject_id', 'session_id', 'trial_id').
-            split_path (Union[None, str]): Path to save split files.
+            dst_path (Union[None, str]): Path to save split files.
         """
         self.group_by = group_by
         self.file_group = group_by.split('_')[0]
-        self.split_path = split_path
+        self.dst_path = dst_path
         self.test_size = test_size
         self.shuffle = shuffle
         self.random_state = random_state
@@ -348,15 +348,15 @@ class LeaveOneOutAndHoldOutET(BaseSplit):
                 stratify=self.stratify
             )
             train_info.to_csv(
-                os.path.join(self.split_path, f'train_{self.file_group}_{val_group}.csv'),
+                os.path.join(self.dst_path, f'train_{self.file_group}_{val_group}.csv'),
                 index=False
             )
             val_info.to_csv(
-                os.path.join(self.split_path, f'val_{self.file_group}_{val_group}.csv'),
+                os.path.join(self.dst_path, f'val_{self.file_group}_{val_group}.csv'),
                 index=False
             )
             test_info.to_csv(
-                os.path.join(self.split_path, f'test_{self.file_group}_{val_group}.csv'),
+                os.path.join(self.dst_path, f'test_{self.file_group}_{val_group}.csv'),
                 index=False
             )
 
@@ -368,7 +368,7 @@ class LeaveOneOutAndHoldOutET(BaseSplit):
         Returns:
             List: Sorted list of unique group IDs.
         """
-        indice_files = list(os.listdir(self.split_path))
+        indice_files = list(os.listdir(self.dst_path))
 
         def indice_file_to_group(indice_file):
             # Extract group ID dynamically based on `group_by`
@@ -400,14 +400,14 @@ class LeaveOneOutAndHoldOutET(BaseSplit):
         if not self.check_split_path():
             log.info('📊 | Creating the split of train and validation sets.')
             log.info(
-                f'😊 | Please set \033[92msplit_path\033[0m to \033[92m{self.split_path}\033[0m '
+                f'😊 | Please set \033[92msplit_path\033[0m to \033[92m{self.dst_path}\033[0m '
                 'for the next run, if you want to use the same setting for the experiment.'
             )
-            os.makedirs(self.split_path)
+            os.makedirs(self.dst_path)
             self.split_info_constructor(dataset.info)
         else:
             log.info(
-                f'📊 | Detected existing split of train and validation sets. Using existing split from {self.split_path}.'
+                f'📊 | Detected existing split of train and validation sets. Using existing split from {self.dst_path}.'
             )
             log.info(
                 '💡 | If the dataset is re-generated, you need to re-generate the split instead of using the previous split.'
@@ -416,13 +416,13 @@ class LeaveOneOutAndHoldOutET(BaseSplit):
         groups = self.groups
         if group is not None:
             train_info = pd.read_csv(
-                os.path.join(self.split_path, f'train_{self.file_group}_{group}.csv')
+                os.path.join(self.dst_path, f'train_{self.file_group}_{group}.csv')
             )
             val_info = pd.read_csv(
-                os.path.join(self.split_path, f'val_{self.file_group}_{group}.csv')
+                os.path.join(self.dst_path, f'val_{self.file_group}_{group}.csv')
             )
             test_info = pd.read_csv(
-                os.path.join(self.split_path, f'test_{self.file_group}_{group}.csv')
+                os.path.join(self.dst_path, f'test_{self.file_group}_{group}.csv')
             )
             train_dataset = copy(dataset)
             train_dataset.info = train_info
@@ -437,13 +437,13 @@ class LeaveOneOutAndHoldOutET(BaseSplit):
         else:
             for group in groups:
                 train_info = pd.read_csv(
-                    os.path.join(self.split_path, f'train_{self.file_group}_{group}.csv')
+                    os.path.join(self.dst_path, f'train_{self.file_group}_{group}.csv')
                 )
                 val_info = pd.read_csv(
-                    os.path.join(self.split_path, f'val_{self.file_group}_{group}.csv')
+                    os.path.join(self.dst_path, f'val_{self.file_group}_{group}.csv')
                 )
                 test_info = pd.read_csv(
-                    os.path.join(self.split_path, f'test_{self.file_group}_{group}.csv')
+                    os.path.join(self.dst_path, f'test_{self.file_group}_{group}.csv')
                 )
 
                 train_dataset = copy(dataset)

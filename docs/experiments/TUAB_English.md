@@ -66,8 +66,8 @@ All settings for this experiment are centrally managed by a single configuration
 
 ### 4.1 Dataset Splitting
 
-- **Splitting Strategy (`HoldOutCross`)**: This experiment follows the official training and test set (used here as the `eval` set) split of the TUAB dataset. Building on this, we further divide the official **training set** into a new training set and a validation set.
-- **Split Ratio (`val_size`)**: From the original training set, **20%** of the subjects are allocated to the validation set, grouped by subject ID (`group_by: subject_id`), with the remaining **80%** serving as the new training set.
+- **Splitting Strategy (`HoldOut`)**: This experiment follows the official training and test set (used here as the `eval` set) split of the TUAB dataset. Building on this, we further divide the official **training set** into a new training set and a validation set.
+- **Split Ratio (`rsize`)**: From the original training set, subjects are grouped by subject ID (`split_by: subject_id`) with `rsize: [0.8, 0.2, 0.0]`, i.e., **20%** for validation and **80%** for training.
 
 ### 4.2 Data Processing Pipeline
 
@@ -82,7 +82,7 @@ All settings for this experiment are centrally managed by a single configuration
 
 ### 4.3 Task Definition
 
-- **Task Type**: `tuab_task.TUABTask`
+- **Task Type**: `base_task.BaseTask`
 - Core Logic:
   - **Model Building (`build_model`)**: Responsible for loading the LaBraM model architecture and its official pre-trained weights from the specified path.
   - **Optimizer Parameter Setup (`set_optimizer_params`)**: Implements a **Layer-wise Learning Rate Decay** strategy, applying different learning rates to layers at different depths of the model.
@@ -115,11 +115,12 @@ dataset:
     test: "/mnt/ssd/lingyus/tyee_tuab/processed_eval"
   io_mode: hdf5
   split: 
-    select: HoldOutCross
+    select: HoldOut
     init_params:
-      split_path: /mnt/ssd/lingyus/tuh_eeg_abnormal/v3.0.1/edf/split
-      group_by: subject_id
-      val_size: 0.2
+      dst_path: /mnt/ssd/lingyus/tuh_eeg_abnormal/v3.0.1/edf/split
+      split_by: subject_id
+      rsize: [0.8, 0.2, 0.0]
+      rtype: ratio
       random_state: 12345
       shuffle: true
 
@@ -176,7 +177,10 @@ task:
   loss:
     select: LabelSmoothingCrossEntropy
     smoothing: 0.1
-  select: tuab_task.TUABTask
+  select: base_task.BaseTask
+  model:
+    input_map: ['eeg']
+  target_map: ['label']
 
 trainer:
   fp16: true

@@ -20,8 +20,9 @@ dataset:
   split: 
     select: HoldOut
     init_params:
-      split_path: ./data/tyee//tyee_mit_bih/split
-      val_size: 0.1
+      dst_path: ./data/tyee//tyee_mit_bih/split
+      rsize: [0.9, 0.1, 0.0]
+      rtype: ratio
       random_state: 7
       shuffle: true
       stratify: symbol

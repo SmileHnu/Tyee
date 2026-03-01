@@ -70,8 +70,8 @@ All settings for this experiment are centrally managed by a single configuration
 
 This experiment follows the official training and test set split of the TUEV dataset. Building on this, we further divide the official **training set** into a new training set and a validation set for model selection and monitoring.
 
-- Splitting Strategy (`HoldOutCross`): The split is performed on the original training set grouped by subject ID (`group_by: subject_id`) to ensure that data from the same subject does not appear in both the training and validation sets. 
-- Split Ratio (`val_size`): 20% of the subjects are allocated to the validation set, with the remaining 80% serving as the new training set. 
+- Splitting Strategy (`HoldOut`): The split is performed on the original training set grouped by subject ID (`split_by: subject_id`) to ensure that data from the same subject does not appear in both the training and validation sets. 
+- Split Ratio (`rsize`): Set `rsize: [0.8, 0.2, 0.0]`, i.e., 20% of the subjects are allocated to the validation set and 80% to the training set. 
 
 ### 4.2 Data Processing Pipeline
 
@@ -88,7 +88,7 @@ We apply a multi-stage processing pipeline to the data:
 
 ### 4.3 Task Definition
 
-- Task Type: `tuev_task.TUEVTask`
+- Task Type: `base_task.BaseTask`
 - Core Logic:
   - **Model Building (`build_model`)**: Responsible for loading the LaBraM model architecture and its official pre-trained weights from the specified path. 
   - **Optimizer Parameter Setup (`set_optimizer_params`)**: Implements a Layer-wise Learning Rate Decay strategy, where layers closer to the output have a higher learning rate than the lower, input-adjacent layers. 
@@ -122,11 +122,12 @@ dataset:
     train: "/mnt/ssd/lingyus/tuh_eeg_events/v2.0.1/edf/processed_train_yaml"
     test: "/mnt/ssd/lingyus/tuh_eeg_events/v2.0.1/edf/processed_eval_yaml"
   split: 
-    select: HoldOutCross
+    select: HoldOut
     init_params:
-      split_path: /mnt/ssd/lingyus/tuh_eeg_events/v2.0.1/edf/split
-      group_by: subject_id
-      val_size: 0.2
+      dst_path: /mnt/ssd/lingyus/tuh_eeg_events/v2.0.1/edf/split
+      split_by: subject_id
+      rsize: [0.8, 0.2, 0.0]
+      rtype: ratio
       random_state: 4523
       shuffle: true
 
@@ -181,7 +182,10 @@ task:
   loss:
     select: LabelSmoothingCrossEntropy
     smoothing: 0.1
-  select: tuev_task.TUEVTask
+  select: base_task.BaseTask
+  model:
+    input_map: ['eeg']
+  target_map: ['event']
 
 trainer:
   fp16: true

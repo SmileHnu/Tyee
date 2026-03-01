@@ -63,7 +63,7 @@ All settings for this experiment are centrally managed by a single configuration
 
 ### 4.1 Dataset Splitting
 
-- **Splitting Strategy (`KFoldPerSubjectCross`)**: This experiment uses **within-subject 3-fold cross-validation**. For each subject's data, the trials (`trial_id`) are split into 3 folds. In rotation, one fold is used as the validation set, while the other two are used for training.
+- **Splitting Strategy (`KFold`)**: This experiment uses **within-subject 3-fold cross-validation** (`per_subject: true`). For each subject's data, the trials (`split_by: trial_id`) are split into 3 folds. In rotation, one fold is used as the validation set, while the other two are used for training.
 
 ### 4.2 Data Processing Pipeline
 
@@ -76,7 +76,7 @@ Since this experiment uses pre-extracted features, the data processing pipeline 
 
 ### 4.3 Task Definition
 
-- **Task Type**: `seedv_task.SEEDVFeatureTask`
+- **Task Type**: `base_task.BaseTask`
 - **Core Logic**:
   - **Optimizer Parameter Setup (`set_optimizer_params`)**: This method groups the model's parameters into different sets (G2G module, backbone, classification head), which facilitates differential training strategies in the future.
   - **Train/Validation Step**: Receives the processed multi-modal features `eeg_eog` and the emotion label `emotion`, performs a forward pass through the model, and computes the loss using **LabelSmoothingCrossEntropy**.
@@ -109,10 +109,11 @@ dataset:
   io_mode: hdf5
   io_chunks: 1
   split: 
-    select: KFoldPerSubjectCross
+    select: KFold
     init_params:
-      split_path: /mnt/ssd/lingyus/tyee_seedv_feature/split
-      group_by: trial_id
+      dst_path: /mnt/ssd/lingyus/tyee_seedv_feature/split
+      per_subject: true
+      split_by: trial_id
       n_splits: 3
       shuffle: false
 
@@ -203,7 +204,10 @@ task:
   loss:
     select: LabelSmoothingCrossEntropy
     smoothing: 0.01
-  select: seedv_task.SEEDVFeatureTask
+  select: base_task.BaseTask
+  model:
+    input_map: ['eeg_eog']
+  target_map: ['emotion']
 
 trainer:
   fp16: false

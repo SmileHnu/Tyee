@@ -17,11 +17,12 @@ dataset:
     test: "/home/lingyus/data/tuh_eeg_events/v2.0.1/edf/processed_biot_eval"
   io_mode: hdf5
   split: 
-    select: HoldOutCross
+    select: HoldOut
     init_params:
-      split_path: /mnt/ssd/lingyus/tuh_eeg_events/v2.0.1/edf/split
-      group_by: subject_id
-      val_size: 0.1
+      dst_path: /mnt/ssd/lingyus/tuh_eeg_events/v2.0.1/edf/split
+      split_by: subject_id
+      rsize: [0.9, 0.1, 0.0]
+      rtype: ratio
       random_state: 4523
       shuffle: true
   before_segment_transform:

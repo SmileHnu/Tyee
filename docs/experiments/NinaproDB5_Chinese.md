@@ -74,7 +74,7 @@
 
 ### 4.3 任务定义
 
-- **任务类型**: `ninapro_db5_task.NinaproDB5Task`
+- **任务类型**: `base_task.BaseTask`
 - **核心逻辑**: 该任务负责接收处理后的 sEMG 图像 `emg` 和手势标签 `gesture`，通过 ResNet-18 模型进行前向传播，并使用**交叉熵损失 (`CrossEntropyLoss`)** 计算损失值以驱动模型训练。
 
 ### 4.4 训练策略
@@ -104,20 +104,20 @@ dataset:
   	# 预训练阶段的划分配置
     # select: LeaveOneOutAndHoldOutET
     # init_params:
-    #   split_path: /mnt/ssd/lingyus/tyee_ninapro_db5/split_pretrain
+    #   dst_path: /mnt/ssd/lingyus/tyee_ninapro_db5/split_pretrain
     #   stratify: gesture
     #   shuffle: false
-    #   test_size: 0.4
-    #   group_by: subject_id
+    #   # 旧版预训练切分器参数（仅作历史参考）
     
     # 微调阶段的划分配置
-    select: HoldOutPerSubjectET
+    select: HoldOut
     init_params:
-      split_path: /mnt/ssd/lingyus/tyee_ninapro_db5/split_finetune
+      dst_path: /mnt/ssd/lingyus/tyee_ninapro_db5/split_finetune
+      per_subject: true
+      rsize: [0.2, 0.4, 0.4]
+      rtype: ratio
       stratify: gesture
       shuffle: false
-      val_size: 0.4
-      test_size: 0.4
     run_params:
       subject: 3 # 示例：对第3位受试者进行微调和测试
 
@@ -178,7 +178,10 @@ optimizer:
 task:
   loss:
     select: CrossEntropyLoss
-  select: ninapro_db5_task.NinaproDB5Task
+  select: base_task.BaseTask
+  model:
+    input_map: ['emg']
+  target_map: ['gesture']
 
 trainer:
   fp16: false

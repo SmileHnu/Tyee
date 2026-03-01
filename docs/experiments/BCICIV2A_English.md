@@ -69,7 +69,7 @@ All settings for this experiment are centrally managed by a single configuration
 This experiment strictly follows the official splitting method of the BCICIV 2a dataset:
 
 - **Splitting Strategy**: The official training set (`T` file, corresponding to `session_id=0`) is used for model training, and the evaluation set (`E` file, corresponding to `session_id=1`) is used as the validation set to evaluate model performance.
-- **Configuration Implementation**: In the configuration file, this split is achieved through the `HoldOutCross` strategy by setting `group_by: session_id` and `val_size: 0.5`.
+- **Configuration Implementation**: In the configuration file, this split is achieved through the unified `HoldOut` strategy by setting `split_by: session_id` and `rsize: [0.5, 0.5, 0.0]`.
 
 ### 4.2 Data Processing Pipeline
 
@@ -82,7 +82,7 @@ We apply a two-stage processing pipeline to the data: **Offline** and **Online**
 
 ### 4.3 Task Definition
 
-- **Task Type**: `bciciv2a_task.BCICIV2aTask`
+- **Task Type**: `base_task.BaseTask`
 - **Core Logic**: This task is responsible for receiving the model's predictions and data labels, then computing the loss value using **CrossEntropyLoss** to drive the model training.
 
 ### 4.4 Full Configuration File
@@ -105,11 +105,12 @@ dataset:
     train: "/mnt/ssd/lingyus/tyee_bciciv2a/A09"
   io_mode: hdf5
   split: 
-    select: HoldOutCross
+    select: HoldOut
     init_params:
-      split_path: '/mnt/ssd/lingyus/tyee_bciciv2a/split/A09'
-      group_by: session_id
-      val_size: 0.5
+      dst_path: '/mnt/ssd/lingyus/tyee_bciciv2a/split/A09'
+      split_by: session_id
+      rsize: [0.5, 0.5, 0.0]
+      rtype: ratio
       random_state: 4523
 
   offline_signal_transform:
@@ -141,7 +142,10 @@ optimizer:
 task:
   loss:
     select: CrossEntropyLoss
-  select: bciciv2a_task.BCICIV2aTask
+  select: base_task.BaseTask
+  model:
+    input_map: ['eeg']
+  target_map: ['event']
 
 trainer:
   fp16: true

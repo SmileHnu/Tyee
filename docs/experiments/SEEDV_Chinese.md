@@ -63,7 +63,7 @@
 
 ### 4.1 数据集划分
 
-- **划分策略 (`KFoldPerSubjectCross`)**: 本实验采用**受试者内3折交叉验证**。对每个受试者的数据，按试验 (`trial_id`) 分为3折，轮流将其中1折作为验证集，其余2折作为训练集。
+- **划分策略 (`KFold`)**: 本实验采用**受试者内3折交叉验证**（`per_subject: true`）。对每个受试者的数据，按试验 (`split_by: trial_id`) 分为3折，轮流将其中1折作为验证集，其余2折作为训练集。
 
 ### 4.2 数据处理流程
 
@@ -76,7 +76,7 @@
 
 ### 4.3 任务定义
 
-- **任务类型**: `seedv_task.SEEDVFeatureTask`
+- **任务类型**: `base_task.BaseTask`
 - **核心逻辑**:
   - **优化器参数设置 (`set_optimizer_params`)**: 该方法对模型的不同部分（G2G模块、骨干网络、分类头）进行了参数分组，便于未来可能实现的差异化学习率训练。
   - **训练/验证步骤**: 接收处理后的多模态特征 `eeg_eog` 和情绪标签 `emotion`，通过模型进行前向传播，并使用带标签平滑的**交叉熵损失 (`LabelSmoothingCrossEntropy`)** 计算损失值。
@@ -109,10 +109,11 @@ dataset:
   io_mode: hdf5
   io_chunks: 1
   split: 
-    select: KFoldPerSubjectCross
+    select: KFold
     init_params:
-      split_path: /mnt/ssd/lingyus/tyee_seedv_feature/split
-      group_by: trial_id
+      dst_path: /mnt/ssd/lingyus/tyee_seedv_feature/split
+      per_subject: true
+      split_by: trial_id
       n_splits: 3
       shuffle: false
 
@@ -203,7 +204,10 @@ task:
   loss:
     select: LabelSmoothingCrossEntropy
     smoothing: 0.01
-  select: seedv_task.SEEDVFeatureTask
+  select: base_task.BaseTask
+  model:
+    input_map: ['eeg_eog']
+  target_map: ['emotion']
 
 trainer:
   fp16: false

@@ -18,11 +18,12 @@ dataset:
   io_mode: hdf5
   io_chunks: 256
   split: 
-    select: HoldOutCross
+    select: HoldOut
     init_params:
-      split_path: /home/lingyus/data/BCICIV4/sub1/split
-      group_by: trial_id
-      val_size: 0.5
+      dst_path: /home/lingyus/data/BCICIV4/sub1/split
+      split_by: trial_id
+      rsize: [0.5, 0.5, 0.0]
+      rtype: ratio
       random_state: 0
       shuffle: true
  

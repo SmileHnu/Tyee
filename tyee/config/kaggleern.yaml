@@ -18,10 +18,10 @@ dataset:
   io_mode: hdf5
   io_chunks: 400
   split: 
-    select: KFoldCross
+    select: KFold
     init_params:
-      split_path: /mnt/ssd/lingyus/tyee_kaggleern/split
-      group_by: subject_id
+      dst_path: /mnt/ssd/lingyus/tyee_kaggleern/split
+      split_by: subject_id
       n_splits: 4
       shuffle: false
 

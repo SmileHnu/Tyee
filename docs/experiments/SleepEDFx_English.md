@@ -58,7 +58,7 @@ All settings for this experiment are centrally managed by a single configuration
 
 ### 4.1 Dataset Splitting
 
-- **Splitting Strategy (`KFoldCross`)**: A 20-fold cross-validation is applied to the 20 subjects in the dataset, which is equivalent to Leave-One-Subject-Out cross-validation. In each fold, one subject's data is used as the validation set, while the data from the remaining 19 subjects is used for training.
+- **Splitting Strategy (`KFold`)**: A 20-fold cross-validation is applied to the 20 subjects in the dataset, which is equivalent to Leave-One-Subject-Out cross-validation. In each fold, one subject's data is used as the validation set, while the data from the remaining 19 subjects is used for training (grouped by `split_by: subject_id`).
 
 ### 4.2 Data Processing Pipeline
 
@@ -75,7 +75,7 @@ The data preprocessing pipeline for this experiment is defined in the configurat
 
 ### 4.3 Task Definition
 
-- **Task Type**: `sleepedfx_task.SleepEDFxTask`
+- **Task Type**: `base_task.BaseTask`
 - **Core Logic**:
   - **Loss Function**: Uses a weighted **CrossEntropyLoss**, with weights `[1.0, 1.80, 1.0, 1.20, 1.25]`, to mitigate the common class imbalance problem in sleep staging tasks.
   - **Train/Validation Step**: Receives long sequences of EEG and EOG as dual inputs and gets predictions from the model. Since the model predicts 20 epochs at a time, the labels and predictions are flattened (`reshape`) before the loss is calculated.
@@ -105,10 +105,10 @@ dataset:
   io_mode: hdf5
   io_chunks: 20
   split: 
-    select: KFoldCross
+    select: KFold
     init_params:
-      split_path: /mnt/ssd/lingyus/tyee_sleepedfx_20/split_17_20
-      group_by: subject_id
+      dst_path: /mnt/ssd/lingyus/tyee_sleepedfx_20/split_17_20
+      split_by: subject_id
       n_splits: 20
       shuffle: false
 
@@ -193,7 +193,10 @@ task:
   loss:
     select: CrossEntropyLoss
     weight: [1.0, 1.80, 1.0, 1.20, 1.25]
-  select: sleepedfx_task.SleepEDFxTask
+  select: base_task.BaseTask
+  model:
+    input_map: ['eeg', 'eog']
+  target_map: ['stage']
 
 trainer:
   fp16: false

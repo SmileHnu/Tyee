@@ -64,7 +64,7 @@
 
 ### 4.3 任务定义
 
-- **任务类型**: `deap_task.DEAPTask`
+- **任务类型**: `base_task.BaseTask`
 - **核心逻辑**: 该任务负责接收合并后的多模态信号 `mulit4` 和处理后的唤醒度标签 `arousal`，通过模型进行前向传播，并使用**交叉熵损失 (`CrossEntropyLoss`)** 计算损失值以驱动模型训练。
 
 ### 4.4 训练策略
@@ -97,8 +97,9 @@ dataset:
   split: 
     select: HoldOut
     init_params:
-      split_path: /mnt/ssd/lingyus/tyee_deap/split
-      val_size: 0.3
+      dst_path: /mnt/ssd/lingyus/tyee_deap/split
+      rsize: [0.7, 0.3, 0.0]
+      rtype: ratio
       random_state: 42
       shuffle: true
       
@@ -161,7 +162,10 @@ optimizer:
 task:
   loss:
     select: CrossEntropyLoss
-  select: deap_task.DEAPTask
+  select: base_task.BaseTask
+  model:
+    input_map: ['mulit4']
+  target_map: ['arousal']
 
 trainer:
   fp16: false

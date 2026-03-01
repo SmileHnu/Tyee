@@ -20,8 +20,9 @@ dataset:
   split: 
     select: HoldOut
     init_params:
-      split_path: /mnt/ssd/lingyus/tyee_deap/split
-      val_size: 0.3
+      dst_path: /mnt/ssd/lingyus/tyee_deap/split
+      rsize: [0.7, 0.3, 0.0]
+      rtype: ratio
       random_state: 42
       shuffle: true
   offline_signal_transform:

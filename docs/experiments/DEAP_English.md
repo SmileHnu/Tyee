@@ -66,7 +66,7 @@ The data preprocessing pipeline for this experiment is fully defined in the `off
 
 ### 4.3 Task Definition
 
-- **Task Type**: `deap_task.DEAPTask`
+- **Task Type**: `base_task.BaseTask`
 - **Core Logic**: This task is responsible for receiving the combined multi-modal signal `mulit4` and the processed arousal label `arousal`, performing a forward pass through the model, and computing the loss using **CrossEntropyLoss** to drive model training.
 
 ### 4.4 Training Strategy
@@ -99,8 +99,9 @@ dataset:
   split: 
     select: HoldOut
     init_params:
-      split_path: /mnt/ssd/lingyus/tyee_deap/split
-      val_size: 0.3
+      dst_path: /mnt/ssd/lingyus/tyee_deap/split
+      rsize: [0.7, 0.3, 0.0]
+      rtype: ratio
       random_state: 42
       shuffle: true
       
@@ -163,7 +164,10 @@ optimizer:
 task:
   loss:
     select: CrossEntropyLoss
-  select: deap_task.DEAPTask
+  select: base_task.BaseTask
+  model:
+    input_map: ['mulit4']
+  target_map: ['arousal']
 
 trainer:
   fp16: false

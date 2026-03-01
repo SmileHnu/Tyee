@@ -56,7 +56,7 @@
 
 ### 4.1 数据集划分
 
-- **划分策略 (`KFoldCross`)**: 对数据集中的20位受试者采用 20折交叉验证 ，这等同于留一交叉验证 (Leave-One-Subject-Out) 。在每一折中，一位受试者的数据作为验证集，其余19位受试者的数据作为训练集 。
+- **划分策略 (`KFold`)**: 对数据集中的20位受试者采用 20折交叉验证 ，这等同于留一交叉验证 (Leave-One-Subject-Out) 。在每一折中，一位受试者的数据作为验证集，其余19位受试者的数据作为训练集（按 `split_by: subject_id` 分组）。
 
 ### 4.2 数据处理流程
 
@@ -73,7 +73,7 @@
 
 ### 4.3 任务定义
 
-- **任务类型**: `sleepedfx_task.SleepEDFxTask`
+- **任务类型**: `base_task.BaseTask`
 - **核心逻辑**:
   - **损失函数**: 采用带权重的交叉熵损失 (`CrossEntropyLoss`)，权重 `[1.0, 1.80, 1.0, 1.20, 1.25]`用于缓解睡眠分期任务中普遍存在的类别不均衡问题 。
   - **训练/验证步骤**: 接收EEG和EOG长序列作为双路输入，通过模型得到预测值 。由于模型一次预测20个epoch，需要将标签和预测值展平 (`reshape`) 后再计算损失 。
@@ -103,10 +103,10 @@ dataset:
   io_mode: hdf5
   io_chunks: 20
   split: 
-    select: KFoldCross
+    select: KFold
     init_params:
-      split_path: /mnt/ssd/lingyus/tyee_sleepedfx_20/split_17_20
-      group_by: subject_id
+      dst_path: /mnt/ssd/lingyus/tyee_sleepedfx_20/split_17_20
+      split_by: subject_id
       n_splits: 20
       shuffle: false
 
@@ -191,7 +191,10 @@ task:
   loss:
     select: CrossEntropyLoss
     weight: [1.0, 1.80, 1.0, 1.20, 1.25]
-  select: sleepedfx_task.SleepEDFxTask
+  select: base_task.BaseTask
+  model:
+    input_map: ['eeg', 'eog']
+  target_map: ['stage']
 
 trainer:
   fp16: false

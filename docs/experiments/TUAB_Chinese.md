@@ -66,8 +66,8 @@
 
 ### 4.1 数据集划分
 
-- **划分策略 (`HoldOutCross`)**: 本实验遵循 TUAB 数据集官方的训练集和测试集（此处用作评估集 `eval`）划分。在此基础上，我们将官方的**训练集**进一步划分为新的训练集和验证集。
-- **划分比例 (`val_size`)**: 从原始训练集中按受试者ID (`group_by: subject_id`) 进行划分，将 **20%** 的受试者划入验证集，其余 **80%** 作为新的训练集。
+- **划分策略 (`HoldOut`)**: 本实验遵循 TUAB 数据集官方的训练集和测试集（此处用作评估集 `eval`）划分。在此基础上，我们将官方的**训练集**进一步划分为新的训练集和验证集。
+- **划分比例 (`rsize`)**: 从原始训练集中按受试者ID (`split_by: subject_id`) 进行划分，`rsize: [0.8, 0.2, 0.0]`，即 **20%** 受试者划入验证集，其余 **80%** 作为训练集。
 
 ### 4.2 数据处理流程
 
@@ -82,7 +82,7 @@
 
 ### 4.3 任务定义
 
-- **任务类型**: `tuab_task.TUABTask`
+- **任务类型**: `base_task.BaseTask`
 - **核心逻辑**: 
   - **模型构建 (`build_model`)**: 负责加载 LaBraM 模型结构，并从指定路径加载官方预训练权重。
   - **优化器参数设置 (`set_optimizer_params`)**: 实现了**层级学习率衰减 (Layer-wise Learning Rate Decay)** 策略，对模型不同深度的层应用不同的学习率。
@@ -115,11 +115,12 @@ dataset:
     test: "/mnt/ssd/lingyus/tyee_tuab/processed_eval"
   io_mode: hdf5
   split: 
-    select: HoldOutCross
+    select: HoldOut
     init_params:
-      split_path: /mnt/ssd/lingyus/tuh_eeg_abnormal/v3.0.1/edf/split
-      group_by: subject_id
-      val_size: 0.2
+      dst_path: /mnt/ssd/lingyus/tuh_eeg_abnormal/v3.0.1/edf/split
+      split_by: subject_id
+      rsize: [0.8, 0.2, 0.0]
+      rtype: ratio
       random_state: 12345
       shuffle: true
 
@@ -176,7 +177,10 @@ task:
   loss:
     select: LabelSmoothingCrossEntropy
     smoothing: 0.1
-  select: tuab_task.TUABTask
+  select: base_task.BaseTask
+  model:
+    input_map: ['eeg']
+  target_map: ['label']
 
 trainer:
   fp16: true

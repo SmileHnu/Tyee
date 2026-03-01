@@ -95,7 +95,7 @@
 
 ### 4.3 任务定义
 
-- **任务类型**: `cinc2018_task.CinC2018Task`
+- **任务类型**: `base_task.BaseTask`
 - 核心逻辑:
   - **优化器参数设置 (`set_optimizer_params`)**: 由于编码器被冻结，该方法被定制为**仅返回下游 `nn.Linear` 线性层的参数**进行优化。
   - **训练/验证步骤**: 接收三个模态的输入 `ss`, `ecg`, `resp`，通过 SleepFM 模型得到预测值 `pred`，并使用**交叉熵损失 (`CrossEntropyLoss`)** 计算损失。
@@ -231,7 +231,10 @@ optimizer:
 task:
   loss:
     select: CrossEntropyLoss
-  select: cinc2018_task.CinC2018Task
+  select: base_task.BaseTask
+  model:
+    input_map: ['ss', 'ecg', 'resp']
+  target_map: ['stage']
 
 trainer:
   fp16: false

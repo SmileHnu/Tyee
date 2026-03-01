@@ -17,11 +17,12 @@ dataset:
     test: "/mnt/ssd/lingyus/tyee_tuab/processed_eval"
   io_mode: hdf5
   split: 
-    select: HoldOutCross
+    select: HoldOut
     init_params:
-      split_path: /mnt/ssd/lingyus/tuh_eeg_abnormal/v3.0.1/edf/split
-      group_by: subject_id
-      val_size: 0.2
+      dst_path: /mnt/ssd/lingyus/tuh_eeg_abnormal/v3.0.1/edf/split
+      split_by: subject_id
+      rsize: [0.8, 0.2, 0.0]
+      rtype: ratio
       random_state: 12345
       shuffle: true
   before_segment_transform:

@@ -8,19 +8,20 @@ dataset:
   dataset: tuev_dataset.TUEVDataset
   num_workers: 4
   root_path:
-    train: '/mnt/ssd/lingyus/tuh_eeg_events/v2.0.1/edf/train'
+    train: '/home/lingyus/data/tuh_eeg_events/v2.0.1/edf/train'
     val:
-    test: '/mnt/ssd/lingyus/tuh_eeg_events/v2.0.1/edf/eval'
+    test: '/home/lingyus/data/tuh_eeg_events/v2.0.1/edf/eval'
   io_path:
-    train: "/mnt/ssd/lingyus/tuh_eeg_events/v2.0.1/edf/processed_train_yaml"
+    train: "/home/lingyus/data/tuh_eeg_events/v2.0.1/edf/processed_train"
     val:
-    test: "/mnt/ssd/lingyus/tuh_eeg_events/v2.0.1/edf/processed_eval_yaml"
+    test: "/home/lingyus/data/tuh_eeg_events/v2.0.1/edf/processed_eval"
   split: 
-    select: HoldOutCross
+    select: HoldOut
     init_params:
-      split_path: /mnt/ssd/lingyus/tuh_eeg_events/v2.0.1/edf/split
-      group_by: subject_id
-      val_size: 0.2
+      dst_path: /home/lingyus/data/tuh_eeg_events/v2.0.1/edf/split
+      split_by: subject_id
+      rsize: [0.8, 0.2, 0.0]
+      rtype: ratio
       random_state: 4523
       shuffle: true
   before_segment_transform:
@@ -70,7 +71,7 @@ model:
   select: labram.labram_base_patch200_200
   input_chans_list: ['FP1', 'FP2', 'F3', 'F4', 'C3', 'C4', 'P3', 'P4', 'O1', 'O2', 'F7', 'F8', 'T3', 'T4', 'T5', 'T6', 'A1', 'A2', 'FZ', 'CZ', 'PZ', 'T1', 'T2']
   trainable: true
-  finetune: /home/lingyus/code/PRL/models/labram/checkpoints/labram-base.pth
+  finetune: /home/lingyus/code/PRL/tyee/models/labram/checkpoints/labram-base.pth
   nb_classes: 6
   drop: 0.0
   drop_path: 0.1
@@ -80,7 +81,7 @@ model:
   init_scale: 0.001
   rel_pos_bias: false
   abs_pos_emb: true
-  layer_scale_init_value: 0.1
+  init_values: 0.1
   qkv_bias: false
 
 optimizer:

@@ -18,7 +18,7 @@ class LosoRotatingCrossSplit(BaseSplit):
     def __init__(
         self,
         group_by: str,
-        split_path: Union[None, str] = None,
+        dst_path: Union[None, str] = None,
         n_coarse_splits: int = 4,  # Corresponds to KFold(n_splits=4) in original
         num_val_groups_in_rotation: int = 2, # Corresponds to rest[-3:-1] (2 groups)
         num_test_groups_in_rotation: int = 1, # Corresponds to rest[-1:] (1 group)
@@ -34,7 +34,7 @@ class LosoRotatingCrossSplit(BaseSplit):
         Args:
             group_by (str): The column name in the info DataFrame to group unique entities by
                             (e.g., 'subject_id', 'session_id').
-            split_path (Union[None, str]): Path to save/load split definition files.
+            dst_path (Union[None, str]): Path to save/load split definition files.
             n_coarse_splits (int): Number of folds for the initial coarse splitting of groups.
                                    Similar to the KFold(n_splits=4) in the original example.
             num_val_groups_in_rotation (int): Number of groups from the 'rest' set to use for validation
@@ -44,7 +44,7 @@ class LosoRotatingCrossSplit(BaseSplit):
             shuffle (bool): Whether to shuffle the groups before the coarse KFold splitting.
             random_state (Union[None, int]): Random seed for reproducibility of the coarse shuffle.
         """
-        super().__init__(split_path=split_path, **kwargs)
+        super().__init__(dst_path=dst_path, **kwargs)
         self.group_by = group_by
         self.n_coarse_splits = n_coarse_splits
         self.num_val_groups_in_rotation = num_val_groups_in_rotation
@@ -78,10 +78,10 @@ class LosoRotatingCrossSplit(BaseSplit):
         Args:
             info (pd.DataFrame): DataFrame containing dataset information, including the `group_by` column.
         """
-        if not self.split_path:
-            raise ValueError("split_path must be set to save split information.")
-        if not os.path.exists(self.split_path):
-            os.makedirs(self.split_path)
+        if not self.dst_path:
+            raise ValueError("dst_path must be set to save split information.")
+        if not os.path.exists(self.dst_path):
+            os.makedirs(self.dst_path)
 
         unique_group_ids = np.array(sorted(list(set(info[self.group_by]))))
 

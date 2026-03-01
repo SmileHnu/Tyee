@@ -69,7 +69,7 @@ All settings for this experiment are centrally managed by a single configuration
 
 ### 4.1 Dataset Splitting
 
-- **Splitting Strategy**: This experiment follows the official dataset split. Since the official training and test sets (used here as a validation set) are contained within a single file, we treat them as two separate trials. In the configuration file, we use the `HoldOutCross` strategy and set `group_by: trial_id` and `val_size: 0.5` to precisely use one trial for training and the other for validation.
+- **Splitting Strategy**: This experiment follows the official dataset split. Since the official training and test sets (used here as a validation set) are contained within a single file, we treat them as two separate trials. In the configuration file, we use the unified `HoldOut` strategy and set `split_by: trial_id` with `rsize: [0.5, 0.5, 0.0]` to precisely use one trial for training and the other for validation.
 
 ### 4.2 Data Processing Pipeline
 
@@ -82,7 +82,7 @@ The main steps are summarized as follows:
 
 ### 4.3 Task Definition
 
-- **Task Type**: `bciciv4_task.BCICIV4Task`
+- **Task Type**: `base_task.BaseTask`
 - Core Logic:
   - **Loss Function**: A composite loss function is used, defined as **0.5 \* MSE_Loss + 0.5 \* (1 - Correlation)**. This loss function simultaneously optimizes for the mean squared error and the correlation between the predicted and true trajectories.
   - **Train/Validation Step**: Receives the ECoG signal `x` and finger data `label`, gets the prediction `pred` from the model, and then computes the loss using the composite loss function described above.
@@ -113,11 +113,12 @@ dataset:
     train: "/home/lingyus/data/BCICIV4/sub1/processed_test"
   io_mode: hdf5
   split:
-    select: HoldOutCross
+    select: HoldOut
     init_params:
-      split_path: /home/lingyus/data/BCICIV4/sub1/split
-      group_by: trial_id
-      val_size: 0.5
+      dst_path: /home/lingyus/data/BCICIV4/sub1/split
+      split_by: trial_id
+      rsize: [0.5, 0.5, 0.0]
+      rtype: ratio
       random_state: 0
       shuffle: true
 
@@ -139,7 +140,10 @@ optimizer:
 task:
   loss:
     select: MSELoss
-  select: bciciv4_task.BCICIV4Task
+  select: base_task.BaseTask
+  model:
+    input_map: ['ecog']
+  target_map: ['dg']
 
 trainer:
   fp16: false

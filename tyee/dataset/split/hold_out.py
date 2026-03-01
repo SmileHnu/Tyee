@@ -10,6 +10,7 @@
 @Desc    : 
 """
 import os
+import re
 import logging
 import numpy as np
 import pandas as pd
@@ -29,6 +30,8 @@ class HoldOut(BaseSplit):
         rtype: str = 'ratio',
         group_by: Union[None, str] = None,
         split_by: Union[None, str] = None,
+        per_subject: bool = False,
+        subject_key: str = 'subject_id',
         shuffle: bool = False,
         stratify: str = None,
         random_state: Union[int, None] = None,
@@ -36,22 +39,28 @@ class HoldOut(BaseSplit):
         **kwargs
     ) -> None:
         """
-        Initialize the HoldOut class with the specified parameters.
-  
-        :param List[Union[float, int]] rsize: array of number or ratio of dataset split, defaults to [0.8, 0.2, 0.0]
-        :param str rtype: type of dataset split, either 'ratio' or 'number', defaults to 'ratio'
-        :param Union[None, str] group_by: column name to group by, defaults to None
-        :param Union[None, str] split_by: column name to split by, defaults to None
-        :param bool shuffle: whether to shuffle the data before splitting, defaults to False
-        :param str stratify: column name to stratify by which balanced the ratio of column, defaults to None
-        :param Union[int, None] random_state: Random seed for reproducibility, defaults to None
-        :param Union[None, str] dst_path: path to save split files. If None, a random path will be generated., defaults to None
+        Initialize HoldOut splitter.
+
+        Args:
+            rsize (List[Union[float, int]]): Three-part split size [train, val, test].
+                If rtype is ratio, values are ratios. If rtype is number, values are counts.
+            rtype (str): Split size type, ratio or number.
+            group_by (Union[None, str]): Outer grouping column.
+            split_by (Union[None, str]): Inner split unit column.
+            per_subject (bool): Whether to split each subject independently.
+            subject_key (str): Subject column name when per_subject is True.
+            shuffle (bool): Whether to shuffle before split.
+            stratify (str): Stratify column in random split mode.
+            random_state (Union[int, None]): Random seed for reproducibility.
+            dst_path (Union[None, str]): Output directory for split csv files.
         """
         self.rsize = rsize
         self.rtype = rtype
         
         self.group_by = group_by
         self.split_by = split_by
+        self.per_subject = per_subject
+        self.subject_key = subject_key
         self.shuffle = shuffle
         self.stratify = stratify
         self.random_state = random_state
@@ -73,36 +82,37 @@ class HoldOut(BaseSplit):
 
     def make_split_info(self, info: pd.DataFrame) -> None:
         """
-        Create train, val, test split files.
+        Create split csv files according to current HoldOut mode.
 
-        :param pd.DataFrame info: DataFrame containing dataset information.
+        Args:
+            info (pd.DataFrame): Dataset metadata table.
         """
+
+        if self.per_subject:
+            self._make_split_info_per_subject(info)
+            return
 
         # random split
         if self.group_by is None and self.split_by is None:
             train_info, val_info, test_info = self._random_split(
                 info,
                 self.rsize,
-                self.rtype,
                 self.random_state,
                 self.shuffle,
                 self.stratify
             )
         elif self.split_by is not None and self.group_by is None:
-            self._by_split(
+            train_info, val_info, test_info = self._by_split(
                 info=info,
                 rsize=self.rsize,
-                rtype=self.rtype,
                 split_by=self.split_by,
-                group_by=self.group_by,
                 random_seed=self.random_state,
                 shuffle=self.shuffle,
             )
         elif self.group_by is not None:
-            self._group_split(
+            train_info, val_info, test_info = self._group_split(
                 info=info,
                 rsize=self.rsize,
-                rtype=self.rtype,
                 split_by=self.split_by,
                 group_by=self.group_by,
                 random_seed=self.random_state,
@@ -119,6 +129,74 @@ class HoldOut(BaseSplit):
         if test_info is not None:
             test_info.to_csv(os.path.join(self.dst_path, 'test.csv'), index=False)
 
+    def _make_split_info_per_subject(self, info: pd.DataFrame) -> None:
+        """
+        Create per-subject split files.
+
+        Args:
+            info (pd.DataFrame): Dataset metadata table.
+        """
+        if self.subject_key not in info.columns:
+            raise ValueError(f"`{self.subject_key}` column not found in dataset info.")
+
+        subjects = sorted(set(info[self.subject_key]))
+
+        for subject in subjects:
+            subject_info = info[info[self.subject_key] == subject]
+
+            if self.group_by is None and self.split_by is None:
+                train_info, val_info, test_info = self._random_split(
+                    subject_info,
+                    self.rsize,
+                    self.random_state,
+                    self.shuffle,
+                    self.stratify
+                )
+            elif self.split_by is not None and self.group_by is None:
+                train_info, val_info, test_info = self._by_split(
+                    info=subject_info,
+                    rsize=self.rsize,
+                    split_by=self.split_by,
+                    random_seed=self.random_state,
+                    shuffle=self.shuffle,
+                )
+            elif self.group_by is not None:
+                train_info, val_info, test_info = self._group_split(
+                    info=subject_info,
+                    rsize=self.rsize,
+                    split_by=self.split_by,
+                    group_by=self.group_by,
+                    random_seed=self.random_state,
+                    shuffle=self.shuffle,
+                )
+            else:
+                raise NotImplementedError(
+                    f"HoldOut split does not support group_by {self.group_by} and split_by {self.split_by}."
+                )
+
+            train_info.to_csv(os.path.join(self.dst_path, f'train_subject_{subject}.csv'), index=False)
+            if val_info is not None:
+                val_info.to_csv(os.path.join(self.dst_path, f'val_subject_{subject}.csv'), index=False)
+            if test_info is not None:
+                test_info.to_csv(os.path.join(self.dst_path, f'test_subject_{subject}.csv'), index=False)
+
+    @property
+    def subjects(self) -> List[str]:
+        """
+        Get available subject ids from per-subject split files.
+
+        Returns:
+            List[str]: Sorted subject id list.
+        """
+        indice_files = os.listdir(self.dst_path)
+
+        def indice_file_to_subject(indice_file: str) -> Union[str, None]:
+            match = re.search(r'subject_(.*?)\.csv', indice_file)
+            return match.group(1) if match else None
+
+        subjects = sorted(set(filter(None, map(indice_file_to_subject, indice_files))))
+        return subjects
+
     def _random_split(
             self,
             info: pd.DataFrame,
@@ -128,13 +206,18 @@ class HoldOut(BaseSplit):
             stratify: Union[None, str] = None
         ) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
         """
-        Randomly split the dataset into train and val sets.
+        Randomly split dataset into train, val and optional test.
 
-        :param pd.DataFrame info: DataFrame containing dataset information.
-        :param List[float| int] rsize: array of number or ratio of dataset split, defaults to [0.8, 0.2, 0.0]
-        :param bool shuffle: whether to shuffle the data before splitting, defaults to False
-        :param str stratify: column name to stratify by which balanced the ratio of column, defaults to None
-        :param int random_state: Random seed for reproducibility, defaults to None
+        Args:
+            info (pd.DataFrame): Dataset metadata table.
+            rsize (List[float | int]): Split sizes.
+            random_seed (int): Random seed.
+            shuffle (bool): Whether to shuffle before split.
+            stratify (Union[None, str]): Stratify column.
+
+        Returns:
+            Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+            train, val, test tables. test may be None.
         """
         test_info = None
 
@@ -146,7 +229,7 @@ class HoldOut(BaseSplit):
             train_indices = []
             val_indices = []
             test_indices = []
-            r_train, r_val, r_test = self._to_ratio(rsize, len(info))
+            r_train, r_val, r_test = self._to_ratio(rsize)
 
             for group_label, group_df in info.groupby(stratify, sort=False): 
                 n_samples_in_group = len(group_df)
@@ -186,15 +269,19 @@ class HoldOut(BaseSplit):
             shuffle: bool, 
         ) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
         """
-        Grouped split the dataset into train, val and test sets.
+        Split by groups and subgroup units.
 
-        :param pd.DataFrame info: DataFrame containing dataset information.
-        :param List[float| int] rsize: array of number or ratio of dataset split, defaults to [0.8, 0.2, 0.0]
-        :param Union[None, str] split_by: column name to split by, defaults to None
-        :param Union[None, str] group_by: column name to group by, defaults to None
-        :param bool shuffle: whether to shuffle the data before splitting, defaults to False
-        :param Union[None, str] stratify: column name to stratify by which balanced the ratio of column, defaults to None
-        :param int random_state: Random seed for reproducibility, defaults to None
+        Args:
+            info (pd.DataFrame): Dataset metadata table.
+            rsize (List[float | int]): Split sizes.
+            split_by (str): Inner split unit column.
+            group_by (Union[None, str]): Outer group column.
+            random_seed (int): Random seed.
+            shuffle (bool): Whether to shuffle split units.
+
+        Returns:
+            Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+            train, val, test tables. test may be None.
         """
         combined_test_info = None
         
@@ -263,18 +350,22 @@ class HoldOut(BaseSplit):
             shuffle: bool, 
         ) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
         """
-        split the dataset into train, val and test sets by `split_by`.
+        Split dataset by unique values of split_by column.
 
-        :param pd.DataFrame info: DataFrame containing dataset information.
-        :param List[float| int] rsize: array of number or ratio of dataset split, defaults to [0.8, 0.2, 0.0]
-        :param Union[None, str] split_by: column name to split by, defaults to None
-        :param bool shuffle: whether to shuffle the data before splitting, defaults to False
-        :param Union[None, str] stratify: column name to stratify by which balanced the ratio of column, defaults to None
-        :param int random_state: Random seed for reproducibility, defaults to None
+        Args:
+            info (pd.DataFrame): Dataset metadata table.
+            rsize (List[float | int]): Split sizes.
+            split_by (str): Split unit column.
+            random_seed (int): Random seed.
+            shuffle (bool): Whether to shuffle split units.
+
+        Returns:
+            Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+            train, val, test tables. test may be None.
         """
         test_info = None
         
-        r_train, r_val, r_test = self._to_ratio(rsize, len(info))
+        r_train, r_val, r_test = self._to_ratio(rsize)
         all_group_ids = list(info[split_by].unique())
 
         if shuffle:
@@ -310,12 +401,20 @@ class HoldOut(BaseSplit):
         dataset: BaseDataset,
         val_dataset: BaseDataset = None,
         test_dataset: BaseDataset = None,
+        subject: Union[int, None] = None,
     ) -> Generator[Tuple[BaseDataset, BaseDataset, BaseDataset], None, None]:
         """
-        Generate train, val and test datasets.
+        Generate split datasets from saved split files.
 
-        :param BaseDataset dataset: The dataset to split.
-        :return Generator[Tuple[BaseDataset, BaseDataset, BaseDataset], None, None]: Generator yielding train, val, and test datasets.
+        Args:
+            dataset (BaseDataset): Source dataset object.
+            val_dataset (BaseDataset): Reserved argument.
+            test_dataset (BaseDataset): Reserved argument.
+            subject (Union[int, None]): Subject filter when per_subject is True.
+
+        Yields:
+            Tuple[BaseDataset, BaseDataset, BaseDataset]:
+            train, val, test datasets.
         """
         if not self.check_dst_path():
             log.info('📊 | Creating the split of train, val and test datasets.')
@@ -333,36 +432,67 @@ class HoldOut(BaseSplit):
                 '💡 | If the dataset is re-generated, you need to re-generate the split instead of using the previous split.'
             )
 
-        # Load train and val splits
-        train_info = pd.read_csv(os.path.join(self.dst_path, 'train.csv'))
-        val_info = pd.read_csv(os.path.join(self.dst_path, 'val.csv'))
+        if self.per_subject:
+            subjects = self.subjects
 
-        # Create train and val datasets
-        train_dataset = copy(dataset)
-        train_dataset.info = train_info
+            if subject is not None:
+                subject = str(subject)
+                assert subject in subjects, f'The subject should be in the subject list {subjects}.'
 
-        val_dataset = copy(dataset)
-        val_dataset.info = val_info
+            for local_subject in subjects:
+                if subject is not None and local_subject != subject:
+                    continue
 
-        if self.rsize[-1] > 0:
-            test_info = pd.read_csv(os.path.join(self.dst_path, 'test.csv'))
-            test_dataset = copy(dataset)
-            test_dataset.info = test_info
+                train_info = pd.read_csv(os.path.join(self.dst_path, f'train_subject_{local_subject}.csv'))
+                val_info = pd.read_csv(os.path.join(self.dst_path, f'val_subject_{local_subject}.csv'))
 
-        yield train_dataset, val_dataset, test_dataset
+                train_dataset = copy(dataset)
+                train_dataset.info = train_info
+
+                val_dataset = copy(dataset)
+                val_dataset.info = val_info
+
+                local_test_dataset = test_dataset
+                if self.rsize[-1] > 0:
+                    test_info = pd.read_csv(os.path.join(self.dst_path, f'test_subject_{local_subject}.csv'))
+                    local_test_dataset = copy(dataset)
+                    local_test_dataset.info = test_info
+
+                yield train_dataset, val_dataset, local_test_dataset
+        else:
+            # Load train and val splits
+            train_info = pd.read_csv(os.path.join(self.dst_path, 'train.csv'))
+            val_info = pd.read_csv(os.path.join(self.dst_path, 'val.csv'))
+
+            # Create train and val datasets
+            train_dataset = copy(dataset)
+            train_dataset.info = train_info
+
+            val_dataset = copy(dataset)
+            val_dataset.info = val_info
+
+            if self.rsize[-1] > 0:
+                test_info = pd.read_csv(os.path.join(self.dst_path, 'test.csv'))
+                test_dataset = copy(dataset)
+                test_dataset.info = test_info
+
+            yield train_dataset, val_dataset, test_dataset
 
     @property
     def repr_body(self) -> dict:
         """
-        Representation body for the class.
+        Build dict used by repr.
 
-        :return dict: Dictionary containing class attributes.
+        Returns:
+            dict: Representation fields.
         """
         return {
             'rsize': self.rsize,
             'rtype': self.rtype,
             'group_by': self.group_by,
             'split_by': self.split_by,
+            'per_subject': self.per_subject,
+            'subject_key': self.subject_key,
             'shuffle': self.shuffle,
             'stratify': self.stratify,
             'random_state': self.random_state,
@@ -371,9 +501,10 @@ class HoldOut(BaseSplit):
 
     def __repr__(self) -> str:
         """
-        String representation of the class.
+        Return formatted string representation.
 
-        :return str: Formatted string representation.
+        Returns:
+            str: String representation.
         """
         format_string = f"{self.__class__.__name__}("
         format_string += ', '.join(

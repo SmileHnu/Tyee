@@ -68,7 +68,7 @@
 
 ### 4.1 数据集划分
 
-- **划分策略 (`KFoldCross`)**: 本实验采用 **4折交叉验证 (4-Fold Cross-Validation)**。数据在划分前会按受试者ID (`group_by: subject_id`) 进行分组，以确保同一受试者的所有数据都属于同一折，避免数据泄露。
+- **划分策略 (`KFold`)**: 本实验采用 **4折交叉验证 (4-Fold Cross-Validation)**。数据在划分前按受试者ID (`split_by: subject_id`) 进行分组，以确保同一受试者的所有数据都属于同一折，避免数据泄露。
 
 ### 4.2 数据处理流程
 
@@ -79,7 +79,7 @@
 
 ### 4.3 任务定义
 
-- **任务类型**: `kaggleern_task.KaggleERNTask`
+- **任务类型**: `base_task.BaseTask`
 - 核心逻辑:
   - **优化器参数设置 (`set_optimizer_params`)**: 该方法被定制为**仅返回新添加的 `chan_conv`, `linear_probe1`, `linear_probe2` 层的参数**进行优化，从而实现了对 EEGPT 主干网络的冻结。
   - **训练/验证步骤**: 接收 EEG 信号 `x` 和标签 `label`，通过模型得到预测值 `pred`，并使用**交叉熵损失 (`CrossEntropyLoss`)** 计算损失。
@@ -114,10 +114,10 @@ dataset:
   io_mode: hdf5
   io_chunks: 400
   split: 
-    select: KFoldCross
+    select: KFold
     init_params:
-      split_path: /mnt/ssd/lingyus/tyee_kaggleern/split
-      group_by: subject_id
+      dst_path: /mnt/ssd/lingyus/tyee_kaggleern/split
+      split_by: subject_id
       n_splits: 4
       shuffle: false
   
@@ -156,7 +156,10 @@ optimizer:
 task:
   loss:
     select: CrossEntropyLoss
-  select: kaggleern_task.KaggleERNTask
+  select: base_task.BaseTask
+  model:
+    input_map: ['eeg']
+  target_map: ['label']
 
 trainer:
   fp16: true

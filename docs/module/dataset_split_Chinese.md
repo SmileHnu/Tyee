@@ -1,25 +1,38 @@
 # tyee.dataset.split
 
-`tyee.dataset.split`模块提供丰富的数据集划分方法，供用户选择不同的方式。
+`tyee.dataset.split` 模块目前已收敛为统一接口风格。公开导出（`__init__.py`）仅包含以下 4 个类：
 
-| 划分方法名称                                          | 功能作用                                                     |
-| ----------------------------------------------------- | ------------------------------------------------------------ |
-| [`BaseSplit`](#basesplit)                            | 所有切分策略的基类，定义了通用接口。                         |
-| [`HoldOut`](#holdout)                               | 对整个数据集进行一次简单的训练集/验证集切分。                |
-| [`HoldOutCross`](#holdoutcross)                     | 基于指定的列（如 'subject_id'）对整个数据集进行分组，然后按组切分训练集/验证集，确保同一组的数据不跨集。 |
-| [`HoldOutGroupby`](#holdoutgroupby)                 | 层级式留出法：首先按 `base_group` (如 'subject_id') 分组，然后在每个 `base_group` 内部再按 `group_by` (如 'trial_id') 的唯一单元切分训练/验证数据，并聚合结果。 |
-| [`HoldOutPerSubject`](#holdoutpersubject)           | 针对*每个被试*独立地将其数据切分为训练集和验证集。`split` 方法会遍历所有被试的切分结果。 |
-| [`HoldOutPerSubjectET`](#holdoutpersubjectet)       | 针对*每个被试*独立地将其数据切分为训练集、验证集*和测试集*。`split` 方法会遍历所有被试的切分结果。 |
-| [`HoldOutPerSubjectCross`](#holdoutpersubjectcross) | 针对*每个被试*，将其内部的（由`group_by`定义的）组（例如试验）切分为训练和验证两部分。`split` 方法会遍历所有被试的这种内部组切分。 |
-| [`KFold`](#kfold)                                   | 对整个数据集的样本进行标准的K折交叉验证切分。                |
-| [`KFoldCross`](#kfoldcross)                         | K折交叉验证，但切分的对象是按 `group_by` 列定义的组（例如被试ID），确保同一组的所有数据始终在同一折中（训练或验证）。 |
-| [`KFoldGroupby`](#kfoldgroupby)                     | 层级式K折：首先按 `base_group` 分组，然后在每个 `base_group` 内部的每个 `group_by` 单元内，对其*样本*应用K折切分。最终的K个折是这些样本级切分的聚合。 |
-| [`KFoldPerSubject`](#kfoldpersubject)               | 针对*每个被试*，独立地对其数据样本应用K折交叉验证。`split` 方法会遍历所有被试的所有折。 |
-| [`KFoldPerSubjectCross`](#kfoldpersubjectcross)     | 针对*每个被试*，将其内部的（由`group_by`定义的）组（例如试验）进行K折交叉验证切分。`split` 方法会遍历所有被试的这种内部组的K折切分。 |
-| [`LeaveOneOut`](#leaveoneout)                       | 留一组交叉验证：每次迭代留出一个由 `group_by` 定义的组作为验证集，其余组作为训练集。 |
-| [`LeaveOneOutEAndT`](#leaveoneouteandt)             | 留一法变体：每次迭代指定一个组为测试组 (`test_group`)，其前一个组为验证组 (`val_group`)，其余为训练组。 |
-| [`LosoRotatingCrossSplit`](#losorotatingcrosssplit) | 复杂的轮转切分：首先对组进行粗略K折切分，然后对每次粗略切分中"剩余"的组进行轮转，以依次分配给验证集和测试集，其余构成训练集，从而生成多个训练/验证/测试切分。 |
-| [`NoSplit`](#nosplit)                                | 不执行任何实际的数据切分，直接将输入的训练集、验证集（可选）、测试集（可选）原样返回。适用于已预先切分的数据或在完整数据集上评估的场景。 |
+| 类名 | 作用 |
+| --- | --- |
+| [`BaseSplit`](#basesplit) | 切分基类，定义统一接口与切分文件目录检查。 |
+| [`HoldOut`](#holdout) | 统一留出法：通过参数组合覆盖随机、按组、层级分组、按被试模式。 |
+| [`KFold`](#kfold) | 统一 K 折：通过参数组合覆盖全局、按组、层级分组、按被试模式。 |
+| [`LeaveOneOut`](#leaveoneout) | 留一组交叉验证（当前实现仍可使用）。 |
+
+## 版本说明（与当前代码对齐）
+
+- `HoldOutCross`、`HoldOutGroupby`、`HoldOutPerSubject*` 等旧类已并入统一的 `HoldOut` 参数化实现。
+- `KFoldCross`、`KFoldGroupby`、`KFoldPerSubject*` 等旧类已并入统一的 `KFold` 参数化实现。
+- 当前 `HoldOut` / `KFold` 使用 `dst_path`（不是旧的 `split_path`）作为切分文件目录。
+- 兼容性包装类已移除，不建议再在配置中引用旧类名。
+
+## 推荐配置写法
+
+### HoldOut（统一）
+
+- 随机切分：`group_by=None, split_by=None`
+- 按唯一单元切分：`group_by=None, split_by=...`
+- 层级分组切分：`group_by=..., split_by=...`
+- 按被试切分：`per_subject=True`，并设置 `subject_key`
+
+### KFold（统一）
+
+- 全局样本 K 折：`group_by=None, split_by=None`
+- 按唯一单元 K 折：`group_by=None, split_by=...`
+- 层级分组 K 折：`group_by=..., split_by=...`
+- 按被试 K 折：`per_subject=True`，并设置 `subject_key`
+
+> 注意：下方历史段落中若出现旧类名，视为迁移背景信息，不再作为当前推荐 API。
 
 
 
@@ -29,7 +42,7 @@
 class BaseSplit:
     def __init__(
         self,
-        split_path: str,
+        dst_path: str,
         **kwargs
     ) -> None:
 ~~~
@@ -38,16 +51,16 @@ class BaseSplit:
 
 **参数**
 
-- **split_path** (`str`): 指向切分信息（例如，定义训练/验证/测试切分的CSV文件）所在或将要存储的目录的路径。
+- **dst_path** (`str`): 指向切分信息（例如，定义训练/验证/测试切分的CSV文件）所在或将要存储的目录的路径。
 - ***\*kwargs**: 子类可能使用的其他关键字参数。
 
 **方法**
 
 ~~~python
-def check_split_path(self) -> bool:
+def check_dst_path(self) -> bool:
 ~~~
 
-检查 `split_path` 目录是否存在并且至少包含一个CSV文件。它会记录有关其发现的信息。
+检查 `dst_path` 目录是否存在并且至少包含一个CSV文件。它会记录有关其发现的信息。
 
 *返回:*
 
@@ -89,49 +102,55 @@ def split(
 class HoldOut(BaseSplit):
     def __init__(
         self,
-        val_size: float = 0.2,
+        rsize: List[Union[float, int]] = [0.8, 0.2, 0.0],
+        rtype: str = 'ratio',
+        group_by: Union[None, str] = None,
+        split_by: Union[None, str] = None,
+        per_subject: bool = False,
+        subject_key: str = 'subject_id',
         shuffle: bool = False,
         stratify: str = None,
         random_state: Union[int, None] = None,
-        split_path: Union[None, str] = None,
+        dst_path: Union[None, str] = None,
         **kwargs
     ) -> None:
 ~~~
 
-实现留出法验证策略，将数据集切分为单个训练集和验证集。如果 `split_path` 已提供并且包含现有的 `train.csv` 和 `val.csv` 文件，则使用这些切分；否则，将根据数据集的 `info` DataFrame 生成新的切分，并保存到 `split_path`。可选的测试集可以被传递，但此方法不会主动对其进行切分。
+当前 `HoldOut` 为统一实现，可通过参数覆盖随机切分、按唯一单元切分、层级分组切分、按被试切分等模式。切分文件默认写入 `dst_path`。
 
 **参数**
 
-- **val_size** (`float`): 数据集中包含在验证集中的比例。应介于0.0和1.0之间。默认为 `0.2`。
+- **rsize** (`List[Union[float, int]]`): 三段切分规模 `[train, val, test]`。
+- **rtype** (`str`): 规模类型，`ratio` 或 `number`。
+- **group_by** (`Union[None, str]`): 外层分组列。
+- **split_by** (`Union[None, str]`): 内层切分单元列。
+- **per_subject** (`bool`): 是否按被试独立切分。
+- **subject_key** (`str`): 被试列名（`per_subject=True` 时使用）。
 - **shuffle** (`bool`): 切分前是否打乱数据。默认为 `False`。
-- **stratify** (`str`, optional): 如果不是 `None`，则以分层方式切分数据，使用此字符串作为数据集中 `info` DataFrame 中用于分层的列名。默认为 `None`。
-- **random_state** (`Union[int, None]`): 控制在应用切分前对数据进行的打乱操作。传递一个整数以确保多次函数调用的可复现输出。默认为 `None`。
-- **split_path** (`Union[None, str]`): 用于存储 `train.csv` 和 `val.csv`（定义切分）的目录路径。如果路径不存在或不包含这些文件，则会生成新的切分并保存。默认为 `None`。
+- **stratify** (`str`, optional): 随机模式下的分层列。
+- **random_state** (`Union[int, None]`): 随机种子。
+- **dst_path** (`Union[None, str]`): 切分文件目录。
 - ***\*kwargs**: 传递给父类 `BaseSplit` 的其他关键字参数。
 
 **使用样例**
 
 ~~~python
-# 假设 'dataset' 是一个已存在的 BaseDataset 实例。
-# 'dataset.info' 应为一个 pandas DataFrame。
-# 若要进行分层抽样 (stratify='label')，'dataset.info' 应包含名为 'label' 的列。
-
 hold_out_splitter = HoldOut(
-    val_size=0.25,
+    rsize=[0.8, 0.2, 0.0],
+    rtype='ratio',
+    group_by=None,
+    split_by='trial_id',
+    per_subject=False,
     shuffle=True,
-    stratify='label', # 假设 dataset.info 中存在 'label' 列
     random_state=42,
-    split_path='实际存放切分文件的路径' # 替换为实际的目录路径
+    dst_path='实际存放切分文件的路径'
 )
 
-# 'split' 方法是一个生成器。
-# 'train_set' 和 'val_set' 将是新的 BaseDataset 实例，其 '.info' 属性已更新以反映各自的切分。
-# 如果没有向 .split() 方法传递 test_dataset，则 'test_set_passthrough' 将为 None。
-for train_set, val_set, test_set_passthrough in hold_out_splitter.split(dataset):
-    # 使用 train_set 和 val_set 进行训练和验证。
-    # 例如: print(f"训练集大小: {len(train_set.info)}, 验证集大小: {len(val_set.info)}")
+for train_set, val_set, test_set in hold_out_splitter.split(dataset):
     pass
 ~~~
+
+> 说明：`HoldOutCross` / `HoldOutGroupby` / `HoldOutPerSubject*` 为历史命名，已由该统一类参数化替代。
 
 [`返回顶部`](#tyeedatasetsplit)
 
@@ -436,49 +455,51 @@ class KFold(BaseSplit):
     def __init__(
         self,
         n_splits: int = 5,
+        group_by: Union[None, str] = None,
+        split_by: Union[None, str] = None,
+        per_subject: bool = False,
+        subject_key: str = 'subject_id',
         shuffle: bool = False,
         random_state: Union[None, int] = None,
-        split_path: Union[None, str] = None,
+        dst_path: Union[None, str] = None,
         **kwargs
     ) -> None:
 ~~~
 
-实现K折交叉验证。此类使用 `sklearn.model_selection.KFold` 将数据集的 `info` DataFrame划分为 `n_splits` 折。对于每一折，一部分用作验证集，其余部分用作训练集。如果 `split_path` 已提供并且包含现有的切分文件（例如 `train_fold_0.csv`, `val_fold_0.csv`），则使用这些切分；否则，将根据数据集的 `info` DataFrame为每一折生成新的切分，并保存到 `split_path`。`split` 方法随后会为每一折产出这些训练/验证数据对。
+当前 `KFold` 为统一实现，可通过参数覆盖全局样本 K 折、按组 K 折、层级分组 K 折与按被试 K 折。切分文件默认写入 `dst_path`。
 
 **参数**
 
 - **n_splits** (`int`): 折数。必须至少为2。默认为 `5`。
-- **shuffle** (`bool`): 在将数据分成批次之前是否打乱数据。请注意，每个切分内部的样本不会被打乱。默认为 `False`。
-- **random_state** (`Union[None, int]`): 当 `shuffle` 为 `True` 时，`random_state` 会影响索引的排序，从而控制每一折的随机性。传递一个整数以确保多次函数调用之间的输出可复现。默认为 `None`。
-- **split_path** (`Union[None, str]`): 用于存储每折切分文件（例如 `train_fold_X.csv`, `val_fold_X.csv`）的目录路径。如果路径不存在或未包含所有折的正确命名文件，则会生成新的切分并保存。默认为 `None`。
+- **group_by** (`Union[None, str]`): 外层分组列。
+- **split_by** (`Union[None, str]`): 内层切分单元列。
+- **per_subject** (`bool`): 是否按被试独立进行 K 折。
+- **subject_key** (`str`): 被试列名。
+- **shuffle** (`bool`): 是否打乱。
+- **random_state** (`Union[None, int]`): 随机种子。
+- **dst_path** (`Union[None, str]`): 切分文件目录。
 - ***\*kwargs**: 传递给父类 `BaseSplit` 的其他关键字参数。
 
 **使用样例**
 
 ~~~python
-# 假设 'dataset' 是一个已存在的 BaseDataset 实例。
-# 'dataset.info' 应为一个 pandas DataFrame。
-
-# 示例：执行5折交叉验证。
 k_fold_splitter = KFold(
     n_splits=5,
+    group_by=None,
+    split_by='trial_id',
+    per_subject=True,
+    subject_key='subject_id',
     shuffle=True,
     random_state=42,
-    split_path='存放K折切分文件的路径' # 替换为实际的目录路径
+    dst_path='存放K折切分文件的路径'
 )
 
-# 'split' 方法是一个生成器，为每一折产出一个训练/验证数据对。
-# 'train_set' 和 'val_set' 将是新的 BaseDataset 实例，其 '.info' 属性已为当前折更新。
-# 如果没有向 .split() 方法传递 test_dataset，则 'test_set_passthrough' 将为 None。
-fold_counter = 0
-for train_set, val_set, test_set_passthrough in k_fold_splitter.split(dataset):
-    fold_counter += 1
-    # print(f"正在处理第 {fold_counter}/{k_fold_splitter.n_splits} 折")
-    # print(f"  训练集大小: {len(train_set.info)}")
-    # print(f"  验证集大小: {len(val_set.info)}")
-    # 在这一折中使用 train_set 和 val_set 进行训练和验证。
+for train_set, val_set, test_set in k_fold_splitter.split(dataset):
     pass
 ~~~
+
+> 说明：`KFoldCross` / `KFoldGroupby` / `KFoldPerSubject*` 为历史命名，已由该统一类参数化替代。
+
 [`返回顶部`](#tyeedatasetsplit)
 ### KFoldCross
 

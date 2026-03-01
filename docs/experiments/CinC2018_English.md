@@ -92,7 +92,7 @@ We apply a multi-stage processing pipeline to the data:
 
 ### 4.3 Task Definition
 
-- **Task Type**: `cinc2018_task.CinC2018Task`
+- **Task Type**: `base_task.BaseTask`
 - Core Logic:
   - **Optimizer Parameter Setup (`set_optimizer_params`)**: As the encoders are frozen, this method is customized to **only return the parameters of the downstream `nn.Linear` layer** for optimization.
   - **Train/Validation Step**: Receives the three modal inputs `ss`, `ecg`, and `resp`, gets the prediction `pred` from the SleepFM model, and computes the loss using **CrossEntropyLoss**.
@@ -228,7 +228,10 @@ optimizer:
 task:
   loss:
     select: CrossEntropyLoss
-  select: cinc2018_task.CinC2018Task
+  select: base_task.BaseTask
+  model:
+    input_map: ['ss', 'ecg', 'resp']
+  target_map: ['stage']
 
 trainer:
   fp16: false

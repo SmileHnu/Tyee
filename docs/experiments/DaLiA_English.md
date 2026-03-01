@@ -59,7 +59,7 @@ The data preprocessing pipeline for this experiment is highly complex and is ful
 
 ### 4.3 Task Definition
 
-- **Task Type**: `dalia_hr_task.DaLiaHREstimationTask`
+- **Task Type**: `base_task.BaseTask`
 - Core Logic:
   - **Fitting the Prior Layer (`on_train_start`)**: Before training officially begins, a hook is used to iterate through the entire training dataset, allowing the model's `PriorLayer` to learn and fit the prior distribution of all heart rate labels in the training set.
   - **Loss Function (`BinnedRegressionLoss`)**: A special "binned regression loss" is used, which transforms the continuous value prediction problem into a "classification-like" problem of predicting a probability distribution.
@@ -242,7 +242,10 @@ task:
     min_hz: 0.5
     max_hz: 3.5
     sigma_y: 1.5
-  select: dalia_hr_task.DaLiaHREstimationTask
+  select: base_task.BaseTask
+  model:
+    input_map: ['ppg_acc', 'ppg_time']
+  target_map: ['hr']
 
 trainer:
   fp16: true

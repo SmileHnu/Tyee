@@ -20,20 +20,20 @@ dataset:
     # pretrain
     # select: LeaveOneOutAndHoldOutET
     # init_params:
-    #   split_path: /mnt/ssd/lingyus/tyee_ninapro_db5/split_pretrain
+    #   dst_path: /mnt/ssd/lingyus/tyee_ninapro_db5/split_pretrain
     #   stratify: gesture
     #   shuffle: false
-    #   test_size: 0.4
-    #   group_by: subject_id
+    #   # legacy pretrain-only args kept in old splitter implementation
 
     # finetune
-    select: HoldOutPerSubjectET
+    select: HoldOut
     init_params:
-      split_path: /mnt/ssd/lingyus/tyee_ninapro_db5/split_finetune
+      dst_path: /mnt/ssd/lingyus/tyee_ninapro_db5/split_finetune
+      per_subject: true
+      rsize: [0.2, 0.4, 0.4]
+      rtype: ratio
       stratify: gesture
       shuffle: false
-      val_size: 0.4
-      test_size: 0.4
     run_params:
       subject: 3
   offline_label_transform:

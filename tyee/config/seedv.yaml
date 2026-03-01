@@ -18,10 +18,11 @@ dataset:
   io_mode: hdf5
   io_chunks: 1
   split: 
-    select: KFoldPerSubjectCross
+    select: KFold
     init_params:
-      split_path: /home/lingyus/data/tyee_seedv_feature/split
-      group_by: trial_id
+      dst_path: /home/lingyus/data/tyee_seedv_feature/split
+      per_subject: true
+      split_by: trial_id
       n_splits: 3
       shuffle: false
   offline_signal_transform:

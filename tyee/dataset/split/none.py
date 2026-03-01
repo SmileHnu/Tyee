@@ -6,16 +6,16 @@ from typing import Generator, Tuple
 class NoSplit(BaseSplit):
     def __init__(
         self, 
-        split_path: str = None,
+        dst_path: str = None,
         **kwargs
     ) -> None:
         """
         Initialize the NoSplit class.
 
         Args:
-            split_path (str): Path to the split dataset (not used in this class).
+            dst_path (str): Path to the split dataset (not used in this class).
         """
-        super().__init__(split_path)
+        super().__init__(dst_path=dst_path, **kwargs)
 
     def split(
         self,

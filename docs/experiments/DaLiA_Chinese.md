@@ -57,7 +57,7 @@
 
 ### 4.3 任务定义
 
-- **任务类型**: `dalia_hr_task.DaLiaHREstimationTask`
+- **任务类型**: `base_task.BaseTask`
 - 核心逻辑:
   - **拟合先验层 (`on_train_start`)**: 在训练开始前，通过一个钩子函数遍历全部训练数据，让模型的 `PriorLayer` 学习并拟合训练集中所有心率标签的先验分布。
   - **损失函数 (`BinnedRegressionLoss`)**: 使用一种特殊的“分箱回归损失”，将连续值预测问题转化为对概率分布的预测。
@@ -240,7 +240,10 @@ task:
     min_hz: 0.5
     max_hz: 3.5
     sigma_y: 1.5
-  select: dalia_hr_task.DaLiaHREstimationTask
+  select: base_task.BaseTask
+  model:
+    input_map: ['ppg_acc', 'ppg_time']
+  target_map: ['hr']
 
 trainer:
   fp16: true

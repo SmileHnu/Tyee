@@ -85,7 +85,7 @@ Skip segment 0_105 due to transform error.
 
 ### 4.3 任务定义
 
-- **任务类型**: `mit_bih_task.MITBIHTask`
+- **任务类型**: `base_task.BaseTask`
 - **核心逻辑**: 该任务负责接收 ECG 信号 `x` 和心律类型标签 `symbol`，通过 EcgResNet34 模型进行前向传播，并使用**交叉熵损失 (`CrossEntropyLoss`)** 计算损失值以驱动模型训练。
 
 ### 4.4 训练策略
@@ -117,8 +117,9 @@ dataset:
   split: 
     select: HoldOut
     init_params:
-      split_path: /mnt/ssd/lingyus/tyee_mit_bih/split
-      val_size: 0.1
+      dst_path: /mnt/ssd/lingyus/tyee_mit_bih/split
+      rsize: [0.9, 0.1, 0.0]
+      rtype: ratio
       random_state: 7
       shuffle: true
       stratify: symbol
@@ -157,7 +158,10 @@ optimizer:
 task:
   loss:
     select: CrossEntropyLoss
-  select: mit_bih_task.MITBIHTask
+  select: base_task.BaseTask
+  model:
+    input_map: ['ecg']
+  target_map: ['symbol']
 
 trainer:
   fp16: false

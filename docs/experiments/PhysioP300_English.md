@@ -58,7 +58,7 @@ All settings for this experiment are centrally managed by a single configuration
 ### 4.1 Dataset Splitting
 
 - **Special Note**: The original dataset contains 12 subjects. However, to align with the experimental setup of the original paper, this experiment **excludes subjects S8, S10, and S12**, and is conducted only on the data from the remaining 9 subjects.
-- **Splitting Strategy (`KFoldCross`)**: A **9-Fold Cross-Validation** is applied to the remaining 9 subjects. The data is grouped by subject ID (`group_by: subject_id`) before splitting, which is effectively equivalent to Leave-One-Subject-Out cross-validation.
+- **Splitting Strategy (`KFold`)**: A **9-Fold Cross-Validation** is applied to the remaining 9 subjects. The data is grouped by subject ID (`split_by: subject_id`) before splitting, which is effectively equivalent to Leave-One-Subject-Out cross-validation.
 
 ### 4.2 Data Processing Pipeline
 
@@ -72,7 +72,7 @@ The data preprocessing pipeline for this experiment is fully defined in the `off
 
 ### 4.3 Task Definition
 
-- **Task Type**: `physiop300_task.PhysioP300Task`
+- **Task Type**: `base_task.BaseTask`
 - **Core Logic**:
   - **Optimizer Parameter Setup (`set_optimizer_params`)**: This method is customized to **only return the parameters of the newly added `chan_scale`, `linear_probe1`, and `linear_probe2` layers** for optimization, thereby freezing the EEGPT backbone.
   - **Train/Validation Step**: Receives the EEG signal `x` and label `label`, gets the prediction `pred` from the model, and computes the loss using **CrossEntropyLoss**.
@@ -106,10 +106,10 @@ dataset:
   io_chunks: 512
   include_end: true
   split: 
-    select: KFoldCross
+    select: KFold
     init_params:
-      split_path: /mnt/ssd/lingyus/tyee_physiop300/split
-      group_by: subject_id
+      dst_path: /mnt/ssd/lingyus/tyee_physiop300/split
+      split_by: subject_id
       n_splits: 9
       shuffle: false
   
@@ -151,7 +151,10 @@ optimizer:
 task:
   loss:
     select: CrossEntropyLoss
-  select: physiop300_task.PhysioP300Task
+  select: base_task.BaseTask
+  model:
+    input_map: ['eeg']
+  target_map: ['label']
 
 trainer:
   fp16: true

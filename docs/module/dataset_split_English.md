@@ -1,25 +1,38 @@
 # tyee.dataset.split
 
-`tyee.dataset.split` module provides a variety of dataset division methods for users to choose from different methods.
+`tyee.dataset.split` now uses a unified splitter API. Public exports (from `__init__.py`) are currently limited to these 4 classes:
 
-| Class Name                 | Function/Purpose                                             |
-| -------------------------- | ------------------------------------------------------------ |
-| [`BaseSplit`](#basesplit) | Base class for all splitting strategies, defining a common interface. |
-| [`HoldOut`](#holdout)                | Performs a simple, one-time train/validation split of the entire dataset. |
-| [`HoldOutCross`](#holdoutcross)           | Splits the entire dataset into train/validation sets based on groups (e.g., 'subject_id'), ensuring no group is split across sets. |
-| [`HoldOutGroupby`](#holdoutgroupby)         | Hierarchical hold-out: first groups by `base_group` (e.g., 'subject_id'), then within each, splits unique units of `group_by` (e.g., 'trial_id') into train/val, and aggregates results. |
-| [`HoldOutPerSubject`](#holdoutpersubject)      | Independently splits data for *each subject* into a training and validation set. The `split` method iterates through these per-subject splits. |
-| [`HoldOutPerSubjectET`](#holdoutpersubjectet)    | Independently splits data for *each subject* into training, validation, *and test* sets. The `split` method iterates through these per-subject splits. |
-| [`HoldOutPerSubjectCross`](#holdoutpersubjectcross) | For *each subject*, splits their internal groups (defined by `group_by`, e.g., trials) into train and validation portions for that subject. Iterates through subjects. |
-| [`KFold`](#kfold)                  | Standard K-fold cross-validation on the samples of the entire dataset. |
-| [`KFoldCross`](#kfoldcross)             | K-fold cross-validation where groups (defined by `group_by`, e.g., subject IDs) are distributed into K folds, ensuring group integrity. |
-| [`KFoldGroupby`](#kfoldgroupby)           | Hierarchical K-fold: groups by `base_group`, then for each `group_by` unit within that, applies K-fold to its *samples*. Final K folds are aggregations. |
-| [`KFoldPerSubject`](#kfoldpersubject)        | Applies K-fold cross-validation independently to the data samples of *each subject*. The `split` method iterates through all folds for all subjects. |
-| [`KFoldPerSubjectCross`](#kfoldpersubjectcross)   | For *each subject*, applies K-fold cross-validation to their internal *groups* (defined by `group_by`, e.g., trials). Iterates through subjects and their K group-based folds. |
-| [`LeaveOneOut`](#leaveoneout)            | Leave-One-Group-Out: each group (defined by `group_by`) is used as the validation set once, with all others for training. |
-| [`LeaveOneOutEAndT`](#leaveoneouteandt)       | Leave-One-Out variant: for each group designated as test, another (preceding) group is validation, and the rest is train. |
-| [`LosoRotatingCrossSplit`](#losorotatingcrosssplit) | Complex rotating split: performs a coarse K-fold on groups, then rotates subsets of the "rest" set for validation and testing, generating multiple train/val/test splits. |
-| [`NoSplit`](#nosplit)                | Does not perform any actual data splitting; yields back the input training, validation (optional), and test (optional) datasets as is. Suitable for pre-split data. |
+| Class | Purpose |
+| --- | --- |
+| [`BaseSplit`](#basesplit) | Base splitter interface and split-directory checks. |
+| [`HoldOut`](#holdout) | Unified hold-out splitter covering random, grouped, hierarchical-grouped, and per-subject modes via parameters. |
+| [`KFold`](#kfold) | Unified K-fold splitter covering global, grouped, hierarchical-grouped, and per-subject modes via parameters. |
+| [`LeaveOneOut`](#leaveoneout) | Leave-one-group-out split (still available). |
+
+## Version Notes (aligned with current code)
+
+- Legacy classes like `HoldOutCross`, `HoldOutGroupby`, and `HoldOutPerSubject*` were merged into parameterized `HoldOut`.
+- Legacy classes like `KFoldCross`, `KFoldGroupby`, and `KFoldPerSubject*` were merged into parameterized `KFold`.
+- Current unified `HoldOut` / `KFold` use `dst_path` (not legacy `split_path`) for split file storage.
+- Legacy compatibility wrappers have been removed and should no longer be referenced in configs.
+
+## Recommended Config Patterns
+
+### HoldOut (unified)
+
+- Random split: `group_by=None, split_by=None`
+- Split by unique unit: `group_by=None, split_by=...`
+- Hierarchical grouped split: `group_by=..., split_by=...`
+- Per-subject split: `per_subject=True` with `subject_key`
+
+### KFold (unified)
+
+- Global sample K-fold: `group_by=None, split_by=None`
+- Group-based K-fold: `group_by=None, split_by=...`
+- Hierarchical grouped K-fold: `group_by=..., split_by=...`
+- Per-subject K-fold: `per_subject=True` with `subject_key`
+
+> Note: legacy sections below may still mention old class names for migration context. They are not the recommended API.
 
 
 
@@ -29,7 +42,7 @@
 class BaseSplit:
     def __init__(
         self,
-        split_path: str,
+        dst_path: str,
         **kwargs
     ) -> None:
 ~~~
@@ -38,16 +51,16 @@ This is the base class for defining dataset splitting strategies. It provides a 
 
 **Parameters**
 
-- **split_path** (`str`): The path to a directory where split information (e.g., CSV files defining train/validation/test splits) is located or will be stored.
+- **dst_path** (`str`): The path to a directory where split information (e.g., CSV files defining train/validation/test splits) is located or will be stored.
 - ***\*kwargs**: Additional keyword arguments that might be used by subclasses.
 
 **Methods**
 
 ~~~python
-def check_split_path(self) -> bool:
+def check_dst_path(self) -> bool:
 ~~~
 
-Checks if the `split_path` directory exists and contains at least one CSV file. It logs information about its findings.
+Checks if the `dst_path` directory exists and contains at least one CSV file. It logs information about its findings.
 
 *Returns:*
 
@@ -90,50 +103,55 @@ This method is intended to be overridden by subclasses to implement specific dat
 class HoldOut(BaseSplit):
     def __init__(
         self,
-        val_size: float = 0.2,
+        rsize: List[Union[float, int]] = [0.8, 0.2, 0.0],
+        rtype: str = 'ratio',
+        group_by: Union[None, str] = None,
+        split_by: Union[None, str] = None,
+        per_subject: bool = False,
+        subject_key: str = 'subject_id',
         shuffle: bool = False,
         stratify: str = None,
         random_state: Union[int, None] = None,
-        split_path: Union[None, str] = None,
+        dst_path: Union[None, str] = None,
         **kwargs
     ) -> None:
 ~~~
 
-Implements a hold-out validation strategy, splitting a dataset into a single training set and a validation set. If `split_path` is provided and contains existing `train.csv` and `val.csv` files, those splits are used; otherwise, a new split is generated based on the dataset's `info` DataFrame and saved to `split_path`. An optional test set can be passed through but is not actively split by this method.
+Current `HoldOut` is a unified implementation. Via parameter combinations, it supports random split, split-by-unit, hierarchical grouped split, and per-subject split. Split files are stored under `dst_path`.
 
 **Parameters**
 
-- **val_size** (`float`): The proportion of the dataset to include in the validation split. Should be between 0.0 and 1.0. Defaults to `0.2`.
+- **rsize** (`List[Union[float, int]]`): Three-way split size `[train, val, test]`.
+- **rtype** (`str`): Size type, either `ratio` or `number`.
+- **group_by** (`Union[None, str]`): Outer grouping column.
+- **split_by** (`Union[None, str]`): Inner split-unit column.
+- **per_subject** (`bool`): Whether to split each subject independently.
+- **subject_key** (`str`): Subject column name used when `per_subject=True`.
 - **shuffle** (`bool`): Whether to shuffle the data before splitting. Defaults to `False`.
-- **stratify** (`str`, optional): If not `None`, data is split in a stratified fashion, using this string as the column name in the dataset's `info` DataFrame for stratification. Defaults to `None`.
-- **random_state** (`Union[int, None]`): Controls the shuffling applied to the data before applying the split. Pass an int for reproducible output across multiple function calls. Defaults to `None`.
-- **split_path** (`Union[None, str]`): Path to the directory where `train.csv` and `val.csv` (defining the splits) are stored or will be saved. If the path does not exist or does not contain these files, new splits are generated and saved. Defaults to `None`.
+- **stratify** (`str`, optional): Stratification column for random mode.
+- **random_state** (`Union[int, None]`): Random seed.
+- **dst_path** (`Union[None, str]`): Split-file directory.
 - ***\*kwargs**: Additional keyword arguments passed to the parent `BaseSplit` class.
 
 **Usage Example**
 
 ~~~python
-# Assume 'dataset' is an existing instance of BaseDataset.
-# 'dataset.info' is expected to be a pandas DataFrame.
-# If stratify='label' is used, 'dataset.info' should have a 'label' column.
-
 hold_out_splitter = HoldOut(
-    val_size=0.25,
+    rsize=[0.8, 0.2, 0.0],
+    rtype='ratio',
+    group_by=None,
+    split_by='trial_id',
+    per_subject=False,
     shuffle=True,
-    stratify='label', # Assumes 'label' column in dataset.info
     random_state=42,
-    split_path='PATH_TO_YOUR_SPLIT_FILES' # Replace with the actual directory path
+    dst_path='PATH_TO_YOUR_SPLIT_FILES'
 )
 
-# The 'split' method is a generator.
-# 'train_set' and 'val_set' will be new BaseDataset instances with their '.info'
-# attributes updated to reflect the respective splits.
-# 'test_set_passthrough' will be None if no test_dataset was passed to .split().
-for train_set, val_set, test_set_passthrough in hold_out_splitter.split(dataset):
-    # Use train_set and val_set for training and validation.
-    # Example: print(f"Train set size: {len(train_set.info)}, Validation set size: {len(val_set.info)}")
+for train_set, val_set, test_set in hold_out_splitter.split(dataset):
     pass
 ~~~
+
+> Note: `HoldOutCross` / `HoldOutGroupby` / `HoldOutPerSubject*` are legacy names and are replaced by this unified class.
 
 [`Back to Top`](#tyeedatasetsplit)
 
@@ -453,52 +471,50 @@ class KFold(BaseSplit):
     def __init__(
         self,
         n_splits: int = 5,
+        group_by: Union[None, str] = None,
+        split_by: Union[None, str] = None,
+        per_subject: bool = False,
+        subject_key: str = 'subject_id',
         shuffle: bool = False,
         random_state: Union[None, int] = None,
-        split_path: Union[None, str] = None,
+        dst_path: Union[None, str] = None,
         **kwargs
     ) -> None:
 ~~~
 
-Implements K-fold cross-validation. This class uses `sklearn.model_selection.KFold` to divide the dataset's `info` DataFrame into `n_splits` folds. For each fold, one part is used as the validation set and the remaining parts are used as the training set. If `split_path` is provided and contains existing split files (e.g., `train_fold_0.csv`, `val_fold_0.csv`), those splits are used; otherwise, new splits are generated for each fold based on the dataset's `info` DataFrame and saved to `split_path`. The `split` method then yields these train/validation pairs for each fold.
+Current `KFold` is a unified implementation. Via parameter combinations, it supports global-sample K-fold, group-based K-fold, hierarchical grouped K-fold, and per-subject K-fold. Split files are stored under `dst_path`.
 
 **Parameters**
 
 - **n_splits** (`int`): The number of folds. Must be at least 2. Defaults to `5`.
-- 
-
-- **shuffle** (`bool`): Whether to shuffle the data before splitting into batches. Note that the samples within each split will not be shuffled. Defaults to `False`.
-- **random_state** (`Union[None, int]`): When `shuffle` is `True`, `random_state` affects the ordering of the indices, which controls the randomness of each fold. Pass an int for reproducible output across multiple function calls. Defaults to `None`.
-- **split_path** (`Union[None, str]`): Path to the directory where per-fold split files (e.g., `train_fold_X.csv`, `val_fold_X.csv`) are stored or will be saved. If the path does not exist or does not contain appropriately named files for all folds, new splits are generated and saved. Defaults to `None`.
+- **group_by** (`Union[None, str]`): Outer grouping column.
+- **split_by** (`Union[None, str]`): Inner split-unit column.
+- **per_subject** (`bool`): Whether to run K-fold per subject.
+- **subject_key** (`str`): Subject column name.
+- **shuffle** (`bool`): Whether to shuffle.
+- **random_state** (`Union[None, int]`): Random seed.
+- **dst_path** (`Union[None, str]`): Split-file directory.
 - ***\*kwargs**: Additional keyword arguments passed to the parent `BaseSplit` class.
 
 **Usage Example**
 
 ~~~python
-# Assume 'dataset' is an existing instance of BaseDataset.
-# 'dataset.info' is expected to be a pandas DataFrame.
-
-# Example: Perform 5-fold cross-validation.
 k_fold_splitter = KFold(
     n_splits=5,
+    group_by=None,
+    split_by='trial_id',
+    per_subject=True,
+    subject_key='subject_id',
     shuffle=True,
     random_state=42,
-    split_path='PATH_TO_YOUR_KFOLD_SPLIT_FILES' # Replace with actual directory path
+    dst_path='PATH_TO_YOUR_KFOLD_SPLIT_FILES'
 )
 
-# The 'split' method is a generator, yielding a train/validation pair for each fold.
-# 'train_set' and 'val_set' will be new BaseDataset instances with their '.info'
-# attributes updated for the current fold.
-# 'test_set_passthrough' will be None if no test_dataset was passed to .split().
-fold_counter = 0
-for train_set, val_set, test_set_passthrough in k_fold_splitter.split(dataset):
-    fold_counter += 1
-    # print(f"Processing Fold {fold_counter}/{k_fold_splitter.n_splits}")
-    # print(f"  Train set size: {len(train_set.info)}")
-    # print(f"  Validation set size: {len(val_set.info)}")
-    # Use train_set and val_set for training and validation for this fold.
+for train_set, val_set, test_set in k_fold_splitter.split(dataset):
     pass
 ~~~
+
+> Note: `KFoldCross` / `KFoldGroupby` / `KFoldPerSubject*` are legacy names and are replaced by this unified class.
 
 [`Back to Top`](#tyeedatasetsplit)
 

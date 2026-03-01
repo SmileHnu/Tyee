@@ -79,10 +79,10 @@ dataset:
       source: eog
       target: eog
   split: 
-    select: KFoldCross
+    select: KFold
     init_params:
-      split_path: /mnt/ssd/lingyus/tyee_sleepedfx_20/split_17_20
-      group_by: subject_id
+      dst_path: /mnt/ssd/lingyus/tyee_sleepedfx_20/split_17_20
+      split_by: subject_id
       n_splits: 20
       shuffle: false
   

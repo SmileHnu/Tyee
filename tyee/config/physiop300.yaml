@@ -19,10 +19,10 @@ dataset:
   io_chunks: 512
   include_end: true
   split: 
-    select: KFoldCross
+    select: KFold
     init_params:
-      split_path: /mnt/ssd/lingyus/tyee_physiop300/split
-      group_by: subject_id
+      dst_path: /mnt/ssd/lingyus/tyee_physiop300/split
+      split_by: subject_id
       n_splits: 9
       shuffle: false
 

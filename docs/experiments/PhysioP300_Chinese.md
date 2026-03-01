@@ -58,7 +58,7 @@
 ### 4.1 数据集划分
 
 - **特别说明**：原始数据集包含12名受试者，但为了与原论文的实验设置对齐，本实验**排除了 S8, S10, S12 三名受试者**，仅在其余9名受试者的数据上进行。
-- **划分策略 (`KFoldCross`)**: 对剩余的9名受试者采用 **9折交叉验证 (9-Fold Cross-Validation)**。数据在划分前会按受试者ID (`group_by: subject_id`) 进行分组，实际上等同于留一交叉验证（Leave-One-Subject-Out）。
+- **划分策略 (`KFold`)**: 对剩余的9名受试者采用 **9折交叉验证 (9-Fold Cross-Validation)**。数据在划分前会按受试者ID (`split_by: subject_id`) 进行分组，实际上等同于留一交叉验证（Leave-One-Subject-Out）。
 
 ### 4.2 数据处理流程
 
@@ -72,7 +72,7 @@
 
 ### 4.3 任务定义
 
-- **任务类型**: `physiop300_task.PhysioP300Task`
+- **任务类型**: `base_task.BaseTask`
 - **核心逻辑**:
   - **优化器参数设置 (`set_optimizer_params`)**: 该方法被定制为**仅返回新添加的 `chan_scale`, `linear_probe1`, `linear_probe2` 层的参数**进行优化，从而实现了对 EEGPT 主干网络的冻结。
   - **训练/验证步骤**: 接收 EEG 信号 `x` 和标签 `label`，通过模型得到预测值 `pred`，并使用**交叉熵损失 (`CrossEntropyLoss`)** 计算损失。
@@ -106,10 +106,10 @@ dataset:
   io_chunks: 512
   include_end: true
   split: 
-    select: KFoldCross
+    select: KFold
     init_params:
-      split_path: /mnt/ssd/lingyus/tyee_physiop300/split
-      group_by: subject_id
+      dst_path: /mnt/ssd/lingyus/tyee_physiop300/split
+      split_by: subject_id
       n_splits: 9
       shuffle: false
   
@@ -151,7 +151,10 @@ optimizer:
 task:
   loss:
     select: CrossEntropyLoss
-  select: physiop300_task.PhysioP300Task
+  select: base_task.BaseTask
+  model:
+    input_map: ['eeg']
+  target_map: ['label']
 
 trainer:
   fp16: true

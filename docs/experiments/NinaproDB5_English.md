@@ -74,7 +74,7 @@ The data preprocessing pipeline, defined in the configuration file, has the core
 
 ### 4.3 Task Definition
 
-- **Task Type**: `ninapro_db5_task.NinaproDB5Task`
+- **Task Type**: `base_task.BaseTask`
 - **Core Logic**: This task is responsible for receiving the processed sEMG image `emg` and the gesture label `gesture`, performing a forward pass through the ResNet-18 model, and computing the loss using **CrossEntropyLoss** to drive model training.
 
 ### 4.4 Training Strategy
@@ -104,20 +104,20 @@ dataset:
   	# Configuration for the pretrain phase
     # select: LeaveOneOutAndHoldOutET
     # init_params:
-    #   split_path: /mnt/ssd/lingyus/tyee_ninapro_db5/split_pretrain
+    #   dst_path: /mnt/ssd/lingyus/tyee_ninapro_db5/split_pretrain
     #   stratify: gesture
     #   shuffle: false
-    #   test_size: 0.4
-    #   group_by: subject_id
+    #   # legacy pretrain-only args in old splitter implementation
     
     # Configuration for the fine-tuning phase
-    select: HoldOutPerSubjectET
+    select: HoldOut
     init_params:
-      split_path: /mnt/ssd/lingyus/tyee_ninapro_db5/split_finetune
+      dst_path: /mnt/ssd/lingyus/tyee_ninapro_db5/split_finetune
+      per_subject: true
+      rsize: [0.2, 0.4, 0.4]
+      rtype: ratio
       stratify: gesture
       shuffle: false
-      val_size: 0.4
-      test_size: 0.4
     run_params:
       subject: 3 # Example: fine-tuning and testing on subject 3
 
@@ -166,7 +166,7 @@ model:
   pretrained: true
   
   # Fine-tuning phase loads the model pre-trained in Phase 1
-  checkpoint_path: /home/lingyus/code/PRL/experiments/2025-05-23/11-24-05-ninapro_db5_task.NinaproDB5Task/checkpoint/fold_3/checkpoint_best.pt
+  checkpoint_path: /home/lingyus/code/PRL/experiments/2025-05-23/11-24-05-base_task.BaseTask/checkpoint/fold_3/checkpoint_best.pt
 
 optimizer:
   lr:  5e-4
@@ -175,7 +175,10 @@ optimizer:
 task:
   loss:
     select: CrossEntropyLoss
-  select: ninapro_db5_task.NinaproDB5Task
+  select: base_task.BaseTask
+  model:
+    input_map: ['emg']
+  target_map: ['gesture']
 
 trainer:
   fp16: false
